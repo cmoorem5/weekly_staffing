@@ -1,0 +1,11 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Delete week {{ week_start }}{% endblock %}
+{% block content %}
+<h1>Delete week {{ week_start }}?</h1>
+<p>This will permanently remove this week and its base coverage.</p>
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" class="btn" style="background:#c00;">Delete week</button>
+  <a href="{% url 'week_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

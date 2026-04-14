@@ -1,0 +1,26 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Base totals{% endblock %}
+{% block content %}
+<h1>Base totals (RW / GR per week)</h1>
+<p>Set once; edit if denominators change.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <table>
+    <thead>
+      <tr><th>Base</th><th>RW</th><th>GR</th></tr>
+    </thead>
+    <tbody>
+      {% for base, form in base_forms %}
+      <tr>
+        <td>{{ base }}</td>
+        <td>{{ form.rw_total }}</td>
+        <td>{{ form.gr_total }}</td>
+        <td>{{ form.base_name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin-top: 1rem;"><button type="submit" class="btn">Save base totals</button></p>
+</form>
+{% endblock %}

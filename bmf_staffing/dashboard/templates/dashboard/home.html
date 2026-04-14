@@ -1,0 +1,114 @@
+{% extends "dashboard/base.html" %}
+{% block title %}BMF Staffing – Home{% endblock %}
+{% block content %}
+<h1 class="h2 mb-3">Boston MedFlight staffing</h1>
+<p class="text-muted">Enter weekly data, import schedules, and export the Excel summary. Week start is always <strong>Sunday</strong> (Sun–Sat).</p>
+
+{% if latest_week_start %}
+  <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3">Rolling overview</h2>
+  <p class="text-muted small mb-2">
+    <strong>{{ overview_weeks_count }}</strong> week{% if overview_weeks_count != 1 %}s{% endif %} averaged
+    <span class="text-muted">({{ overview_range_label }})</span>.
+    Each card is the <strong>mean</strong> of that KPI across those weeks. RAG uses the same targets as a single week.
+    Per-week values are in the table below.
+  </p>
+
+  {% if overview_red_count or overview_yellow_count %}
+  <div class="alert {% if overview_red_count %}alert-danger{% else %}alert-warning{% endif %} py-2 mb-3" role="alert">
+    {% if overview_red_count %}
+      <strong>Attention (rolling averages):</strong> {{ overview_red_count }} metric{% if overview_red_count != 1 %}s{% endif %} at <strong>Red</strong>
+      {% if overview_yellow_count %} &middot; {{ overview_yellow_count }} at Yellow{% endif %}
+    {% else %}
+      <strong>Watch (rolling averages):</strong> {{ overview_yellow_count }} metric{% if overview_yellow_count != 1 %}s{% endif %} at Yellow (none at Red).
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 mb-4">
+    {% for k in overview_kpis %}
+    <div class="col">
+      <div class="card h-100 border shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <span class="small text-muted text-uppercase fw-semibold">{{ k.label }}</span>
+            {% if k.rag == 'Green' %}
+              <span class="badge rounded-pill bg-success">Green</span>
+            {% elif k.rag == 'Yellow' %}
+              <span class="badge rounded-pill bg-warning text-dark">Yellow</span>
+            {% elif k.rag == 'Red' %}
+              <span class="badge rounded-pill" style="background-color: var(--bmf-red);">Red</span>
+            {% else %}
+              <span class="badge rounded-pill bg-secondary">—</span>
+            {% endif %}
+          </div>
+          <p class="display-6 fw-bold mb-0 mt-2">{{ k.value_pct }}%</p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="h6 text-uppercase fw-bold text-muted border-bottom pb-2 mb-2">Latest week in data</h2>
+  <p class="mb-2">
+    <strong>{{ latest_week_start }}</strong>
+    {% if latest_updated_at %}
+      <span class="text-muted small">&middot; last updated {{ latest_updated_at }}</span>
+    {% endif %}
+  </p>
+  <p class="small text-muted mb-3">
+    Filled crew shifts: <strong>{{ latest_filled_total }}</strong> / {{ latest_required_total }}
+    {% if latest_vacancies %}&middot; vacancies: <strong>{{ latest_vacancies }}</strong>{% endif %}
+  </p>
+  <p class="mb-4">
+    <a href="{% url 'week_edit' latest_week_start %}" class="btn btn-primary">Edit latest week</a>
+    <a href="{% url 'export_excel' latest_week_start %}" class="btn btn-outline-primary">Export Excel</a>
+    <a href="{% url 'week_list' %}" class="btn btn-outline-secondary">All weeks</a>
+  </p>
+
+  <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3 mt-4">Last four weeks</h2>
+  <p class="text-muted small mb-2">Weekly values (newest first). RAG here is from <strong>staffing rate</strong> only.</p>
+  <div class="table-responsive mb-4">
+    <table class="table table-sm table-bordered bg-white align-middle">
+      <thead>
+        <tr>
+          <th>Week (Sun)</th>
+          <th>Staffing</th>
+          <th>OT dep</th>
+          <th>Leave exp</th>
+          <th>RW sys</th>
+          <th>GR sys</th>
+          <th>RAG</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in recent_weeks %}
+        <tr {% if w.week_start == latest_week_start %}class="table-light"{% endif %}>
+          <td><strong>{{ w.week_start }}</strong>{% if w.week_start == latest_week_start %} <span class="text-muted small">(latest)</span>{% endif %}</td>
+          <td>{{ w.rate_pct }}%</td>
+          <td>{{ w.ot_pct }}%</td>
+          <td>{{ w.leave_pct }}%</td>
+          <td>{{ w.rw_pct }}%</td>
+          <td>{{ w.gr_pct }}%</td>
+          <td>{{ w.rag }}</td>
+          <td><a href="{% url 'week_edit' w.week_start %}" class="small">Edit</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-secondary mb-4">
+    No weekly data yet. Add a week or import a schedule to see KPIs here.
+  </div>
+{% endif %}
+
+<h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3">Quick links</h2>
+<ul class="mb-2">
+  <li><a href="{% url 'base_totals' %}">Base totals</a> – RW/GR unit-days per base (set once).</li>
+  <li><a href="{% url 'week_list' %}">Weeks</a> – Recent weeks, edit, export.</li>
+  <li><a href="{% url 'week_add' %}">Add week</a> – New Sunday week + base coverage.</li>
+  <li><a href="{% url 'import_schedule' %}">Import schedule</a> – Upload Excel schedule workbook.</li>
+</ul>
+<p class="text-muted small mb-0">Calendar Sunday for new entries: <strong>{{ last_sunday }}</strong></p>
+{% endblock %}

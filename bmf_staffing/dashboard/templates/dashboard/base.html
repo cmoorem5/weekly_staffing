@@ -1,0 +1,164 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}BMF Staffing{% endblock %}</title>
+  <!-- Bookmark bar / favicon: BMF Coastal logo -->
+  <link rel="icon" type="image/png" href="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}">
+  <!-- BMF typography: Barlow (fallback Arial, Helvetica) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* BMF brand colors */
+    :root {
+      --bmf-blue: #2a4492;
+      --bmf-navy: #052c47;
+      --bmf-gray: #e6e6e6;
+      --bmf-medium-gray: #cbc7d1;
+      --bmf-white: #ffffff;
+      --bmf-black: #000000;
+      --bmf-red: #c12126;
+    }
+    body {
+      font-family: "Barlow", Arial, Helvetica, sans-serif;
+      background-color: var(--bmf-gray);
+      color: var(--bmf-black);
+    }
+    .app-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    main {
+      flex: 1 0 auto;
+    }
+    footer {
+      flex-shrink: 0;
+    }
+    /* Nav: BMF Navy background, BMF Blue for brand highlight */
+    .navbar.bmf-nav {
+      background-color: var(--bmf-navy) !important;
+    }
+    .navbar.bmf-nav .navbar-brand {
+      color: var(--bmf-white) !important;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .navbar.bmf-nav .navbar-brand img.bmf-logo-nav {
+      height: 36px;
+      width: auto;
+    }
+    .navbar.bmf-nav .nav-link {
+      color: var(--bmf-gray) !important;
+    }
+    .navbar.bmf-nav .nav-link:hover {
+      color: var(--bmf-white) !important;
+    }
+    .btn-primary {
+      background-color: var(--bmf-blue);
+      border-color: var(--bmf-blue);
+    }
+    .btn-primary:hover {
+      background-color: var(--bmf-navy);
+      border-color: var(--bmf-navy);
+    }
+    .alert-danger {
+      background-color: #fde8e8;
+      border-color: var(--bmf-red);
+      color: #6b0f13;
+    }
+    table {
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid var(--bmf-medium-gray);
+      padding: 0.35rem 0.75rem;
+      text-align: left;
+    }
+    th {
+      background: var(--bmf-white);
+      color: var(--bmf-navy);
+      font-weight: 600;
+    }
+    input[type="number"] {
+      width: 5rem;
+    }
+    footer.bmf-footer {
+      background-color: var(--bmf-navy) !important;
+      border-color: var(--bmf-navy) !important;
+      color: var(--bmf-gray);
+    }
+    .bmf-logo-footer {
+      filter: brightness(1.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="navbar navbar-expand-lg navbar-dark bmf-nav">
+      <div class="container-fluid">
+        <a class="navbar-brand fw-semibold" href="{% url 'home' %}">
+          <img src="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}" alt="Boston MedFlight" class="bmf-logo-nav">
+          <span>Staffing</span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="mainNav">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'base_totals' %}">Base totals</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'week_list' %}">Weeks</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'week_add' %}">Add week</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'import_schedule' %}">Import schedule</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'monthly_report' %}">Monthly report</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container my-4">
+      {% if messages %}
+      <div class="mb-3">
+        {% for message in messages %}
+          {% if 'success' in message.tags %}
+            <div class="alert alert-success mb-2" role="alert">{{ message }}</div>
+          {% elif 'error' in message.tags %}
+            <div class="alert alert-danger mb-2" role="alert">{{ message }}</div>
+          {% else %}
+            <div class="alert alert-secondary mb-2" role="alert">{{ message }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bmf-footer border-top py-3 mt-auto">
+      <div class="container small d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <img src="{% static 'dashboard/images/BMF_White_tagline.png' %}" alt="Boston MedFlight – Your Life. Our Mission." class="bmf-logo-footer" style="height: 32px; width: auto;">
+        <span>Staffing Dashboard &middot; Weeks run Sunday &rarr; Saturday</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

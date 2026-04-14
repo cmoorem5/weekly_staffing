@@ -1,0 +1,147 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{% if is_add %}Add week{% else %}Edit {{ week_start }}{% endif %}{% endblock %}
+{% block content %}
+<h1>{% if is_add %}Add week{% else %}Edit week {{ week_start }}{% endif %}</h1>
+<p class="text-muted">Week start must be a <strong>Sunday</strong> (YYYY-MM-DD).</p>
+<form method="post" autocomplete="off">
+  {% csrf_token %}
+
+  <div class="row g-4">
+    <div class="col-md-6">
+      <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mb-2">Week</h2>
+      <table class="table table-bordered table-sm">
+        <tbody>
+          <tr>
+            <th class="w-50">Week start (Sunday)</th>
+            <td>{{ form.week_start }}{% if form.week_start.errors %}<br><span class="text-danger small">{{ form.week_start.errors.0 }}</span>{% endif %}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col-md-6">
+      <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mb-2">Complete shifts</h2>
+      <table class="table table-bordered table-sm">
+        <thead><tr><th></th><th>Day</th><th>Night</th></tr></thead>
+        <tbody>
+          <tr>
+            <th>Complete</th>
+            <td>{{ form.filled_day }}{% if form.filled_day.errors %}<br><span class="text-danger small">{{ form.filled_day.errors.0 }}</span>{% endif %}</td>
+            <td>{{ form.filled_night }}{% if form.filled_night.errors %}<br><span class="text-danger small">{{ form.filled_night.errors.0 }}</span>{% endif %}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mt-4 mb-2">Overtime (shift counts)</h2>
+  <table class="table table-bordered table-sm" style="max-width: 24rem;">
+    <thead><tr><th>Role</th><th>Day</th><th>Night</th></tr></thead>
+    <tbody>
+      <tr>
+        <th>RN</th>
+        <td>{{ form.ot_rn_day }}</td>
+        <td>{{ form.ot_rn_night }}</td>
+      </tr>
+      <tr>
+        <th>Medic</th>
+        <td>{{ form.ot_medic_day }}</td>
+        <td>{{ form.ot_medic_night }}</td>
+      </tr>
+      <tr>
+        <th>EMT</th>
+        <td>{{ form.ot_emt_day }}</td>
+        <td>{{ form.ot_emt_night }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mt-4 mb-2">Unpartnered staff (manual)</h2>
+  <p class="text-muted small mb-2">Counts for the Weekly Staffing Detail executive summary (CEO request). Not calculated from the schedule import.</p>
+  <table class="table table-bordered table-sm" style="max-width: 28rem;">
+    <tbody>
+      <tr>
+        <th class="w-50">{{ form.medic_unpartnered.label }}</th>
+        <td>{{ form.medic_unpartnered }}{% if form.medic_unpartnered.errors %}<br><span class="text-danger small">{{ form.medic_unpartnered.errors.0 }}</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <th>{{ form.rn_unpartnered_staff.label }}</th>
+        <td>{{ form.rn_unpartnered_staff }}{% if form.rn_unpartnered_staff.errors %}<br><span class="text-danger small">{{ form.rn_unpartnered_staff.errors.0 }}</span>{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mt-4 mb-2">Schedule exceptions (totals)</h2>
+  <p class="text-muted small mb-1">On save, these totals are replaced by the sums of the role grid below (keep them in sync).</p>
+  <table class="table table-bordered table-sm" style="max-width: 28rem;">
+    <thead><tr><th>AT</th><th>LT</th><th>SICK</th><th>LOA</th><th>JURY</th><th>BREV</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ form.leave_at }}</td>
+        <td>{{ form.leave_lt }}</td>
+        <td>{{ form.leave_sick }}</td>
+        <td>{{ form.leave_loa }}</td>
+        <td>{{ form.leave_jury }}</td>
+        <td>{{ form.leave_brev }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="row g-4 mt-1">
+    <div class="col-md-12">
+      <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mb-2">Notes</h2>
+      {{ form.notes }}
+      {% if form.notes.errors %}<p class="text-danger small">{{ form.notes.errors.0 }}</p>{% endif %}
+    </div>
+  </div>
+
+  <h2 class="h5 mt-4">Schedule Exceptions by Role and Type</h2>
+  <p class="text-muted small">Edit any cell; imported values appear here. Saving updates this grid, the exception totals row above, and the Board Pack export.</p>
+  <table class="table table-bordered table-sm">
+    <thead>
+      <tr>
+        <th>Role</th>
+        {% for lt in leave_types_order %}
+        <th>{{ lt }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in leave_grid_rows %}
+      <tr>
+        <td><strong>{{ row.role }}</strong></td>
+        {% for c in row.cells %}
+        <td style="max-width: 6rem;">
+          <input type="number" min="0" step="1" class="form-control form-control-sm" name="{{ c.name }}" value="{{ c.value }}">
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2 class="h5 mt-4">Base coverage (RW/GR staffed unit-days, day vs night)</h2>
+  <p class="text-muted small">Enter day and night staffed counts to match the Board Pack Base Coverage section. Leave night at 0 if not used.</p>
+  {{ formset.management_form }}
+  <table class="table table-bordered table-sm">
+    <thead>
+      <tr><th>Base</th><th>RW day</th><th>RW night</th><th>GR day</th><th>GR night</th></tr>
+    </thead>
+    <tbody>
+      {% for base, form in coverage_forms %}
+      <tr>
+        <td>{{ base }}</td>
+        <td>{{ form.rw_staffed_day }}</td>
+        <td>{{ form.rw_staffed_night }}</td>
+        <td>{{ form.gr_staffed_day }}</td>
+        <td>{{ form.gr_staffed_night }}</td>
+        <td style="display:none">{{ form.base_name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="mt-3">
+    <button type="submit" class="btn btn-primary">Save week + base coverage</button>
+    <a href="{% url 'week_list' %}" class="btn btn-secondary">Cancel</a>
+  </p>
+</form>
+{% endblock %}

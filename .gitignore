@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Django dev DB (distinct from staffing.db used by the app)
+**/db.sqlite3
+
+# Outputs and generated data
+Staffing_Summary/
+BMF_Executive_Dashboard_*.xlsx
+staffing.db
+staffing_history.db
+staffing_trends_export.csv
+sample_schedule_*.xlsx
+uploads/
+output/
+schedules/
+archive/
+
+# Secrets (if you add a .env later)
+.env
+.env.local
+
+# Optional: ignore schedule inputs if large (uncomment if needed)
+# *.xlsx

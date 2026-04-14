@@ -1,0 +1,36 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Weeks{% endblock %}
+{% block content %}
+<h1>Recent weeks</h1>
+<p><a href="{% url 'week_add' %}" class="btn">Add week</a></p>
+<table>
+  <thead>
+    <tr>
+      <th>Week (Sun)</th>
+      <th>Staffing rate</th>
+      <th>OT dep</th>
+      <th>Leave exp</th>
+      <th>RAG</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for w in weeks %}
+    <tr>
+      <td>{{ w.week_start }}</td>
+      <td>{{ w.rate_pct }}%</td>
+      <td>{{ w.ot_pct }}%</td>
+      <td>{{ w.leave_pct }}%</td>
+      <td>{{ w.rag }}</td>
+      <td>
+        <a href="{% url 'week_edit' w.week_start %}" class="btn btn-secondary">Edit</a>
+        <a href="{% url 'export_excel' w.week_start %}" class="btn">Export Excel</a>
+        <a href="{% url 'week_delete' w.week_start %}" style="color:#c00;">Delete</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No weeks yet. <a href="{% url 'week_add' %}">Add week</a>.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Import schedule{% endblock %}
+{% block content %}
+<h1>Import weekly schedule</h1>
+<p>Upload the full <strong>RN &amp; Medic</strong> / <strong>EMT</strong> workbook (one or two weeks in the grid). We detect which Sunday weeks are in the file; on the next screen you choose the week to import—no need to guess the date first.</p>
+<p class="text-muted">Optional hint below only helps choose the default preview if it matches a week in the file.</p>
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <table>
+    <tr>
+      <td><label for="id_week_start">Preferred week start (optional hint)</label></td>
+      <td><input type="text" name="week_start" id="id_week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD Sunday" /></td>
+    </tr>
+    <tr>
+      <td><label for="id_schedule_file">Schedule Excel file</label></td>
+      <td><input type="file" name="schedule_file" id="id_schedule_file" accept=".xlsx,.xlsm" /></td>
+    </tr>
+  </table>
+  <p style="margin-top: 1rem;">
+    <button type="submit" class="btn">Upload &amp; preview</button>
+    <a href="{% url 'week_list' %}" class="btn btn-secondary">Cancel</a>
+  </p>
+</form>
+{% endblock %}
+

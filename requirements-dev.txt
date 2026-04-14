@@ -1,0 +1,3 @@
+# Dev-only: lint + format (not needed on production servers)
+-r requirements.txt
+ruff>=0.8.0
