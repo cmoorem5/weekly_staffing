@@ -58,7 +58,7 @@ git init
 git add .
 git commit -m "Initial commit: weekly staffing tool and dashboard"
 git branch -M main
-git remote add origin https://github.com/YOUR_USER/YOUR_REPO.git
+git remote add origin https://github.com/cmoorem5/weekly-staffing.git
 git push -u origin main
 ```
 
