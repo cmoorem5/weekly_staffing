@@ -1,0 +1,34 @@
+{% extends "dashboard/base.html" %}
+{% block title %}BMF Staffing – Backup DB{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Backup staffing.db</h1>
+
+<div class="alert alert-warning">
+  <strong>Confirm:</strong> This will copy the local staffing database file into <code>archive/</code> with a timestamp.
+</div>
+
+<dl class="row">
+  <dt class="col-sm-3">Source DB</dt>
+  <dd class="col-sm-9"><code>{{ src_path }}</code></dd>
+  <dt class="col-sm-3">Archive folder</dt>
+  <dd class="col-sm-9"><code>{{ archive_dir }}</code></dd>
+</dl>
+
+{% if did_backup %}
+  <div class="alert alert-success">
+    Backup created:
+    <div class="mt-2"><code>{{ backup_path }}</code></div>
+  </div>
+  <p class="mb-0">
+    <a class="btn btn-outline-secondary" href="/admin/">Back to admin</a>
+    <a class="btn btn-outline-primary" href="{% url 'home' %}">Back to home</a>
+  </p>
+{% else %}
+  <form method="post" class="d-flex flex-wrap gap-2">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Backup DB</button>
+    <a class="btn btn-outline-secondary" href="/admin/">Cancel</a>
+  </form>
+{% endif %}
+{% endblock %}
+

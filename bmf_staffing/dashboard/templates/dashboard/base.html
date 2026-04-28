@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{% static 'dashboard/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
   <style>
     /* BMF brand colors */
     :root {
@@ -68,10 +68,54 @@
       background-color: var(--bmf-navy);
       border-color: var(--bmf-navy);
     }
+    .btn-outline-primary {
+      color: var(--bmf-blue);
+      border-color: var(--bmf-blue);
+    }
+    .btn-outline-primary:hover {
+      background-color: var(--bmf-blue);
+      border-color: var(--bmf-blue);
+    }
     .alert-danger {
       background-color: #fde8e8;
       border-color: var(--bmf-red);
       color: #6b0f13;
+    }
+    .bmf-page-title {
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      margin-bottom: 0.25rem;
+    }
+    .bmf-page-subtitle {
+      color: #495057;
+      margin-bottom: 1rem;
+      max-width: 64rem;
+    }
+    .bmf-section-title {
+      color: var(--bmf-navy);
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      font-size: 0.95rem;
+      border-bottom: 1px solid var(--bmf-medium-gray);
+      padding-bottom: 0.5rem;
+      margin: 1.25rem 0 0.75rem;
+    }
+    .bmf-card {
+      border: 1px solid var(--bmf-medium-gray);
+    }
+    .bmf-card-header {
+      background: var(--bmf-white);
+      color: var(--bmf-navy);
+      font-weight: 600;
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+    .bmf-toolbar {
+      background: var(--bmf-white);
+      border: 1px solid var(--bmf-medium-gray);
+      border-radius: 0.5rem;
+      padding: 0.75rem;
     }
     table {
       border-collapse: collapse;
@@ -97,6 +141,65 @@
     .bmf-logo-footer {
       filter: brightness(1.05);
     }
+
+    .print-only { display: none; }
+    .no-print { }
+
+    @media print {
+      body {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      nav.navbar,
+      footer,
+      .no-print,
+      .btn,
+      .navbar-toggler {
+        display: none !important;
+      }
+      main.container {
+        margin: 0 !important;
+        max-width: none !important;
+        padding: 0 !important;
+      }
+      .card,
+      .bmf-toolbar {
+        border: 1px solid #bbb !important;
+        box-shadow: none !important;
+      }
+      .card-header,
+      .bmf-card-header {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      a[href]:after {
+        content: "";
+      }
+      table,
+      .table {
+        table-layout: fixed;
+        width: 100%;
+      }
+      th, td {
+        white-space: normal !important;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+      .table-responsive {
+        overflow: visible !important;
+      }
+      canvas {
+        max-width: 100% !important;
+        height: auto !important;
+        page-break-inside: avoid;
+      }
+      .card {
+        page-break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body>
@@ -114,9 +217,6 @@
         <div class="collapse navbar-collapse" id="mainNav">
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
             <li class="nav-item">
-              <a class="nav-link" href="{% url 'base_totals' %}">Base totals</a>
-            </li>
-            <li class="nav-item">
               <a class="nav-link" href="{% url 'week_list' %}">Weeks</a>
             </li>
             <li class="nav-item">
@@ -127,6 +227,15 @@
             </li>
             <li class="nav-item">
               <a class="nav-link" href="{% url 'monthly_report' %}">Monthly report</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'manager_shifts' %}">Manager shifts</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/admin/">Admin</a>
             </li>
           </ul>
         </div>
@@ -159,6 +268,6 @@
     </footer>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{% static 'dashboard/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
 </body>
 </html>

@@ -1,25 +1,27 @@
 {% extends "dashboard/base.html" %}
 {% block title %}Import schedule{% endblock %}
 {% block content %}
-<h1>Import weekly schedule</h1>
-<p>Upload the full <strong>RN &amp; Medic</strong> / <strong>EMT</strong> workbook (one or two weeks in the grid). We detect which Sunday weeks are in the file; on the next screen you choose the week to import—no need to guess the date first.</p>
-<p class="text-muted">Optional hint below only helps choose the default preview if it matches a week in the file.</p>
+<h1 class="bmf-page-title">Import weekly schedule</h1>
+<p class="bmf-page-subtitle">
+  Upload the schedule workbook (one or two weeks in the grid). The next screen will detect available Sunday start dates so you can choose the week to import.
+</p>
+<p class="text-muted small mb-3">Optional: “Preferred week start” is only used to preselect a detected week.</p>
 
 <form method="post" enctype="multipart/form-data">
   {% csrf_token %}
-  <table>
+  <table class="table table-sm table-bordered bg-white" style="max-width: 56rem;">
     <tr>
-      <td><label for="id_week_start">Preferred week start (optional hint)</label></td>
-      <td><input type="text" name="week_start" id="id_week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD Sunday" /></td>
+      <td class="w-50"><label class="form-label mb-0" for="id_week_start">Preferred week start (optional)</label></td>
+      <td><input type="text" class="form-control" name="week_start" id="id_week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD (Sunday)" /></td>
     </tr>
     <tr>
-      <td><label for="id_schedule_file">Schedule Excel file</label></td>
-      <td><input type="file" name="schedule_file" id="id_schedule_file" accept=".xlsx,.xlsm" /></td>
+      <td><label class="form-label mb-0" for="id_schedule_file">Schedule Excel file</label></td>
+      <td><input type="file" class="form-control" name="schedule_file" id="id_schedule_file" accept=".xlsx,.xlsm" required aria-label="Schedule Excel file" /></td>
     </tr>
   </table>
-  <p style="margin-top: 1rem;">
-    <button type="submit" class="btn">Upload &amp; preview</button>
-    <a href="{% url 'week_list' %}" class="btn btn-secondary">Cancel</a>
+  <p class="mt-3 mb-0 d-flex flex-wrap gap-2">
+    <button type="submit" class="btn btn-primary">Upload &amp; preview</button>
+    <a href="{% url 'week_list' %}" class="btn btn-outline-secondary">Cancel</a>
   </p>
 </form>
 {% endblock %}

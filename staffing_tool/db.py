@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Importing from .models loads models.py fully so all tables register on Base.
+from .manager_roster import seed_manager_roster_if_empty
 from .models import Base, BaseConfig, KpiThreshold, VehicleSlot
 
 
@@ -69,6 +70,18 @@ def _pragma_column_names(conn, table: str) -> set[str]:
     """Column names for a table (fixed table names only)."""
     r = conn.execute(text(f"PRAGMA table_info({table})"))
     return {row[1] for row in r}
+
+
+def migrate_unpartnered_note_columns(engine: Engine) -> None:
+    """Add optional TEXT columns for Weekly_Detail Notes (unpartnered context)."""
+    with engine.connect() as conn:
+        columns = _pragma_column_names(conn, "weekly_staffing")
+        for col in ("unpartnered_note_medic", "unpartnered_note_rn"):
+            if col not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE weekly_staffing ADD COLUMN {col} TEXT")
+                )
+        conn.commit()
 
 
 def migrate_weekly_staffing_columns(engine: Engine) -> None:
@@ -139,6 +152,30 @@ def migrate_add_base_coverage_day_night(engine: Engine) -> None:
         conn.commit()
 
 
+def migrate_leave_exposure_to_shift_exception_metric(engine: Engine) -> None:
+    """
+    Rename kpi_thresholds row Leave Exposure → Shift Exception % (canonical name).
+
+    Safe to run repeatedly: no-op if the old name is absent.
+    """
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='kpi_thresholds'"
+            )
+        )
+        if r.fetchone() is None:
+            return
+        conn.execute(
+            text(
+                "UPDATE kpi_thresholds SET metric_name = 'Shift Exception %' "
+                "WHERE metric_name = 'Leave Exposure'"
+            )
+        )
+        conn.commit()
+
+
 def migrate_system_gr_kpi_thresholds(engine: Engine) -> None:
     """
     System GR Coverage % RAG: green ≥92%, yellow 85%–<92%, red <85%
@@ -193,7 +230,7 @@ DEFAULT_BASES = [
 DEFAULT_THRESHOLDS = [
     ("Staffing Rate", 0.95, 1.0, 0.90, 0.949, 0.0, 0.90, 1),
     ("OT Dependency", 0.0, 0.08, 0.081, 0.12, 0.12, 1.0, 0),
-    ("Leave Exposure", 0.0, 0.25, 0.251, 0.32, 0.32, 1.0, 0),
+    ("Shift Exception %", 0.0, 0.25, 0.251, 0.32, 0.32, 1.0, 0),
     (
         "Overnights Below Coverage",
         0.0,
@@ -292,13 +329,16 @@ def init_db(db_path: str | None = None) -> None:
     engine = get_engine(db_path)
     create_tables(engine)
     migrate_weekly_staffing_columns(engine)
+    migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
     SessionLocal = _sessionmaker_for_path(_resolve_db_path(db_path))
     with SessionLocal() as session:
         seed_base_config(session)
         seed_kpi_thresholds(session)
         seed_vehicle_slots(session)
+        seed_manager_roster_if_empty(session)
         session.commit()
+    migrate_leave_exposure_to_shift_exception_metric(engine)
     migrate_system_gr_kpi_thresholds(engine)
 
 

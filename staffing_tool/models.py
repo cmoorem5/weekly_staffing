@@ -42,6 +42,43 @@ class KpiThreshold(Base):
         return f"KpiThreshold(metric_name={self.metric_name!r})"
 
 
+class ManagerRosterLastName(Base):
+    """Last names that identify manager rows on the schedule (cols A–B tokens)."""
+
+    __tablename__ = "manager_roster_last_name"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    last_name = Column(String(128), nullable=False, unique=True)
+
+    def __repr__(self) -> str:
+        return f"ManagerRosterLastName(last_name={self.last_name!r})"
+
+
+class WeeklyManagerShift(Base):
+    """One staffed line shift worked by a manager (from schedule import)."""
+
+    __tablename__ = "weekly_manager_shifts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    person_display = Column(String(256), nullable=False, default="")
+    role = Column(String(16), nullable=False)
+    shift_date = Column(String(10), nullable=False)
+    base_name = Column(String(64), nullable=False)
+    service_type = Column(String(8), nullable=False)
+    day_night = Column(String(1), nullable=False)
+    unit_code = Column(String(32), nullable=False, default="")
+    overtime = Column(Integer, nullable=False, default=0)
+    raw_value = Column(String(64), nullable=False, default="")
+    source_tab = Column(String(128), nullable=False, default="")
+    source_cell = Column(String(16), nullable=False, default="")
+
+
 class WeeklyStaffing(Base):
     """Weekly staffing record (one row per week)."""
 
@@ -81,6 +118,8 @@ class WeeklyStaffing(Base):
     # CEO report: manually entered unpartnered staff counts (not derived from schedule import).
     medic_unpartnered = Column(Integer, nullable=False, default=0)
     rn_unpartnered_staff = Column(Integer, nullable=False, default=0)
+    unpartnered_note_medic = Column(String(200), nullable=True)
+    unpartnered_note_rn = Column(String(200), nullable=True)
     notes = Column(Text, nullable=True)
     entered_by = Column(String(128), nullable=True)
     created_at = Column(String(32), nullable=True)

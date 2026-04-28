@@ -1,0 +1,380 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+{% block title %}Staffing dashboard{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Staffing dashboard</h1>
+
+<p class="bmf-page-subtitle mb-2">
+  Choose <strong>FY{{ fy_label }}</strong> below (label = calendar year of FY end). Week&nbsp;1 / <strong>PP#1</strong> starts the <strong>Sunday on or before September&nbsp;28</strong> of the anchor year; the FY ends the day before the next FY’s PP#1 Sunday (52 or 53 weeks).
+  “Fiscal year to date” uses the <strong>last closed pay period</strong> in the selected FY when that FY is current (each pay period is 14 days, starting Sunday).
+  {% if is_current_fy %}
+    <span class="ms-1">Data through: <strong>{{ data_through }}</strong></span>
+  {% endif %}
+</p>
+
+<div class="print-only mb-3">
+  <h2 class="h4 mb-1">Staffing dashboard</h2>
+  <div class="small">
+    Period type:
+    <strong>{% if granularity == "pay_period" %}Pay period window{% else %}{{ granularity|capfirst }}{% endif %}</strong>
+    &middot; Window:
+    <strong>{{ date_start }}</strong> → <strong>{{ date_end }}</strong>
+    &middot; FY{{ fy_label }}:
+    <strong>{{ fy_start }}</strong> → <strong>{{ fy_end }}</strong>
+  </div>
+</div>
+
+{% if last_import_week_start %}
+  <div class="alert alert-info py-2 mb-3" role="alert">
+    <strong>Last schedule import applied:</strong> {{ last_import_week_start }}
+    {% if last_import_updated_at %}<span class="text-muted small">&middot; updated {{ last_import_updated_at }}</span>{% endif %}
+  </div>
+{% elif latest_week_start %}
+  <div class="alert alert-light py-2 mb-3" role="alert">
+    <strong>Latest week in database:</strong> {{ latest_week_start }}
+    {% if latest_updated_at %}<span class="text-muted small">&middot; updated {{ latest_updated_at }}</span>{% endif %}
+  </div>
+{% endif %}
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Dashboard filters">
+  <div class="col-auto" style="min-width: 22rem;">
+    <label class="form-label mb-0" for="id_fy">Fiscal year</label>
+    <select name="fy" id="id_fy" class="form-select" aria-describedby="id_fy_help">
+      {% for row in fy_choices %}
+        <option value="{{ row.fy_label }}"{% if row.fy_label == fy_label %} selected{% endif %}>{{ row.option_label }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text" id="id_fy_help">Each option shows FY label and PP#1 (week‑1 Sunday). Legacy <code>fy_start=</code> date URLs still work.</div>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_granularity">Period type</label>
+    <select name="granularity" id="id_granularity" class="form-select">
+      <option value="pay_period"{% if granularity == "pay_period" %} selected{% endif %}>Pay period window (biweekly)</option>
+      <option value="month"{% if granularity == "month" %} selected{% endif %}>Month</option>
+      <option value="quarter"{% if granularity == "quarter" %} selected{% endif %}>Quarter</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">Data through</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Update</button>
+  </div>
+  {% if preset_links %}
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.fy_ytd.qs }}">{{ preset_links.fy_ytd.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.last_6_pp.qs }}">{{ preset_links.last_6_pp.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.last_12_weeks.qs }}">{{ preset_links.last_12_weeks.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.full_fy.qs }}">{{ preset_links.full_fy.label }}</a>
+    </div>
+  </div>
+  {% endif %}
+  <div class="col-12">
+    <div class="small text-muted mb-1">Shift exceptions chart (counts)</div>
+    <div class="d-flex flex-wrap gap-3 align-items-center">
+      <label class="form-check form-check-inline mb-0">
+        <input class="form-check-input" id="id_exc_include_other" type="checkbox" autocomplete="off">
+        <span class="form-check-label">Include “Other”</span>
+      </label>
+      <span class="small text-muted">
+        Breakdown: <strong>LT</strong>, <strong>LOA</strong>, <strong>SICK/SL</strong>, <strong>AT</strong>.
+      </span>
+    </div>
+  </div>
+  {% if filters_qs %}
+  <div class="col-12 mt-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'staffing_dashboard_export_csv' %}?{{ filters_qs }}">Export CSV</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'staffing_dashboard_export_xlsx' %}?{{ filters_qs }}">Export Excel</a>
+  </div>
+  {% endif %}
+</form>
+
+<p class="small text-muted mt-2">
+  FY{{ fy_label }} window: <strong>{{ fy_start }}</strong> → <strong>{{ fy_end }}</strong>
+</p>
+
+{% if data_quality_rows %}
+<div class="card bmf-card shadow-sm mt-3">
+  <div class="card-header bmf-card-header">
+    Data quality — {{ date_start }} through {{ date_end }}
+    {% if expected_week_starts_count %}
+      <span class="text-muted fw-normal small">&middot; expected Sundays: {{ expected_week_starts_count }}</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <p class="small text-muted mb-2">
+      Checks for missing <code>week_start</code> rows and for weeks that do not appear to have had a schedule import applied.
+    </p>
+    <table class="table table-sm mb-0" style="max-width: 56rem;">
+      <thead>
+        <tr>
+          <th scope="col">Week start (Sun)</th>
+          <th scope="col">Issue</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in data_quality_rows %}
+        <tr>
+          <td><code>{{ r.week_start }}</code></td>
+          <td>{{ r.issue }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if no_data %}
+  <p class="mt-4 text-muted">No weekly staffing data in this range.</p>
+{% else %}
+  <div class="row g-3 mt-3">
+    <div class="col-12 col-lg-6">
+      <div class="card bmf-card shadow-sm">
+        <div class="card-header bmf-card-header">
+          Staffing rate (%)
+        </div>
+        <div class="card-body">
+          <canvas id="chartStaffingRate" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card bmf-card shadow-sm">
+        <div class="card-header bmf-card-header">
+          OT dependency (%)
+        </div>
+        <div class="card-body">
+          <canvas id="chartOt" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-3">
+    <div class="col-12 col-lg-6">
+      <div class="card bmf-card shadow-sm">
+        <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div class="d-flex flex-wrap align-items-baseline gap-2">
+            <span>Manager line shifts (count)</span>
+            <span class="small text-muted fw-normal" id="mgrChartModeLabel">Breakdown</span>
+          </div>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Manager chart mode">
+              <input type="radio" class="btn-check" name="mgrChartMode" id="mgrModeBreakdown" autocomplete="off" checked>
+              <label class="btn btn-outline-secondary" for="mgrModeBreakdown">Breakdown</label>
+
+              <input type="radio" class="btn-check" name="mgrChartMode" id="mgrModeTotal" autocomplete="off">
+              <label class="btn btn-outline-secondary" for="mgrModeTotal">Total</label>
+            </div>
+            <select class="form-select form-select-sm" id="mgrTrendMode" style="width: auto;" aria-label="Manager trend overlay">
+              <option value="both" selected>Actual + trend</option>
+              <option value="actual">Actual only</option>
+              <option value="trend">Trend only</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <canvas id="chartManagerLineShifts" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card bmf-card shadow-sm">
+        <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div class="d-flex flex-wrap align-items-baseline gap-2">
+            <span>Shift exceptions (count)</span>
+            <span class="small text-muted fw-normal" id="excChartModeLabel">Breakdown</span>
+          </div>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Exceptions chart mode">
+              <input type="radio" class="btn-check" name="excChartMode" id="excModeBreakdown" autocomplete="off" checked>
+              <label class="btn btn-outline-secondary" for="excModeBreakdown">Breakdown</label>
+
+              <input type="radio" class="btn-check" name="excChartMode" id="excModeTotal" autocomplete="off">
+              <label class="btn btn-outline-secondary" for="excModeTotal">Total</label>
+            </div>
+            <select class="form-select form-select-sm" id="excTrendMode" style="width: auto;" aria-label="Exceptions trend overlay">
+              <option value="both" selected>Actual + trend</option>
+              <option value="actual">Actual only</option>
+              <option value="trend">Trend only</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <canvas id="chartExceptions" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card bmf-card shadow-sm mt-3">
+    <div class="card-header bmf-card-header">
+      Summary — {{ date_start }} through {{ date_end }}
+    </div>
+    <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col">
+              {% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}
+            </th>
+            <th scope="col" class="text-end">
+              <span title="Number of weeks included in this row.">Weeks</span>
+            </th>
+            <th scope="col" class="text-end">
+              <span title="Range of week_start (Sunday) dates included in this period.">Week starts</span>
+            </th>
+            <th scope="col" class="text-end">Staffing %</th>
+            <th scope="col" class="text-end">OT %</th>
+            <th scope="col" class="text-end">Shift exception %</th>
+            <th scope="col" class="text-end">System RW %</th>
+            <th scope="col" class="text-end">System GR %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in table_rows %}
+          <tr>
+            <td>
+              {% if r.drill_qs %}
+                <a href="{% url 'staffing_dashboard' %}?{{ r.drill_qs }}">{{ r.label }}</a>
+              {% else %}
+                {{ r.label }}
+              {% endif %}
+            </td>
+            <td class="text-end">{{ r.weeks_included }}</td>
+            <td class="text-end"><span class="text-muted">{{ r.week_start_range_label }}</span></td>
+            <td class="text-end">{{ r.staffing_rate_pct }}</td>
+            <td class="text-end">{{ r.ot_dependency_pct }}</td>
+            <td class="text-end">{{ r.shift_exception_pct }}</td>
+            <td class="text-end">{{ r.system_rw_coverage_pct }}</td>
+            <td class="text-end">{{ r.system_gr_coverage_pct }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card bmf-card shadow-sm mt-3">
+    <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Manager line shifts — {{ date_start }} through {{ date_end }}</span>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#mgrDetailsCollapse"
+        aria-expanded="false"
+        aria-controls="mgrDetailsCollapse"
+        aria-label="Toggle manager line shift details"
+      >
+        Details
+      </button>
+    </div>
+    <div id="mgrDetailsCollapse" class="collapse">
+      <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}</th>
+            <th scope="col" class="text-end">Total</th>
+            {% for b in manager_line_shifts_breakdown_order %}
+              <th scope="col" class="text-end">{{ b }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in manager_line_shifts_table %}
+          <tr>
+            <td>
+              {% if r.drill_manager_shifts_qs %}
+                <a href="{% url 'manager_shifts' %}?{{ r.drill_manager_shifts_qs }}">{{ r.label }}</a>
+              {% else %}
+                {{ r.label }}
+              {% endif %}
+            </td>
+            <td class="text-end">{{ r.manager_line_shifts_total }}</td>
+            {% for n in r.manager_line_shifts_by_base_list %}
+              <td class="text-end">{{ n }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card bmf-card shadow-sm mt-3">
+    <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Shift exceptions — breakdown (counts)</span>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#excDetailsCollapse"
+        aria-expanded="false"
+        aria-controls="excDetailsCollapse"
+        aria-label="Toggle shift exception details"
+      >
+        Details
+      </button>
+    </div>
+    <div id="excDetailsCollapse" class="collapse">
+      <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}</th>
+            <th scope="col" class="text-end">Total</th>
+            <th scope="col" class="text-end">LT</th>
+            <th scope="col" class="text-end">LOA</th>
+            <th scope="col" class="text-end">SICK/SL</th>
+            <th scope="col" class="text-end">AT</th>
+            <th scope="col" class="text-end">Other</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in exc_table_rows %}
+          <tr>
+            <td>
+              {% if r.drill_qs %}
+                <a href="{% url 'staffing_dashboard' %}?{{ r.drill_qs }}">{{ r.label }}</a>
+              {% else %}
+                {{ r.label }}
+              {% endif %}
+            </td>
+            <td class="text-end">{{ r.exceptions_total }}</td>
+            <td class="text-end">{{ r.exceptions_lt }}</td>
+            <td class="text-end">{{ r.exceptions_loa }}</td>
+            <td class="text-end">{{ r.exceptions_sick }}</td>
+            <td class="text-end">{{ r.exceptions_at }}</td>
+            <td class="text-end">{{ r.exceptions_other }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="application/json" id="staffing-chart-labels">{{ labels_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-staffing-rate">{{ staffing_rate_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-ot-dependency">{{ ot_dependency_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-mgr-total">{{ manager_line_shifts_total_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-mgr-breakdown">{{ manager_line_shifts_breakdown_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-exc-total">{{ exc_total_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-exc-breakdown">{{ exc_breakdown_series_json|safe }}</script>
+  <script src="{% static 'dashboard/vendor/chartjs/chart.umd.min.js' %}"></script>
+  <script src="{% static 'dashboard/js/staffing_dashboard_charts.js' %}"></script>
+{% endif %}
+
+{% endblock %}
+

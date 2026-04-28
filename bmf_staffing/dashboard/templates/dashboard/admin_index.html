@@ -1,0 +1,31 @@
+{% extends "admin/index.html" %}
+
+{% block content %}
+  <div class="app-dashboard module">
+    <table>
+      <caption>Admin tools</caption>
+      <tbody>
+        <tr>
+          <th scope="row">
+            <a href="{% url 'base_totals' %}">Base totals</a>
+          </th>
+          <td class="text-muted">Rarely used — adjust RW/GR unit-days denominators.</td>
+        </tr>
+        <tr>
+          <th scope="row">
+            <a href="{% url 'backup_db' %}">Backup DB</a>
+          </th>
+          <td class="text-muted">Copy staffing.db to archive/ with a timestamp.</td>
+        </tr>
+        <tr>
+          <th scope="row">
+            <a href="{% url 'restore_db' %}">Restore DB</a>
+          </th>
+          <td class="text-muted">Overwrite staffing.db from a backup in archive/ (localhost-only).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {{ block.super }}
+{% endblock %}
+

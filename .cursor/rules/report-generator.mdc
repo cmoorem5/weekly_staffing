@@ -1,0 +1,5 @@
+---
+globs: **/*.py
+alwaysApply: false
+---
+--- description: Rules for the weekly staffing report generator globs: - "**/*.py" - "**/generator*" - "**/report*" alwaysApply: false --- When working on the weekly staffing report generator that produces Board_Summary and Weekly_Detail tabs, follow docs/report-generator-spec.md. Non-negotiable constraints from that spec: - Never use cross-sheet formulas between Board_Summary and Weekly_Detail - Never use SUM/AVERAGE formulas on generated values - Never use Excel conditional formatting for status colors — compute in code - Never use the words "Green/Yellow/Red" in user-facing status cells — use "On target / Monitor / Action needed" - Never sum raw shift counts across bases (§3.3) - System GR denominator is 28, not 35 (§1.3) — operational budget cap - Unpartnered and per-role OT counts are ungraded metrics — no color, no target, no status badge (§1.5) When in doubt, re-read docs/report-generator-spec.md §8 ("What NOT to do").

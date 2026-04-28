@@ -1,16 +1,18 @@
 """
 Weekly staffing summary Excel export: Board_Summary, Weekly_Detail, Trend_12_Weeks, Data_Dump.
-Uses openpyxl with RAG conditional formatting and narrative generation.
+Uses openpyxl; status fills are computed in Python (not Excel conditional formatting).
 """
 
 import os
-from datetime import datetime, timedelta
+import subprocess
+from datetime import UTC, datetime, timedelta
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
 
+from . import __version__ as STAFFING_TOOL_VERSION
 from .db import session_scope
 from .leave_grid import (
     EXCEPTION_COL_KEYS,
@@ -18,7 +20,6 @@ from .leave_grid import (
     EXCEPTION_GRID_ROLES,
 )
 from .metrics import (
-    SYSTEM_GR_MAX_SHIFTS_PER_WEEK,
     TOTAL_PERSON_SHIFTS,
     WeekMetrics,
     compute_week_metrics,
@@ -46,11 +47,16 @@ BMF_RED = "C12126"
 
 FONT_NAME = "Barlow"
 
-FILL_GREEN = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+# §2.2 severity gradient (fills)
+FILL_GREEN_SOFT = PatternFill(start_color="EAF5E9", end_color="EAF5E9", fill_type="solid")
+FILL_GREEN_FULL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 FILL_YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-# RAG / emphasis red uses brand red (softer Excel default kept as alias only if needed)
-FILL_RAG_RED = PatternFill(start_color=BMF_RED, end_color=BMF_RED, fill_type="solid")
-FILL_RED = FILL_RAG_RED
+FILL_RED_SOFT = PatternFill(start_color="F4CCCC", end_color="F4CCCC", fill_type="solid")
+FILL_RED_FULL = PatternFill(start_color=BMF_RED, end_color=BMF_RED, fill_type="solid")
+# Back-compat aliases
+FILL_GREEN = FILL_GREEN_FULL
+FILL_RAG_RED = FILL_RED_FULL
+FILL_RED = FILL_RED_FULL
 
 FILL_BMF_NAVY = PatternFill(start_color=BMF_NAVY, end_color=BMF_NAVY, fill_type="solid")
 FILL_BMF_BLUE = PatternFill(start_color=BMF_BLUE, end_color=BMF_BLUE, fill_type="solid")
@@ -67,13 +73,16 @@ FONT_BMF_SUBTITLE = Font(name=FONT_NAME, size=11, bold=True, color=BMF_NAVY)
 FONT_BMF_SECTION = Font(name=FONT_NAME, size=11, bold=True, color=BMF_WHITE)
 FONT_BMF_BODY = Font(name=FONT_NAME, size=11, color=BMF_BLACK)
 FONT_BMF_BODY_BOLD = Font(name=FONT_NAME, size=11, bold=True, color=BMF_BLACK)
-FONT_BMF_BODY_RED_BOLD = Font(name=FONT_NAME, size=11, bold=True, color=BMF_RED)
 # RAG-filled cells: strong contrast (percent values)
 FONT_BMF_RAG_VALUE = Font(name=FONT_NAME, size=11, bold=True, color=BMF_BLACK)
 FONT_BMF_RAG_VALUE_ON_RED = Font(name=FONT_NAME, size=11, bold=True, color=BMF_WHITE)
 
 BOLD = Font(name=FONT_NAME, bold=True, color=BMF_BLACK)
 WHITE_BOLD = Font(name=FONT_NAME, bold=True, color=BMF_WHITE)
+FONT_NA = Font(name=FONT_NAME, size=11, italic=True, color="999999")
+FONT_SUBTITLE_MUTED = Font(name=FONT_NAME, size=11, italic=True, color=BMF_MEDIUM_GRAY)
+FONT_GENERATED = Font(name=FONT_NAME, size=9, italic=True, color=BMF_MEDIUM_GRAY)
+FONT_FOOTER_META = Font(name=FONT_NAME, size=9, italic=True, color="666666")
 THIN_BORDER = Border(
     left=Side(style="thin", color=BMF_MEDIUM_GRAY),
     right=Side(style="thin", color=BMF_MEDIUM_GRAY),
@@ -81,9 +90,176 @@ THIN_BORDER = Border(
     bottom=Side(style="thin", color=BMF_MEDIUM_GRAY),
 )
 
+FILL_BAND_ALT = PatternFill(start_color="F7F7F7", end_color="F7F7F7", fill_type="solid")
+FILL_BAND_TOTAL = PatternFill(start_color=BMF_GRAY, end_color=BMF_GRAY, fill_type="solid")
+SIDE_SEP = Side(style="thin", color=BMF_MEDIUM_GRAY)
+
+# §1.2 — which base/unit/shift cells exist (False → render "N/A")
+BASE_UNIT_CELL_CONFIGURED: dict[str, dict[str, bool]] = {
+    "Bedford": {"rw_d": True, "rw_n": True, "gr_d": True, "gr_n": True},
+    "Lawrence": {"rw_d": True, "rw_n": True, "gr_d": True, "gr_n": False},
+    "Manchester": {"rw_d": True, "rw_n": False, "gr_d": False, "gr_n": False},
+    "Mansfield": {"rw_d": True, "rw_n": False, "gr_d": True, "gr_n": False},
+    "Plymouth": {"rw_d": True, "rw_n": True, "gr_d": True, "gr_n": False},
+}
+
+
+def _moderate_red_soft(value: float, t: KpiThreshold) -> bool:
+    """
+    Soft red vs full red: 'moderate' when the value is not in the worst part of the red band
+    (roughly 40–80% of the way from yellow boundary toward the worst edge → soft).
+    """
+    hi = (t.higher_is_better or 0) != 0
+    if hi:
+        # Higher is better → red on the low side
+        edge = t.yellow_min
+        if edge is None or edge <= 0:
+            return True
+        if value >= edge:
+            return True
+        depth = (edge - value) / edge
+        return depth < 0.8
+    # Lower is better → red on the high side
+    edge = t.yellow_max
+    if edge is None:
+        return True
+    if value <= edge:
+        return True
+    span = max((t.red_max or 1.0) - edge, 1e-9)
+    depth = (value - edge) / span
+    return depth < 0.8
+
+
+def _kpi_notable(metric_key: str, val: float, this_metrics: WeekMetrics) -> bool:
+    """§2.2: notable → full green when On target."""
+    if metric_key == "System GR Coverage %":
+        return val >= 0.95
+    if metric_key == "System RW Coverage %":
+        return val >= 0.95
+    if metric_key in ("Staffing Rate", "OT Dependency", "Shift Exception %"):
+        return False
+    return False
+
+
+def _base_rw_cell_notable(rw_pct_val: float) -> bool:
+    """Per-base RW% cell: notable at 100% coverage."""
+    return rw_pct_val >= 1.0 - 1e-9
+
+
+def _base_gr_cell_notable(gr_pct_val: float) -> bool:
+    """Per-base GR% cell: notable at ≥95% (spec) or 100%."""
+    return gr_pct_val >= 0.95 - 1e-9
+
+
+def _fill_and_font_for_status(
+    rag: RAG,
+    *,
+    notable: bool,
+    value: float,
+    thr: KpiThreshold | None,
+) -> tuple[PatternFill, Font]:
+    if rag == "Green":
+        fill = FILL_GREEN_FULL if notable else FILL_GREEN_SOFT
+        return fill, FONT_BMF_RAG_VALUE
+    if rag == "Yellow":
+        return FILL_YELLOW, FONT_BMF_RAG_VALUE
+    if thr is not None and _moderate_red_soft(value, thr):
+        return FILL_RED_SOFT, FONT_BMF_RAG_VALUE
+    return FILL_RED_FULL, FONT_BMF_RAG_VALUE_ON_RED
+
+
+def _target_display(metric_key: str, t: KpiThreshold | None) -> str:
+    """Green-threshold hint for Target column (§1.4 display)."""
+    if not t:
+        return "—"
+    hi = (t.higher_is_better or 0) != 0
+    if hi:
+        g = t.green_min
+        if g is not None:
+            return f"≥ {g * 100:.0f}%"
+    else:
+        g = t.green_max
+        if g is not None:
+            return f"≤ {g * 100:.0f}%"
+    return "—"
+
+
+def _generator_version_label() -> str:
+    if STAFFING_TOOL_VERSION:
+        return STAFFING_TOOL_VERSION
+    return _generator_version_string()
+
+
+FILL_WHITE_SOLID = PatternFill(
+    start_color=BMF_WHITE, end_color=BMF_WHITE, fill_type="solid"
+)
+FONT_ZERO_MUTED = Font(name=FONT_NAME, size=11, color=BMF_MEDIUM_GRAY)
+FONT_DETAIL_TITLE = Font(name=FONT_NAME, size=16, bold=True, color=BMF_WHITE)
+FONT_WEEK_BADGE = Font(name=FONT_NAME, size=10, color=BMF_WHITE)
+FONT_LEGEND_LABEL = Font(name=FONT_NAME, size=10, bold=True, color=BMF_NAVY)
+
+
+def _iso_week_label(week_start: str) -> str:
+    d = datetime.strptime(week_start, "%Y-%m-%d").date()
+    ic = d.isocalendar()
+    week = ic.week if hasattr(ic, "week") else ic[1]
+    year = ic.year if hasattr(ic, "year") else ic[0]
+    return f"Week {week} · {year}"
+
+
+def _detail_section_banner(ws, row: int, title: str, subtitle: str) -> None:
+    """Weekly_Detail: merge A:F (title) + G (subtitle), navy bar."""
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+    a = ws.cell(row, 1, title)
+    a.fill = FILL_BMF_NAVY
+    a.font = Font(name=FONT_NAME, size=12, bold=True, color=BMF_WHITE)
+    a.alignment = ALIGN_LEFT
+    a.border = THIN_BORDER
+    g = ws.cell(row, 7, subtitle)
+    g.fill = FILL_BMF_NAVY
+    g.font = Font(name=FONT_NAME, size=10, italic=True, color=BMF_MEDIUM_GRAY)
+    g.alignment = ALIGN_RIGHT
+    g.border = THIN_BORDER
+
+
+def _border_right_sep_cell(ws, row: int, col: int) -> None:
+    """§5.5: thin vertical separator on the right edge of `col`."""
+    c = ws.cell(row, col)
+    prev = c.border
+    c.border = Border(
+        left=prev.left if prev else THIN_BORDER.left,
+        right=SIDE_SEP,
+        top=prev.top if prev else THIN_BORDER.top,
+        bottom=prev.bottom if prev else THIN_BORDER.bottom,
+    )
+
+
+def _write_na_or_int(ws, row: int, col: int, configured: bool, n: int) -> None:
+    """§4.1: unconfigured base/unit/shift cells show gray italic N/A."""
+    if not configured:
+        c = _bmf_cell_border(ws, row, col, "N/A", align=ALIGN_CENTER)
+        c.font = FONT_NA
+    else:
+        _bmf_cell_border(ws, row, col, n, align=ALIGN_CENTER)
+
 
 def _project_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _generator_version_string() -> str:
+    try:
+        root = _project_root()
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=root,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
 
 
 def _report_template_path() -> str:
@@ -208,7 +384,7 @@ def _bmf_border_block(ws, r1: int, r2: int, c1: int, c2: int) -> None:
 
 
 # Weekly Staffing Detail: fixed base order (matches target output structure)
-DETAIL_BASE_ORDER = ["Bedford", "Lawrence", "Mansfield", "Manchester", "Plymouth"]
+DETAIL_BASE_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]
 
 # Backward-compatible names (canonical definitions in leave_grid)
 LEAVE_TYPE_COLS = EXCEPTION_GRID_COLS
@@ -334,6 +510,30 @@ def _rag_for_metric(
     return evaluate_rag(value, t)
 
 
+def _status_display(rag: RAG) -> str:
+    """User-facing status label (spec §2.1); internal RAG remains Green/Yellow/Red."""
+    return {
+        "Green": "On target",
+        "Yellow": "Monitor",
+        "Red": "Action needed",
+    }[rag]
+
+
+# Weekly RW budget / system RW% denominator (§1.3): sum of configured RW unit-days must stay 56.
+RW_SYSTEM_WEEKLY_DENOMINATOR = 56
+
+
+def _assert_rw_config_rw_cap_56(bases: list[BaseConfig]) -> None:
+    """Fail export if base_config drifts from the 56-shift RW system denominator."""
+    total = sum(int(b.rw_total_unit_days) for b in bases)
+    if total != RW_SYSTEM_WEEKLY_DENOMINATOR:
+        raise ValueError(
+            f"base_config: sum(rw_total_unit_days) must equal {RW_SYSTEM_WEEKLY_DENOMINATOR} "
+            f"(weekly RW budget / system RW% denominator); got {total}. "
+            "Correct base_config before exporting."
+        )
+
+
 def _generate_narrative(
     this_week: WeekMetrics,
     prior_week: WeekMetrics | None,
@@ -350,14 +550,14 @@ def _generate_narrative(
     # Overall status
     overall = rag_statuses.get("Staffing Rate", "Green")
     if overall == "Green":
-        takeaways.append("Overall staffing rate is within target (Green).")
+        takeaways.append("Overall staffing rate is on target.")
     elif overall == "Yellow":
         takeaways.append(
-            "Overall staffing rate is below target (Yellow); monitor closely."
+            "Overall staffing rate is below target; status is Monitor."
         )
     else:
         takeaways.append(
-            "Overall staffing rate is below acceptable level (Red); action required."
+            "Overall staffing rate is below acceptable level; status is Action needed."
         )
 
     # Week-over-week
@@ -378,7 +578,7 @@ def _generate_narrative(
             )
         if this_week.leave_exposure > 0.25:
             drivers.append(
-                f"Leave exposure at {this_week.leave_exposure:.1%}; contributes to coverage pressure."
+                f"Shift exception % at {this_week.leave_exposure:.1%}; contributes to coverage pressure."
             )
         if this_week.ot_dependency > 0.12:
             risks.append("High OT dependency; fatigue and sustainability risk.")
@@ -399,8 +599,6 @@ def _generate_narrative(
         actions.append("Reduce OT dependency; review scheduling and capacity.")
     if not actions:
         actions.append("Maintain current staffing and leave monitoring.")
-    actions.append("[User-editable action item]")
-    actions.append("[User-editable action item]")
 
     return {
         "key_takeaways": takeaways[:4],
@@ -421,6 +619,7 @@ def _write_board_summary(
     trend_list: list[tuple[str, WeekMetrics]],
     thresholds: dict[str, KpiThreshold],
     narrative: dict[str, list[str]],
+    metadata: dict | None = None,
 ) -> None:
     ws = wb.create_sheet("Board_Summary", 0)
     row = 1
@@ -439,10 +638,12 @@ def _write_board_summary(
         p.alignment = ALIGN_LEFT
         row += 2
     else:
-        ws.cell(row, 1, "Weekly staffing summary").font = Font(
-            name=FONT_NAME, bold=True, size=14, color=BMF_BLACK
-        )
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+        t = ws.cell(row, 1, "Weekly staffing summary")
+        t.font = Font(name=FONT_NAME, bold=True, size=14, color=BMF_BLACK)
+        t.alignment = ALIGN_LEFT
         row += 1
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=7)
         ws.cell(row, 1, f"Period: {week_start} to {week_end}").font = FONT_BMF_BODY
         row += 2
 
@@ -450,7 +651,7 @@ def _write_board_summary(
     board_metrics = [
         ("Staffing Rate", "Staffing Rate"),
         ("Backfill Rate", "OT Dependency"),
-        ("Shift Exception %", "Leave Exposure"),
+        ("Shift Exception %", "Shift Exception %"),
         ("System RW Coverage %", "System RW Coverage %"),
         ("System GR Coverage %", "System GR Coverage %"),
     ]
@@ -460,6 +661,7 @@ def _write_board_summary(
         "Prior Week",
         "4-Week Avg",
         "12-Week Avg",
+        "Target",
         "Status",
         "Direction",
     ]
@@ -483,20 +685,26 @@ def _write_board_summary(
             else "Green"
         )
         direction = direction_for_metric(metric_key, val_this or 0, val_prior)
+        thr = thresholds.get(metric_key)
+        notable = _kpi_notable(metric_key, val_this or 0, this_metrics)
         ws.cell(row, 1, display_name).border = THIN_BORDER
         _write_pct_or_num(ws, row, 2, val_this, metric_key)
         _write_pct_or_num(ws, row, 3, val_prior, metric_key)
         _write_pct_or_num(ws, row, 4, val_4, metric_key)
         _write_pct_or_num(ws, row, 5, val_12, metric_key)
-        status_cell = ws.cell(row, 6, rag)
+        tcell = ws.cell(row, 6, _target_display(metric_key, thr))
+        tcell.border = THIN_BORDER
+        status_cell = ws.cell(row, 7, _status_display(rag))
         status_cell.border = THIN_BORDER
-        if rag == "Green":
-            status_cell.fill = FILL_GREEN
-        elif rag == "Yellow":
-            status_cell.fill = FILL_YELLOW
-        else:
-            status_cell.fill = FILL_RED
-        ws.cell(row, 7, direction).border = THIN_BORDER
+        fill, font = _fill_and_font_for_status(
+            rag,
+            notable=notable,
+            value=val_this or 0,
+            thr=thr,
+        )
+        status_cell.fill = fill
+        status_cell.font = font
+        ws.cell(row, 8, direction).border = THIN_BORDER
         row += 1
 
     row += 1
@@ -550,14 +758,52 @@ def _write_board_summary(
                     else "Monitor"
                 )
             ws.cell(row, 1, base_name)
-            _write_pct_cell(ws, row, 2, rw_pct, rw_rag)
-            _write_pct_cell(ws, row, 3, gr_pct, gr_rag)
+            _write_pct_cell(
+                ws,
+                row,
+                2,
+                rw_pct,
+                rw_rag,
+                thr=t_rw,
+                notable=_base_rw_cell_notable(rw_pct),
+            )
+            _write_pct_cell(
+                ws,
+                row,
+                3,
+                gr_pct,
+                gr_rag,
+                thr=t_gr,
+                notable=_base_gr_cell_notable(gr_pct),
+            )
             ws.cell(row, 4, notes)
             row += 1
 
+    row += 1
+    meta = metadata or {}
+    gen_iso = meta.get("generated_utc")
+    if not gen_iso:
+        gen_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    src = meta.get("source_filename")
+    src_s = src if src else "(unknown)"
+    nrows = meta.get("source_rows")
+    nrow_s = str(nrows) if nrows is not None else "(unknown)"
+    ver = meta.get("generator_version") or _generator_version_label()
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=7)
+    fc = ws.cell(
+        row,
+        1,
+        f"Generated: {gen_iso}\n"
+        f"Generator version: {ver}\n"
+        f"Source: {src_s}\n"
+        f"Source rows: {nrow_s}",
+    )
+    fc.font = FONT_FOOTER_META
+    fc.alignment = Alignment(wrap_text=True, vertical="top")
+
     # Column widths and freeze (keep KPI header row visible when scrolling)
     ws.column_dimensions["A"].width = 28
-    for c in range(2, 8):
+    for c in range(2, 9):
         ws.column_dimensions[get_column_letter(c)].width = 14
     ws.freeze_panes = f"A{kpi_header_row + 1}"
 
@@ -574,7 +820,6 @@ def _write_pct_or_num(
         "Staffing Rate",
         "OT Dependency",
         "Backfill Rate",
-        "Leave Exposure",
         "Shift Exception %",
         "System RW Coverage %",
         "System GR Coverage %",
@@ -588,21 +833,26 @@ def _write_pct_or_num(
             cell.value = int(value)
 
 
-def _write_pct_cell(ws, row: int, col: int, value: float, rag: RAG) -> None:
+def _write_pct_cell(
+    ws,
+    row: int,
+    col: int,
+    value: float,
+    rag: RAG,
+    *,
+    thr: KpiThreshold | None = None,
+    notable: bool = False,
+) -> None:
     cell = ws.cell(row, col)
     cell.value = value
     cell.number_format = "0.0%"
     cell.border = THIN_BORDER
     cell.alignment = ALIGN_CENTER
-    if rag == "Green":
-        cell.fill = FILL_GREEN
-        cell.font = FONT_BMF_RAG_VALUE
-    elif rag == "Yellow":
-        cell.fill = FILL_YELLOW
-        cell.font = FONT_BMF_RAG_VALUE
-    else:
-        cell.fill = FILL_RED
-        cell.font = FONT_BMF_RAG_VALUE_ON_RED
+    fill, font = _fill_and_font_for_status(
+        rag, notable=notable, value=value, thr=thr
+    )
+    cell.fill = fill
+    cell.font = font
 
 
 def _write_weekly_detail(
@@ -615,7 +865,7 @@ def _write_weekly_detail(
     leave_breakdown: dict | None = None,
     thresholds: dict[str, KpiThreshold] | None = None,
 ) -> None:
-    """Write Weekly_Detail sheet: BMF-branded layout; executive summary, OT, exceptions grid, base coverage."""
+    """Weekly_Detail: fixed cell map (columns A–G: label, Day, Night, Total, Target, Status, Notes)."""
     ws = wb.create_sheet("Weekly_Detail", 1)
     base_by_name = {b.base_name: b for b in base_configs}
     base_metrics = this_metrics.base_metrics or {}
@@ -632,110 +882,18 @@ def _write_weekly_detail(
         if use_grid_leave
         else this_metrics.leave_exposure
     )
+    thresholds = thresholds if thresholds is not None else {}
+    thr_sr = thresholds.get("Staffing Rate")
+    thr_exc = thresholds.get("Shift Exception %")
+    thr_ot = thresholds.get("OT Dependency")
+    t_rw = thresholds.get("System RW Coverage %")
+    t_gr = thresholds.get("System GR Coverage %")
 
-    # ---- Brand header (optional coastal logo in column A) ----
-    r = 1
-    detail_logo = _add_logo(ws, "A1", max_height_px=64)
-    if detail_logo:
-        ws.row_dimensions[1].height = 62
-        ws.cell(1, 1).fill = FILL_BMF_NAVY
-        _bmf_merge_band(
-            ws,
-            r,
-            2,
-            7,
-            "Boston MedFlight — Weekly Staffing Detail",
-            fill=FILL_BMF_NAVY,
-            font=FONT_BMF_TITLE,
-        )
-    else:
-        _bmf_merge_band(
-            ws,
-            r,
-            1,
-            7,
-            "Boston MedFlight — Weekly Staffing Detail",
-            fill=FILL_BMF_NAVY,
-            font=FONT_BMF_TITLE,
-        )
-    r = 2
-    period_line = f"Reporting period: Sunday {week_start} through Saturday {week_end}"
-    if detail_logo:
-        _bmf_merge_band(
-            ws,
-            r,
-            2,
-            7,
-            period_line,
-            fill=FILL_BMF_GRAY_BG,
-            font=FONT_BMF_SUBTITLE,
-            alignment=ALIGN_CENTER,
-        )
-        ws.cell(2, 1).fill = FILL_BMF_GRAY_BG
-    else:
-        _bmf_merge_band(
-            ws,
-            r,
-            1,
-            7,
-            period_line,
-            fill=FILL_BMF_GRAY_BG,
-            font=FONT_BMF_SUBTITLE,
-            alignment=ALIGN_CENTER,
-        )
-    r = 3
-    _bmf_merge_band(
-        ws, r, 1, 7, "Executive summary", fill=FILL_BMF_NAVY, font=FONT_BMF_SECTION
-    )
-    r = 4
     medic_u = getattr(row_data, "medic_unpartnered", 0) or 0
     rn_u = getattr(row_data, "rn_unpartnered_staff", 0) or 0
-    exec_row_start = r
-    _bmf_cell_border(ws, r, 1, "Required (Day)", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, this_metrics.required_day)
-    _bmf_cell_border(ws, r, 4, "Filled (Day)", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 5, this_metrics.filled_day)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Required (Night)", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, this_metrics.required_night)
-    _bmf_cell_border(ws, r, 4, "Filled (Night)", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 5, this_metrics.filled_night)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Required (total)", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, this_metrics.required_total)
-    _bmf_cell_border(ws, r, 4, "Filled (total)", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 5, this_metrics.filled_total)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Vacancies", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, this_metrics.vacancies)
-    _bmf_cell_border(ws, r, 4, "Shift exceptions (total)", FONT_BMF_BODY_BOLD)
-    c_exc_tot = _bmf_cell_border(ws, r, 5, display_leave_total)
-    c_exc_tot.font = FONT_BMF_BODY_RED_BOLD
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Medic unpartnered", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, medic_u)
-    _bmf_cell_border(ws, r, 4, "RN unpartnered staff", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 5, rn_u)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Shift exception %", FONT_BMF_BODY_BOLD)
-    c_pct = _bmf_cell_border(ws, r, 2, display_leave_exp)
-    c_pct.number_format = "0.0%"
-    c_pct.font = FONT_BMF_BODY_RED_BOLD
-    _bmf_cell_border(ws, r, 4, "Staffing rate", FONT_BMF_BODY_BOLD)
-    sr_rag = (
-        _rag_for_metric("Staffing Rate", this_metrics.staffing_rate, thresholds)
-        if thresholds
-        else "Green"
-    )
-    _write_pct_cell(ws, r, 5, this_metrics.staffing_rate, sr_rag)
-    _bmf_border_block(ws, exec_row_start, r, 1, 5)
-    for exec_r in range(exec_row_start, r + 1):
-        for exec_c in (2, 5):
-            ws.cell(exec_r, exec_c).alignment = ALIGN_CENTER
+    note_medic = (getattr(row_data, "unpartnered_note_medic", None) or "").strip()
+    note_rn = (getattr(row_data, "unpartnered_note_rn", None) or "").strip()
 
-    # ---- Overtime ----
-    # Use only explicit day/night columns — do not map legacy ot_rn / ot_medic / ot_emt
-    # into "Day" when splits are zero (that falsely showed total RN OT as day OT).
     ot_rn_day = getattr(row_data, "ot_rn_day", 0) or 0
     ot_rn_night = getattr(row_data, "ot_rn_night", 0) or 0
     ot_medic_day = getattr(row_data, "ot_medic_day", 0) or 0
@@ -744,68 +902,7 @@ def _write_weekly_detail(
     ot_emt_night = getattr(row_data, "ot_emt_night", 0) or 0
     total_ot_day = ot_rn_day + ot_medic_day + ot_emt_day
     total_ot_night = ot_rn_night + ot_medic_night + ot_emt_night
-    # Backfill matches Board_Summary / compute_week_metrics (includes legacy totals when splits are unset).
     ot_dep = this_metrics.ot_dependency
-
-    r += 1
-    _bmf_merge_band(
-        ws,
-        r,
-        1,
-        7,
-        "Overtime (shift counts only)",
-        fill=FILL_BMF_NAVY,
-        font=FONT_BMF_SECTION,
-    )
-    r += 1
-    ot_table_start = r
-    _bmf_cell_border(ws, r, 1, "Role", FONT_BMF_BODY_BOLD, fill=FILL_HEADER_LIGHT)
-    _bmf_cell_border(
-        ws, r, 2, "Day", FONT_BMF_BODY_BOLD, fill=FILL_HEADER_LIGHT, align=ALIGN_CENTER
-    )
-    _bmf_cell_border(
-        ws,
-        r,
-        4,
-        "Night",
-        FONT_BMF_BODY_BOLD,
-        fill=FILL_HEADER_LIGHT,
-        align=ALIGN_CENTER,
-    )
-    _bmf_border_block(ws, r, r, 1, 4)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "RN", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, ot_rn_day, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, r, 4, ot_rn_night, align=ALIGN_CENTER)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Medic", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, ot_medic_day, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, r, 4, ot_medic_night, align=ALIGN_CENTER)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "EMT", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, ot_emt_day, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, r, 4, ot_emt_night, align=ALIGN_CENTER)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Total", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, r, 2, total_ot_day, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, r, 4, total_ot_night, align=ALIGN_CENTER)
-    _bmf_border_block(ws, ot_table_start, r, 1, 4)
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Backfill rate (OT / filled total)", FONT_BMF_BODY_BOLD)
-    c_ot = _bmf_cell_border(ws, r, 2, ot_dep, align=ALIGN_CENTER)
-    c_ot.number_format = "0.0%"
-    c_ot.font = FONT_BMF_BODY_RED_BOLD
-    _bmf_cell_border(ws, r, 3, "")
-    _bmf_cell_border(ws, r, 4, "")
-    _bmf_cell_border(ws, r, 5, "")
-    _bmf_border_block(ws, r, r, 1, 5)
-
-    # ---- Schedule exceptions ----
-    leave_types = LEAVE_TYPE_COLS
-    roles = EXCEPTION_ROLES
-
-    def _exc_count(role: str, keys: list[str]) -> int:
-        return _exc_count_breakdown(breakdown, role, keys)
 
     if breakdown:
         col_totals = col_totals_grid
@@ -819,79 +916,459 @@ def _write_weekly_detail(
             getattr(row_data, "leave_brev", 0) or 0,
         ]
 
-    r += 1
-    _bmf_merge_band(
-        ws,
-        r,
-        1,
-        7,
-        "Schedule exceptions by role and type",
-        fill=FILL_BMF_NAVY,
-        font=FONT_BMF_SECTION,
-    )
-    r += 1
-    _bmf_cell_border(ws, r, 1, "Role", FONT_BMF_BODY_BOLD, fill=FILL_HEADER_LIGHT)
-    for c, lt in enumerate(leave_types, start=2):
-        cell = ws.cell(r, c, lt)
-        cell.font = FONT_BMF_BODY_BOLD
-        cell.fill = FILL_HEADER_LIGHT
-        cell.border = THIN_BORDER
-        cell.alignment = ALIGN_CENTER
-    row_num = r + 1
-    for role in roles:
-        _bmf_cell_border(ws, row_num, 1, role, FONT_BMF_BODY_BOLD)
-        _bmf_cell_border(
-            ws, row_num, 2, _exc_count(role, ["AT"]), align=ALIGN_CENTER
-        )
-        _bmf_cell_border(
-            ws,
-            row_num,
-            3,
-            _exc_count(role, ["LT-D", "LT-N", "LT"]),
-            align=ALIGN_CENTER,
-        )
-        _bmf_cell_border(ws, row_num, 4, _exc_count(role, ["SICK"]), align=ALIGN_CENTER)
-        _bmf_cell_border(
-            ws, row_num, 5, _exc_count(role, ["LOA", "PFML"]), align=ALIGN_CENTER
-        )
-        _bmf_cell_border(ws, row_num, 6, _exc_count(role, ["JURY"]), align=ALIGN_CENTER)
-        _bmf_cell_border(ws, row_num, 7, _exc_count(role, ["BREV"]), align=ALIGN_CENTER)
-        _bmf_border_block(ws, row_num, row_num, 1, 7)
-        row_num += 1
-    _bmf_cell_border(ws, row_num, 1, "Total", FONT_BMF_BODY_BOLD)
-    for ci, total in enumerate(col_totals, start=2):
-        _bmf_cell_border(ws, row_num, ci, total, align=ALIGN_CENTER)
-    _bmf_border_block(ws, row_num, row_num, 1, 7)
-    row_num += 1
+    def _exc_count(role: str, keys: list[str]) -> int:
+        return _exc_count_breakdown(breakdown, role, keys)
 
-    # ---- Base coverage ----
-    _bmf_merge_band(
-        ws,
-        row_num,
+    def _exec_striped(r: int) -> bool:
+        return ((r - 7) % 2) == 1
+
+    def _ot_striped(r: int) -> bool:
+        return ((r - 18) % 2) == 1
+
+    def _exc_striped(r: int) -> bool:
+        return ((r - 26) % 2) == 1
+
+    def _base_striped(r: int) -> bool:
+        return ((r - 34) % 2) == 1
+
+    def _row_bg(r: int, striped: bool) -> PatternFill:
+        return FILL_BAND_ALT if striped else FILL_WHITE_SOLID
+
+    def _paint_row(
+        r: int, c1: int, c2: int, striped: bool, border: bool = True
+    ) -> None:
+        bg = _row_bg(r, striped)
+        for c in range(c1, c2 + 1):
+            cell = ws.cell(r, c)
+            cell.fill = bg
+            if border:
+                cell.border = THIN_BORDER
+
+    def _zero_font(n: int) -> Font:
+        return FONT_ZERO_MUTED if n == 0 else FONT_BMF_BODY
+
+    # --- Row 1–2: title & period (pinned merges) ---
+    ws.row_dimensions[1].height = 30
+    ws.row_dimensions[2].height = 18
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+    ws.merge_cells(start_row=1, start_column=5, end_row=1, end_column=7)
+    t1 = ws.cell(1, 1, "Boston MedFlight — Weekly Staffing Detail")
+    t1.font = FONT_DETAIL_TITLE
+    t1.fill = FILL_BMF_NAVY
+    t1.alignment = ALIGN_LEFT
+    t1.border = THIN_BORDER
+    wk = ws.cell(1, 5, _iso_week_label(week_start))
+    wk.font = FONT_WEEK_BADGE
+    wk.fill = FILL_BMF_NAVY
+    wk.alignment = ALIGN_RIGHT
+    wk.border = THIN_BORDER
+
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=4)
+    ws.merge_cells(start_row=2, start_column=5, end_row=2, end_column=7)
+    p2 = ws.cell(
+        2,
         1,
-        7,
-        "Base coverage (RW / GR)",
-        fill=FILL_BMF_NAVY,
-        font=FONT_BMF_SECTION,
+        f"Reporting period: Sunday {week_start} — Saturday {week_end}",
     )
-    row_num += 1
-    for c, h in enumerate(
-        ["Base", "RW/D", "RW/N", "GR/D", "GR/N", "RW %", "GR %"], start=1
-    ):
-        cell = ws.cell(row_num, c, h)
+    p2.font = Font(name=FONT_NAME, size=10, color=BMF_NAVY)
+    p2.fill = FILL_BMF_GRAY_BG
+    p2.alignment = ALIGN_LEFT
+    p2.border = THIN_BORDER
+    g2 = ws.cell(
+        2,
+        5,
+        f"Generated: {datetime.now(UTC).strftime('%Y-%m-%d')}",
+    )
+    g2.font = Font(name=FONT_NAME, size=10, color=BMF_NAVY)
+    g2.fill = FILL_BMF_GRAY_BG
+    g2.alignment = ALIGN_RIGHT
+    g2.border = THIN_BORDER
+
+    # --- Row 3: legend ---
+    a3 = ws.cell(3, 1, "Status legend:")
+    a3.font = FONT_LEGEND_LABEL
+    a3.fill = FILL_BMF_GRAY_BG
+    a3.alignment = ALIGN_RIGHT
+    a3.border = THIN_BORDER
+    b3 = ws.cell(3, 2, "On target")
+    b3.font = Font(name=FONT_NAME, size=10, bold=True, color=BMF_BLACK)
+    b3.fill = FILL_GREEN_FULL
+    b3.alignment = ALIGN_CENTER
+    b3.border = THIN_BORDER
+    c3 = ws.cell(3, 3, "Monitor")
+    c3.font = Font(name=FONT_NAME, size=10, bold=True, color=BMF_BLACK)
+    c3.fill = FILL_YELLOW
+    c3.alignment = ALIGN_CENTER
+    c3.border = THIN_BORDER
+    d3 = ws.cell(3, 4, "Action needed")
+    d3.font = FONT_BMF_RAG_VALUE_ON_RED
+    d3.fill = FILL_RED_FULL
+    d3.alignment = ALIGN_CENTER
+    d3.border = THIN_BORDER
+    e3 = ws.cell(3, 5, "N/A = unit not staffed at that base/shift")
+    e3.font = Font(name=FONT_NAME, size=10, italic=True, color="666666")
+    e3.fill = FILL_BMF_GRAY_BG
+    e3.alignment = ALIGN_LEFT
+    e3.border = THIN_BORDER
+    ws.merge_cells(start_row=3, start_column=6, end_row=3, end_column=7)
+    fg3 = ws.cell(3, 6)
+    fg3.fill = FILL_BMF_GRAY_BG
+    fg3.border = THIN_BORDER
+
+    # --- Row 4: spacer ---
+    for c in range(1, 8):
+        ws.cell(4, c).fill = FILL_WHITE_SOLID
+        ws.cell(4, c).border = THIN_BORDER
+
+    # --- Row 5: Executive summary banner ---
+    _detail_section_banner(ws, 5, "Executive summary", "This week vs target")
+
+    # --- Row 6: column headers ---
+    hdr_fill = FILL_BMF_GRAY_BG
+    h6 = [
+        (1, "Metric", ALIGN_LEFT),
+        (2, "Day", ALIGN_CENTER),
+        (3, "Night", ALIGN_CENTER),
+        (4, "Total", ALIGN_CENTER),
+        (5, "Target", ALIGN_CENTER),
+        (6, "Status", ALIGN_CENTER),
+        (7, "Notes", ALIGN_LEFT),
+    ]
+    for col, text, al in h6:
+        cell = ws.cell(6, col, text)
+        cell.font = BOLD
+        cell.fill = hdr_fill
+        cell.border = THIN_BORDER
+        cell.alignment = al
+
+    # --- Executive data rows 7–14 ---
+    sr_day = (
+        this_metrics.filled_day / this_metrics.required_day
+        if this_metrics.required_day
+        else 0.0
+    )
+    sr_night = (
+        this_metrics.filled_night / this_metrics.required_night
+        if this_metrics.required_night
+        else 0.0
+    )
+    sr_rag = _rag_for_metric("Staffing Rate", this_metrics.staffing_rate, thresholds)
+    sr_notable = _kpi_notable(
+        "Staffing Rate", this_metrics.staffing_rate, this_metrics
+    )
+    exc_rag = _rag_for_metric("Shift Exception %", display_leave_exp, thresholds)
+    exc_notable = _kpi_notable(
+        "Shift Exception %", display_leave_exp, this_metrics
+    )
+    ot_rag = _rag_for_metric("OT Dependency", ot_dep, thresholds)
+    ot_notable = _kpi_notable("OT Dependency", ot_dep, this_metrics)
+
+    ws.merge_cells(start_row=13, start_column=1, end_row=13, end_column=3)
+
+    for r in range(7, 15):
+        st = _exec_striped(r)
+        _paint_row(r, 1, 7, st)
+
+    # Row 7 Required shifts
+    ws.cell(7, 1, "Required shifts").font = FONT_BMF_BODY
+    ws.cell(7, 1).alignment = ALIGN_LEFT
+    ws.cell(7, 2, this_metrics.required_day).alignment = ALIGN_CENTER
+    ws.cell(7, 3, this_metrics.required_night).alignment = ALIGN_CENTER
+    d7 = ws.cell(7, 4, this_metrics.required_total)
+    d7.font = FONT_BMF_BODY_BOLD
+    d7.alignment = ALIGN_CENTER
+    for c in (5, 6, 7):
+        ws.cell(7, c, None)
+
+    # Row 8 Filled shifts
+    ws.cell(8, 1, "Filled shifts").font = FONT_BMF_BODY
+    ws.cell(8, 1).alignment = ALIGN_LEFT
+    ws.cell(8, 2, this_metrics.filled_day).alignment = ALIGN_CENTER
+    ws.cell(8, 3, this_metrics.filled_night).alignment = ALIGN_CENTER
+    d8 = ws.cell(8, 4, this_metrics.filled_total)
+    d8.font = FONT_BMF_BODY_BOLD
+    d8.alignment = ALIGN_CENTER
+    for c in (5, 6, 7):
+        ws.cell(8, c, None)
+
+    # Row 9 Staffing rate
+    ws.cell(9, 1, "Staffing rate").font = FONT_BMF_BODY_BOLD
+    ws.cell(9, 1).alignment = ALIGN_LEFT
+    b9 = ws.cell(9, 2, sr_day)
+    b9.number_format = "0.0%"
+    b9.alignment = ALIGN_CENTER
+    c9 = ws.cell(9, 3, sr_night)
+    c9.number_format = "0.0%"
+    c9.alignment = ALIGN_CENTER
+    d9 = ws.cell(9, 4, this_metrics.staffing_rate)
+    d9.number_format = "0.0%"
+    d9.font = FONT_BMF_RAG_VALUE
+    d9.alignment = ALIGN_CENTER
+    dfill, dfont = _fill_and_font_for_status(
+        sr_rag, notable=sr_notable, value=this_metrics.staffing_rate, thr=thr_sr
+    )
+    d9.fill = dfill
+    d9.font = dfont
+    e9 = ws.cell(9, 5, _target_display("Staffing Rate", thr_sr))
+    e9.font = Font(name=FONT_NAME, size=11, color="666666")
+    e9.number_format = "@"
+    e9.alignment = ALIGN_CENTER
+    f9 = ws.cell(9, 6, _status_display(sr_rag))
+    f9.font = FONT_BMF_RAG_VALUE
+    f9.alignment = ALIGN_CENTER
+    ff9, ffont9 = _fill_and_font_for_status(
+        sr_rag, notable=sr_notable, value=this_metrics.staffing_rate, thr=thr_sr
+    )
+    f9.fill = ff9
+    f9.font = ffont9
+    ws.cell(9, 7, None)
+
+    # Row 10 Vacancies
+    ws.cell(10, 1, "Vacancies").font = FONT_BMF_BODY
+    ws.cell(10, 1).alignment = ALIGN_LEFT
+    ws.cell(10, 2, None)
+    ws.cell(10, 3, None)
+    d10 = ws.cell(10, 4, this_metrics.vacancies)
+    d10.font = FONT_BMF_BODY_BOLD
+    d10.alignment = ALIGN_CENTER
+    for c in (5, 6, 7):
+        ws.cell(10, c, None)
+
+    # Row 11 Shift exceptions (total)
+    ws.cell(11, 1, "Shift exceptions (total)").font = FONT_BMF_BODY
+    ws.cell(11, 1).alignment = ALIGN_LEFT
+    ws.cell(11, 2, None)
+    ws.cell(11, 3, None)
+    d11 = ws.cell(11, 4, display_leave_total)
+    d11.font = FONT_BMF_BODY_BOLD
+    d11.alignment = ALIGN_CENTER
+    for c in (5, 6, 7):
+        ws.cell(11, c, None)
+
+    # Row 12 Shift exception %
+    ws.cell(12, 1, "Shift exception %").font = FONT_BMF_BODY_BOLD
+    ws.cell(12, 1).alignment = ALIGN_LEFT
+    ws.cell(12, 2, None)
+    ws.cell(12, 3, None)
+    d12 = ws.cell(12, 4, display_leave_exp)
+    d12.number_format = "0.0%"
+    d12.font = FONT_BMF_RAG_VALUE
+    d12.alignment = ALIGN_CENTER
+    df12, dt12 = _fill_and_font_for_status(
+        exc_rag,
+        notable=exc_notable,
+        value=display_leave_exp,
+        thr=thr_exc,
+    )
+    d12.fill = df12
+    d12.font = dt12
+    e12 = ws.cell(12, 5, _target_display("Shift Exception %", thr_exc))
+    e12.font = Font(name=FONT_NAME, size=11, color="666666")
+    e12.number_format = "@"
+    e12.alignment = ALIGN_CENTER
+    f12 = ws.cell(12, 6, _status_display(exc_rag))
+    ff12, ft12 = _fill_and_font_for_status(
+        exc_rag,
+        notable=exc_notable,
+        value=display_leave_exp,
+        thr=thr_exc,
+    )
+    f12.fill = ff12
+    f12.font = ft12
+    f12.alignment = ALIGN_CENTER
+    ws.cell(12, 7, None)
+
+    # Row 13 Unpartnered Medic (A:C merged above)
+    ws.cell(13, 1, "Unpartnered — Medic").font = FONT_BMF_BODY_BOLD
+    ws.cell(13, 1).alignment = ALIGN_LEFT
+    d13 = ws.cell(13, 4, medic_u)
+    d13.font = FONT_BMF_BODY_BOLD
+    d13.alignment = ALIGN_CENTER
+    for c in (5, 6):
+        ws.cell(13, c, None)
+    g13 = ws.cell(13, 7, note_medic)
+    g13.font = Font(name=FONT_NAME, size=11, color="666666")
+    g13.alignment = ALIGN_LEFT
+
+    # Row 14 Unpartnered RN
+    ws.cell(14, 1, "Unpartnered — RN").font = FONT_BMF_BODY_BOLD
+    ws.cell(14, 1).alignment = ALIGN_LEFT
+    ws.cell(14, 2, None)
+    ws.cell(14, 3, None)
+    ws.cell(14, 4, rn_u).alignment = ALIGN_CENTER
+    for c in (5, 6):
+        ws.cell(14, c, None)
+    g14 = ws.cell(14, 7, note_rn)
+    g14.font = Font(name=FONT_NAME, size=11, italic=True, color="666666")
+    g14.alignment = ALIGN_LEFT
+
+    # Row 15 spacer
+    for c in range(1, 8):
+        ws.cell(15, c).fill = FILL_WHITE_SOLID
+        ws.cell(15, c).border = THIN_BORDER
+
+    # --- Section 2 Overtime rows 16–23 ---
+    _detail_section_banner(ws, 16, "Overtime", "Shift counts")
+    h_ot = [
+        (1, "Role", ALIGN_LEFT),
+        (2, "Day", ALIGN_CENTER),
+        (3, "Night", ALIGN_CENTER),
+        (4, "Total", ALIGN_CENTER),
+        (5, "Target", ALIGN_CENTER),
+        (6, "Status", ALIGN_CENTER),
+        (7, "Notes", ALIGN_LEFT),
+    ]
+    for col, text, al in h_ot:
+        cell = ws.cell(17, col, text)
+        cell.font = BOLD
+        cell.fill = hdr_fill
+        cell.border = THIN_BORDER
+        cell.alignment = al
+
+    ot_rows = [
+        ("RN", ot_rn_day, ot_rn_night),
+        ("Medic", ot_medic_day, ot_medic_night),
+        ("EMT", ot_emt_day, ot_emt_night),
+    ]
+    r = 18
+    for label, bd, bn in ot_rows:
+        st = _ot_striped(r)
+        _paint_row(r, 1, 7, st)
+        ws.cell(r, 1, label).font = FONT_BMF_BODY_BOLD
+        ws.cell(r, 1).alignment = ALIGN_LEFT
+        b = ws.cell(r, 2, bd)
+        b.font = _zero_font(bd)
+        b.alignment = ALIGN_CENTER
+        c = ws.cell(r, 3, bn)
+        c.font = _zero_font(bn)
+        c.alignment = ALIGN_CENTER
+        ws.cell(r, 4, bd + bn).alignment = ALIGN_CENTER
+        for cc in (5, 6, 7):
+            ws.cell(r, cc, None)
+        r += 1
+
+    # Row 21 Total OT
+    for c in range(1, 8):
+        cell = ws.cell(21, c)
+        cell.fill = FILL_BAND_TOTAL
+        cell.border = THIN_BORDER
         cell.font = FONT_BMF_BODY_BOLD
-        cell.fill = FILL_HEADER_LIGHT
+    ws.cell(21, 1, "Total").alignment = ALIGN_LEFT
+    ws.cell(21, 2, total_ot_day).alignment = ALIGN_CENTER
+    ws.cell(21, 3, total_ot_night).alignment = ALIGN_CENTER
+    ws.cell(21, 4, total_ot_day + total_ot_night).alignment = ALIGN_CENTER
+    for c in (5, 6, 7):
+        ws.cell(21, c, None)
+
+    # Row 22 Backfill rate
+    _paint_row(22, 1, 7, False)
+    ws.cell(22, 1, "Backfill rate (OT / filled)").font = FONT_BMF_BODY_BOLD
+    ws.cell(22, 1).alignment = ALIGN_LEFT
+    ws.cell(22, 2, None)
+    ws.cell(22, 3, None)
+    d22 = ws.cell(22, 4, ot_dep)
+    d22.number_format = "0.0%"
+    d22.font = FONT_BMF_RAG_VALUE
+    d22.alignment = ALIGN_CENTER
+    df22, dt22 = _fill_and_font_for_status(
+        ot_rag, notable=ot_notable, value=ot_dep, thr=thr_ot
+    )
+    d22.fill = df22
+    d22.font = dt22
+    e22 = ws.cell(22, 5, _target_display("OT Dependency", thr_ot))
+    e22.font = Font(name=FONT_NAME, size=11, color="666666")
+    e22.number_format = "@"
+    e22.alignment = ALIGN_CENTER
+    f22 = ws.cell(22, 6, _status_display(ot_rag))
+    ff22, ft22 = _fill_and_font_for_status(
+        ot_rag, notable=ot_notable, value=ot_dep, thr=thr_ot
+    )
+    f22.fill = ff22
+    f22.font = ft22
+    f22.alignment = ALIGN_CENTER
+    ws.cell(22, 7, None)
+
+    # Row 23 spacer
+    for c in range(1, 8):
+        ws.cell(23, c).fill = FILL_WHITE_SOLID
+        ws.cell(23, c).border = THIN_BORDER
+
+    # --- Section 3 Exceptions rows 24–31 ---
+    _detail_section_banner(
+        ws, 24, "Schedule exceptions by role", "Shift counts by type"
+    )
+    ws.cell(25, 1, "Role").font = BOLD
+    ws.cell(25, 1).fill = hdr_fill
+    ws.cell(25, 1).border = THIN_BORDER
+    ws.cell(25, 1).alignment = ALIGN_LEFT
+    for ci, lt in enumerate(LEAVE_TYPE_COLS, start=2):
+        cell = ws.cell(25, ci, lt)
+        cell.font = BOLD
+        cell.fill = hdr_fill
         cell.border = THIN_BORDER
         cell.alignment = ALIGN_CENTER
-    row_num += 1
-    t_rw = thresholds.get("System RW Coverage %") if thresholds else None
-    t_gr = thresholds.get("System GR Coverage %") if thresholds else None
-    sys_rw_d, sys_rw_n, sys_gr_d, sys_gr_n = 0, 0, 0, 0
-    rw_totals_by_base = {}
-    gr_totals_by_base = {}
-    for cfg in base_configs:
-        rw_totals_by_base[cfg.base_name] = cfg.rw_total_unit_days
-        gr_totals_by_base[cfg.base_name] = cfg.gr_total_unit_days
+
+    role_labels = EXCEPTION_ROLES
+    rr = 26
+    for role in role_labels:
+        st = _exc_striped(rr)
+        _paint_row(rr, 1, 7, st)
+        ws.cell(rr, 1, role).font = FONT_BMF_BODY_BOLD
+        ws.cell(rr, 1).alignment = ALIGN_LEFT
+        vals = [
+            _exc_count(role, ["AT"]),
+            _exc_count(role, ["LT-D", "LT-N", "LT"]),
+            _exc_count(role, ["SICK"]),
+            _exc_count(role, ["LOA", "PFML"]),
+            _exc_count(role, ["JURY"]),
+            _exc_count(role, ["BREV"]),
+        ]
+        for j, v in enumerate(vals, start=2):
+            cell = ws.cell(rr, j, v)
+            cell.alignment = ALIGN_CENTER
+            cell.font = _zero_font(v)
+        rr += 1
+
+    for c in range(1, 8):
+        cell = ws.cell(30, c)
+        cell.fill = FILL_BAND_TOTAL
+        cell.border = THIN_BORDER
+        cell.font = FONT_BMF_BODY_BOLD
+    ws.cell(30, 1, "Total").alignment = ALIGN_LEFT
+    for j, tot in enumerate(col_totals, start=2):
+        cell = ws.cell(30, j, tot)
+        cell.alignment = ALIGN_CENTER
+        if j in (6, 7) and tot == 0:
+            cell.font = FONT_ZERO_MUTED
+        else:
+            cell.font = FONT_BMF_BODY_BOLD
+
+    # Row 31 spacer
+    for c in range(1, 8):
+        ws.cell(31, c).fill = FILL_WHITE_SOLID
+        ws.cell(31, c).border = THIN_BORDER
+
+    # --- Section 4 Base coverage ---
+    _detail_section_banner(ws, 32, "Base coverage", "Rotor-Wing / Ground")
+    base_headers = [
+        "Base",
+        "RW/D (of 7)",
+        "RW/N (of 7)",
+        "GR/D (of 7)",
+        "GR/N (of 7)",
+        "RW %",
+        "GR %",
+    ]
+    for c, h in enumerate(base_headers, start=1):
+        cell = ws.cell(33, c, h)
+        cell.font = BOLD
+        cell.fill = hdr_fill
+        cell.border = THIN_BORDER
+        cell.alignment = ALIGN_CENTER if c > 1 else ALIGN_LEFT
+    _border_right_sep_cell(ws, 33, 3)
+    _border_right_sep_cell(ws, 33, 5)
+
+    row_num = 34
     for base_name in DETAIL_BASE_ORDER:
         cfg = base_by_name.get(base_name)
         pct = base_metrics.get(base_name, {})
@@ -903,62 +1380,107 @@ def _write_weekly_detail(
         rw_n = int(pct.get("rw_n", 0))
         gr_d = int(pct.get("gr_d", gr_staffed))
         gr_n = int(pct.get("gr_n", 0))
-        sys_rw_d += rw_d
-        sys_rw_n += rw_n
-        sys_gr_d += gr_d
-        sys_gr_n += gr_n
-        _bmf_cell_border(ws, row_num, 1, base_name)
-        _bmf_cell_border(
-            ws, row_num, 2, "" if not rw_total else rw_d, align=ALIGN_CENTER
-        )
-        _bmf_cell_border(
-            ws, row_num, 3, "" if not rw_total else rw_n, align=ALIGN_CENTER
-        )
-        _bmf_cell_border(
-            ws, row_num, 4, "" if not gr_total else gr_d, align=ALIGN_CENTER
-        )
-        _bmf_cell_border(
-            ws, row_num, 5, "" if not gr_total else gr_n, align=ALIGN_CENTER
-        )
+        umap = BASE_UNIT_CELL_CONFIGURED.get(base_name, {})
+        st = _base_striped(row_num)
+        _paint_row(row_num, 1, 7, st)
+        ws.cell(row_num, 1, base_name).font = FONT_BMF_BODY_BOLD
+        ws.cell(row_num, 1).alignment = ALIGN_LEFT
+        _write_na_or_int(ws, row_num, 2, umap.get("rw_d", False), rw_d)
+        _write_na_or_int(ws, row_num, 3, umap.get("rw_n", False), rw_n)
+        _write_na_or_int(ws, row_num, 4, umap.get("gr_d", False), gr_d)
+        _write_na_or_int(ws, row_num, 5, umap.get("gr_n", False), gr_n)
         if rw_total:
             rw_pct_val = rw_staffed / rw_total
             rw_rag = evaluate_rag(rw_pct_val, t_rw) if t_rw else "Green"
-            _write_pct_cell(ws, row_num, 6, rw_pct_val, rw_rag)
+            c6 = ws.cell(row_num, 6, rw_pct_val)
+            c6.number_format = "0.0%"
+            c6.alignment = ALIGN_CENTER
+            c6.border = THIN_BORDER
+            fill6, font6 = _fill_and_font_for_status(
+                rw_rag,
+                notable=_base_rw_cell_notable(rw_pct_val),
+                value=rw_pct_val,
+                thr=t_rw,
+            )
+            c6.fill = fill6
+            c6.font = font6
         else:
-            _bmf_cell_border(ws, row_num, 6, "", align=ALIGN_CENTER)
+            c6 = ws.cell(row_num, 6, "N/A")
+            c6.font = FONT_NA
+            c6.alignment = ALIGN_CENTER
+            c6.border = THIN_BORDER
         if gr_total:
             gr_pct_val = gr_staffed / gr_total
             gr_rag = evaluate_rag(gr_pct_val, t_gr) if t_gr else "Green"
-            _write_pct_cell(ws, row_num, 7, gr_pct_val, gr_rag)
+            c7 = ws.cell(row_num, 7, gr_pct_val)
+            c7.number_format = "0.0%"
+            c7.alignment = ALIGN_CENTER
+            c7.border = THIN_BORDER
+            fill7, font7 = _fill_and_font_for_status(
+                gr_rag,
+                notable=_base_gr_cell_notable(gr_pct_val),
+                value=gr_pct_val,
+                thr=t_gr,
+            )
+            c7.fill = fill7
+            c7.font = font7
         else:
-            _bmf_cell_border(ws, row_num, 7, "", align=ALIGN_CENTER)
-        _bmf_border_block(ws, row_num, row_num, 1, 7)
+            c7 = ws.cell(row_num, 7, "N/A")
+            c7.font = FONT_NA
+            c7.alignment = ALIGN_CENTER
+            c7.border = THIN_BORDER
+        _border_right_sep_cell(ws, row_num, 3)
+        _border_right_sep_cell(ws, row_num, 5)
         row_num += 1
-    _bmf_cell_border(ws, row_num, 1, "System total", FONT_BMF_BODY_BOLD)
-    _bmf_cell_border(ws, row_num, 2, sys_rw_d, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, row_num, 3, sys_rw_n, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, row_num, 4, sys_gr_d, align=ALIGN_CENTER)
-    _bmf_cell_border(ws, row_num, 5, sys_gr_n, align=ALIGN_CENTER)
-    sys_rw_total = sum(rw_totals_by_base.get(b, 0) for b in DETAIL_BASE_ORDER)
-    # System % on the sheet matches dashboard/board: RW = staffed / sum RW caps; GR = staffed / 28.
-    srw_rag = (
-        evaluate_rag(this_metrics.system_rw_pct, t_rw)
-        if t_rw and sys_rw_total
-        else "Green"
-    )
-    sgr_rag = (
-        evaluate_rag(this_metrics.system_gr_pct, t_gr)
-        if t_gr and SYSTEM_GR_MAX_SHIFTS_PER_WEEK > 0
-        else "Green"
-    )
-    _write_pct_cell(ws, row_num, 6, this_metrics.system_rw_pct, srw_rag)
-    _write_pct_cell(ws, row_num, 7, this_metrics.system_gr_pct, sgr_rag)
-    _bmf_border_block(ws, row_num, row_num, 1, 7)
 
-    ws.freeze_panes = "A4"
+    for c in range(1, 8):
+        cell = ws.cell(row_num, c)
+        cell.fill = FILL_BAND_TOTAL
+        cell.border = THIN_BORDER
+        cell.font = FONT_BMF_BODY_BOLD
+    ws.cell(row_num, 1, "System total").alignment = ALIGN_LEFT
+    # §3.3: do not sum per-base raw counts (B–E); system view is weighted % only.
+    for c in range(2, 6):
+        cell = ws.cell(row_num, c)
+        cell.value = None
+        cell.alignment = ALIGN_CENTER
+    sys_rw_rag = _rag_for_metric(
+        "System RW Coverage %", this_metrics.system_rw_pct, thresholds
+    )
+    sys_rw_notable = _kpi_notable(
+        "System RW Coverage %", this_metrics.system_rw_pct, this_metrics
+    )
+    _write_pct_cell(
+        ws,
+        row_num,
+        6,
+        this_metrics.system_rw_pct,
+        sys_rw_rag,
+        thr=t_rw,
+        notable=sys_rw_notable,
+    )
+    sys_gr_rag = _rag_for_metric(
+        "System GR Coverage %", this_metrics.system_gr_pct, thresholds
+    )
+    sys_gr_notable = _kpi_notable(
+        "System GR Coverage %", this_metrics.system_gr_pct, this_metrics
+    )
+    _write_pct_cell(
+        ws,
+        row_num,
+        7,
+        this_metrics.system_gr_pct,
+        sys_gr_rag,
+        thr=t_gr,
+        notable=sys_gr_notable,
+    )
+    _border_right_sep_cell(ws, row_num, 3)
+    _border_right_sep_cell(ws, row_num, 5)
+
+    ws.freeze_panes = "A5"
     ws.column_dimensions["A"].width = 28
-    for c in range(2, 8):
-        ws.column_dimensions[get_column_letter(c)].width = 14
+    for letter, w in [("B", 12), ("C", 12), ("D", 12), ("E", 12), ("F", 14), ("G", 28)]:
+        ws.column_dimensions[letter].width = w
 
 
 def _write_trend_sheet(
@@ -978,6 +1500,7 @@ def _write_trend_sheet(
     ]
     for c, h in enumerate(headers, 1):
         ws.cell(1, c, h).font = BOLD
+    thr_sr = thresholds.get("Staffing Rate")
     row = 2
     for week_start, m in trend_list:
         ws.cell(row, 1, week_start)
@@ -987,7 +1510,17 @@ def _write_trend_sheet(
         ws.cell(row, 5, m.system_rw_pct).number_format = "0.0%"
         ws.cell(row, 6, m.system_gr_pct).number_format = "0.0%"
         rag = _rag_for_metric("Staffing Rate", m.staffing_rate, thresholds)
-        ws.cell(row, 7, rag)
+        st = ws.cell(row, 7, _status_display(rag))
+        notable = _kpi_notable("Staffing Rate", m.staffing_rate, m)
+        fill, font = _fill_and_font_for_status(
+            rag,
+            notable=notable,
+            value=m.staffing_rate,
+            thr=thr_sr,
+        )
+        st.fill = fill
+        st.font = font
+        st.border = THIN_BORDER
         row += 1
     ws.freeze_panes = "A2"
     ws.column_dimensions["A"].width = 12
@@ -1065,6 +1598,7 @@ def export_board_pack(
     week_start: str,
     trend_weeks: int = 12,
     output_dir: str = "output",
+    metadata: dict | None = None,
 ) -> str:
     """
     Generate Weekly_staffing_summary_<week_start>_to_<week_end>.xlsx.
@@ -1077,6 +1611,8 @@ def export_board_pack(
 
     with session_scope(db_path) as session:
         thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
+        bases_all = session.query(BaseConfig).order_by(BaseConfig.base_name).all()
+        _assert_rw_config_rw_cap_56(bases_all)
         data = _load_week_with_coverage(session, week_start)
         if not data:
             raise ValueError(f"No weekly data for week_start={week_start}")
@@ -1112,7 +1648,7 @@ def export_board_pack(
         for name in [
             "Staffing Rate",
             "OT Dependency",
-            "Leave Exposure",
+            "Shift Exception %",
             "System RW Coverage %",
             "System GR Coverage %",
         ]:
@@ -1138,6 +1674,7 @@ def export_board_pack(
             trend_data,
             thresholds,
             narrative,
+            metadata=metadata,
         )
         _write_weekly_detail(
             wb,

@@ -26,6 +26,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+from .manager_roster import default_manager_last_names_upper
+
 Role = str  # "RN", "MEDIC", "EMT", "PILOT"
 ServiceType = str  # "RW" or "GR"
 DayNight = str  # "D" or "N"
@@ -48,6 +50,9 @@ class ShiftRecord:
     raw_value: str
     # Canonical unit (e.g. D7B) for staffed cells; separates multiple aircraft same base/day.
     unit_code: str = ""
+    # Row identity from schedule grid (cols A–B); used for manager line-shift tracking.
+    person_display: str = ""
+    is_manager_row: bool = False
 
 
 @dataclass
@@ -166,33 +171,6 @@ UNIT_LEAVE_MERGE: dict[str, str] = {
     "BREV": "BREV",
 }
 
-# Names (column A) to exclude from leave/exception totals (managers).
-# Comparison is case-insensitive, stripped.
-IGNORE_LEAVE_NAMES: set[str] = {
-    # Medic managers
-    "Ahlstedt",
-    "Denison",
-    "Doherty",
-    "Ender",
-    "Estanislao",
-    "Holst",
-    "Kadow",
-    "Moore",
-    "Powers",
-    # RN managers
-    "Bowman",
-    "Farkas",
-    "Frakes",
-    "Muszalski",
-    "Steckevicz",
-    "Wallace",
-}
-
-_IGNORE_LEAVE_LAST_NAMES_UPPER: frozenset[str] = frozenset(
-    name.strip().upper() for name in IGNORE_LEAVE_NAMES if name
-)
-
-
 # "Little c" variants that mean OT → normalize to C before parsing
 # (D7Pᶜ, D7Pç → D7PC)
 _OT_C_VARIANTS = ("\u1d9c", "\u0368", "\u00e7", "\u00c7")  # ᶜ, ͨ, ç, Ç
@@ -222,12 +200,37 @@ def _name_tokens_for_grid_row(ws: Worksheet, row_idx: int) -> set[str]:
     return tokens
 
 
-def _skip_leave_row_for_manager(ws: Worksheet, row_idx: int) -> bool:
-    """True if this row should not count toward leave (manager row)."""
-    if not _IGNORE_LEAVE_LAST_NAMES_UPPER:
-        return False
-    tok = _name_tokens_for_grid_row(ws, row_idx)
-    return bool(tok & _IGNORE_LEAVE_LAST_NAMES_UPPER)
+def _person_display_for_row(ws: Worksheet, row_idx: int) -> str:
+    """Human-readable name from columns A–B (same rows as schedule grid)."""
+    raw_a = ws.cell(row=row_idx, column=1).value
+    raw_b = ws.cell(row=row_idx, column=2).value
+
+    def _cell_str(v: object) -> str:
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    a, b = _cell_str(raw_a), _cell_str(raw_b)
+    if a and b:
+        return (f"{a}, {b}")[:256]
+    return (a or b)[:256]
+
+
+def _manager_row_label_and_flag(
+    ws: Worksheet, row_idx: int, manager_last_names_upper: frozenset[str]
+) -> tuple[str, bool]:
+    """Label for shift records and whether this row is on the manager roster.
+
+    Manager rows: show the roster last name only (title case), not raw col A+B
+    (which may include row-type letters like ``m`` / ``P`` in column A).
+    """
+    tokens = _name_tokens_for_grid_row(ws, row_idx)
+    roster_hit = (
+        tokens & manager_last_names_upper if manager_last_names_upper else set()
+    )
+    if roster_hit:
+        return min(roster_hit).title(), True
+    return _person_display_for_row(ws, row_idx), False
 
 
 def _header_cell_to_date(value: object, default_year: int | None = None) -> date | None:
@@ -421,13 +424,22 @@ def _parse_grid(
     week_start_date: date | None = None,
     week_end_date: date | None = None,
     unit_overrides: dict[str, str] | None = None,
+    manager_last_names_upper: frozenset[str] | None = None,
 ) -> tuple[list[ShiftRecord], list[ParseIssue]]:
     """Parse a rectangular RN/Medic/EMT grid into shift records + issues.
 
     unit_overrides: map raw_value -> replacement
     (e.g. {"D7BCP": "D7BC", "TYPO": "D7B/LT"}).
     Use at import to fix typos or merge unknown codes.
+
+    manager_last_names_upper: roster from staffing.db (or caller default); when
+    omitted, uses the built-in default list.
     """
+    mgr_upper = (
+        manager_last_names_upper
+        if manager_last_names_upper is not None
+        else default_manager_last_names_upper()
+    )
     records: list[ShiftRecord] = []
     issues: list[ParseIssue] = []
     overrides = unit_overrides or {}
@@ -485,6 +497,9 @@ def _parse_grid(
         return records, issues
 
     for row_idx in range(first_row_idx, last_row_idx + 1):
+        person_display, is_manager_row = _manager_row_label_and_flag(
+            ws, row_idx, mgr_upper
+        )
         for col_idx, d in col_dates:
             if (
                 sheet_label.startswith("RN & Medic")
@@ -524,7 +539,7 @@ def _parse_grid(
 
             # EMT: PER → LT (same bucket as leave time for exception grid).
             if role == "EMT" and text == "PER":
-                if _skip_leave_row_for_manager(ws, row_idx):
+                if is_manager_row:
                     continue
                 records.append(
                     ShiftRecord(
@@ -539,6 +554,8 @@ def _parse_grid(
                         source_tab=sheet_label,
                         source_cell=cell_ref,
                         raw_value=text,
+                        person_display=person_display,
+                        is_manager_row=is_manager_row,
                     )
                 )
                 continue
@@ -549,7 +566,7 @@ def _parse_grid(
                 suffix = (parts[1] or "").strip()
                 leave_display = UNIT_LEAVE_MERGE.get(suffix)
                 if leave_display is not None:
-                    if _skip_leave_row_for_manager(ws, row_idx):
+                    if is_manager_row:
                         continue
                     records.append(
                         ShiftRecord(
@@ -564,6 +581,8 @@ def _parse_grid(
                             source_tab=sheet_label,
                             source_cell=cell_ref,
                             raw_value=text,
+                            person_display=person_display,
+                            is_manager_row=is_manager_row,
                         )
                     )
                     continue
@@ -580,7 +599,7 @@ def _parse_grid(
                 leave_display = text
             if leave_code in LEAVE_CODES:
                 # Skip manager rows (last-name match in A/B).
-                if _skip_leave_row_for_manager(ws, row_idx):
+                if is_manager_row:
                     continue
                 records.append(
                     ShiftRecord(
@@ -595,6 +614,8 @@ def _parse_grid(
                         source_tab=sheet_label,
                         source_cell=cell_ref,
                         raw_value=text,
+                        person_display=person_display,
+                        is_manager_row=is_manager_row,
                     )
                 )
                 continue
@@ -635,10 +656,46 @@ def _parse_grid(
                     source_cell=cell_ref,
                     raw_value=text,
                     unit_code=base_code,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
                 )
             )
 
     return records, issues
+
+
+def weekly_manager_shift_mappings(
+    week_start: str, records: Iterable[ShiftRecord],
+) -> list[dict[str, object]]:
+    """
+    Rows for ``WeeklyManagerShift`` bulk insert: staffed unit cells on manager
+    roster rows (same last-name set as leave exclusion).
+    """
+    rows: list[dict[str, object]] = []
+    for r in records:
+        if not (r.filled and r.is_manager_row):
+            continue
+        if r.role not in {"RN", "MEDIC", "EMT"}:
+            continue
+        if not (r.base or "").strip():
+            continue
+        rows.append(
+            {
+                "week_start": week_start,
+                "person_display": (r.person_display or "").strip() or "(unknown)",
+                "role": r.role,
+                "shift_date": r.date.isoformat(),
+                "base_name": r.base,
+                "service_type": r.service_type,
+                "day_night": r.day_night,
+                "unit_code": (r.unit_code or "").strip(),
+                "overtime": 1 if r.overtime else 0,
+                "raw_value": (r.raw_value or "")[:64],
+                "source_tab": (r.source_tab or "")[:128],
+                "source_cell": (r.source_cell or "")[:16],
+            }
+        )
+    return rows
 
 
 # --- OPS View: vehicle-level RW/GR staffed unit-days ----------------------
@@ -867,6 +924,7 @@ def parse_schedule_workbook(
     path: str,
     week_start: str | None = None,
     unit_overrides: dict[str, str] | None = None,
+    manager_last_names_upper: frozenset[str] | None = None,
 ) -> tuple[
     list[ShiftRecord],
     list[ParseIssue],
@@ -879,6 +937,9 @@ def parse_schedule_workbook(
     window are included. When "OPS View" sheet exists and week_start is set,
     returns (records, issues, (rw_day, rw_night, gr_day, gr_night)) from OPS
     View; otherwise the third value is None.
+
+    manager_last_names_upper: roster from staffing.db for manager rows; when
+    omitted, uses the built-in default (see ``manager_roster``).
 
     Assumptions (based on your 15 Feb 2026 layout):
     - Sheet 'RN & Medic': RN lines ~4–50, Medic ~52–100 (dates often row 2).
@@ -894,6 +955,12 @@ def parse_schedule_workbook(
             week_end_date = week_start_date + timedelta(days=6)
         except ValueError:
             pass
+
+    mgr_upper = (
+        manager_last_names_upper
+        if manager_last_names_upper is not None
+        else default_manager_last_names_upper()
+    )
 
     records: list[ShiftRecord] = []
     issues: list[ParseIssue] = []
@@ -915,6 +982,7 @@ def parse_schedule_workbook(
                 week_start_date=week_start_date,
                 week_end_date=week_end_date,
                 unit_overrides=unit_overrides,
+                manager_last_names_upper=mgr_upper,
             )
             # Medic block: first line row 52 (row 51 blank in current template).
             med_records, med_issues = _parse_grid(
@@ -927,6 +995,7 @@ def parse_schedule_workbook(
                 week_start_date=week_start_date,
                 week_end_date=week_end_date,
                 unit_overrides=unit_overrides,
+                manager_last_names_upper=mgr_upper,
             )
             records.extend(rn_records)
             records.extend(med_records)
@@ -962,6 +1031,7 @@ def parse_schedule_workbook(
                 week_start_date=week_start_date,
                 week_end_date=week_end_date,
                 unit_overrides=unit_overrides,
+                manager_last_names_upper=mgr_upper,
             )
             records.extend(emt_records)
             issues.extend(emt_issues)

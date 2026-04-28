@@ -62,7 +62,7 @@ def compare_direction(current: float, prior: float | None) -> DIRECTION:
 LOWER_IS_BETTER_METRICS = frozenset(
     {
         "OT Dependency",
-        "Leave Exposure",
+        "Shift Exception %",
         "Overnights Below Coverage",
         "Pilot Vacancies",
     }

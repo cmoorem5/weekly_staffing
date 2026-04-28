@@ -57,15 +57,27 @@
 
   <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mt-4 mb-2">Unpartnered staff (manual)</h2>
   <p class="text-muted small mb-2">Counts for the Weekly Staffing Detail executive summary (CEO request). Not calculated from the schedule import.</p>
-  <table class="table table-bordered table-sm" style="max-width: 28rem;">
+  <table class="table table-bordered table-sm" style="max-width: 48rem;">
     <tbody>
       <tr>
-        <th class="w-50">{{ form.medic_unpartnered.label }}</th>
-        <td>{{ form.medic_unpartnered }}{% if form.medic_unpartnered.errors %}<br><span class="text-danger small">{{ form.medic_unpartnered.errors.0 }}</span>{% endif %}</td>
+        <th class="w-25">{{ form.medic_unpartnered.label }}</th>
+        <td>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            {{ form.medic_unpartnered }}{% if form.medic_unpartnered.errors %}<span class="text-danger small">{{ form.medic_unpartnered.errors.0 }}</span>{% endif %}
+          </div>
+          <label class="form-label small text-muted mb-0" for="{{ form.unpartnered_note_medic.id_for_label }}">{{ form.unpartnered_note_medic.label }}</label>
+          {{ form.unpartnered_note_medic }}{% if form.unpartnered_note_medic.errors %}<br><span class="text-danger small">{{ form.unpartnered_note_medic.errors.0 }}</span>{% endif %}
+        </td>
       </tr>
       <tr>
         <th>{{ form.rn_unpartnered_staff.label }}</th>
-        <td>{{ form.rn_unpartnered_staff }}{% if form.rn_unpartnered_staff.errors %}<br><span class="text-danger small">{{ form.rn_unpartnered_staff.errors.0 }}</span>{% endif %}</td>
+        <td>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            {{ form.rn_unpartnered_staff }}{% if form.rn_unpartnered_staff.errors %}<span class="text-danger small">{{ form.rn_unpartnered_staff.errors.0 }}</span>{% endif %}
+          </div>
+          <label class="form-label small text-muted mb-0" for="{{ form.unpartnered_note_rn.id_for_label }}">{{ form.unpartnered_note_rn.label }}</label>
+          {{ form.unpartnered_note_rn }}{% if form.unpartnered_note_rn.errors %}<br><span class="text-danger small">{{ form.unpartnered_note_rn.errors.0 }}</span>{% endif %}
+        </td>
       </tr>
     </tbody>
   </table>

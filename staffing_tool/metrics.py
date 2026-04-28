@@ -202,8 +202,6 @@ def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:
         # Backfill Rate (aka OT Dependency)
         "OT Dependency": metrics.ot_dependency,
         "Backfill Rate": metrics.ot_dependency,
-        # Shift Exception % (aka Leave Exposure)
-        "Leave Exposure": metrics.leave_exposure,
         "Shift Exception %": metrics.leave_exposure,
         "Overnights Below Coverage": float(metrics.overnights_below),
         "Pilot Vacancies": float(metrics.pilot_vacancies),

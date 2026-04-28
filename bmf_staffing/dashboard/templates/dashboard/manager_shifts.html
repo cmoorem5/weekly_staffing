@@ -1,0 +1,146 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Manager shifts{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Manager line shifts</h1>
+<p class="bmf-page-subtitle">
+  Staffed unit assignments for managers on the roster (last names maintained in
+  <a href="{% url 'admin:dashboard_managerrosterlastname_changelist' %}">Admin → Manager roster</a>).
+  This list updates when you <strong>Apply</strong> a schedule import; manual week edits do not change it.
+</p>
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" style="max-width: 44rem;" autocomplete="off" aria-label="Manager shift filters">
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">Data through</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Update</button>
+  </div>
+</form>
+
+<div class="print-only mb-3">
+  <h2 class="h4 mb-1">Manager line shifts</h2>
+  <div class="small">
+    Window: <strong>{{ date_start }}</strong> → <strong>{{ date_end }}</strong>
+  </div>
+</div>
+
+<p class="small text-muted mt-2 mb-0">
+  Quick ranges:
+  <a href="?fy={{ fy_label_current }}&amp;date_start={{ fy_start_iso }}&amp;date_end={{ today_iso }}">Fiscal year to date</a>
+  <span class="text-muted">(FY{{ fy_label_current }}: {{ fy_start_iso }} → {{ fy_end_iso }})</span>
+  &middot;
+  <a href="?date_start={{ calendar_year_start_iso }}&amp;date_end={{ today_iso }}">Calendar year to date</a>
+  {% if db_date_min and db_date_max %}
+  &middot;
+  <a href="?date_start={{ db_date_min }}&amp;date_end={{ db_date_max }}">All data in database</a>
+  {% endif %}
+</p>
+
+{% if cumulative_rows %}
+<p class="small mt-4 mb-2" style="max-width: 44rem;">
+  <strong>Minimum expectation:</strong> {{ manager_min_fy }} manager line-shifts per person per fiscal year (Sun on/before Sep&nbsp;28 → day before next FY start),
+  equivalent to {{ manager_min_per_pp }} per biweekly pay period ({{ manager_pp_per_fy }} periods in the current FY).
+  {% if fy_overlap_days > 0 %}
+  The <strong>Min (prorated)</strong> column scales those {{ manager_min_fy }} shifts over the overlap of your dates with FY <strong>{{ fy_target_start }}</strong> → <strong>{{ fy_target_end }}</strong>
+  ({{ fy_overlap_days }} of {{ fy_total_days }} days in that fiscal year).
+  {% else %}
+  Your selected dates do not overlap that fiscal year window, so prorated minimum is 0 and status shows N/A.
+  {% endif %}
+</p>
+<div class="card bmf-card shadow-sm mb-4" style="max-width: 44rem;">
+  <div class="card-header bmf-card-header">
+    Cumulative totals — {{ date_start }} through {{ date_end }}
+  </div>
+  <div class="card-body p-0">
+    <table class="table mb-0">
+      <thead>
+        <tr>
+          <th scope="col">Manager (last name)</th>
+          <th scope="col" class="text-end">Shifts</th>
+          <th scope="col" class="text-end">Min (prorated)</th>
+          <th scope="col" class="text-end">Δ</th>
+          <th scope="col">Status</th>
+          <th scope="col" class="text-end">% of total</th>
+          <th scope="col" class="text-end">Running total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in cumulative_rows %}
+        <tr{% if not row.met %} style="background: #fff8e6;"{% endif %}>
+          <td>{{ row.name }}</td>
+          <td class="text-end">{{ row.count }}</td>
+          <td class="text-end">{{ row.target }}</td>
+          <td class="text-end">{% if row.delta > 0 %}+{% endif %}{{ row.delta }}</td>
+          <td>{{ row.status_label }}</td>
+          <td class="text-end">{{ row.pct }}%</td>
+          <td class="text-end">{{ row.running }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="font-weight: 600; background: var(--bmf-gray);">
+          <td>Total (all managers)</td>
+          <td class="text-end">{{ grand_total }}</td>
+          <td class="text-end">—</td>
+          <td class="text-end">—</td>
+          <td>—</td>
+          <td class="text-end">100%</td>
+          <td class="text-end">{{ grand_total }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+<p class="text-muted small mb-4">
+  <strong>{{ shift_count }}</strong> person-shift{{ shift_count|pluralize }} in this range (each row in the detail table = one role on one unit for one day).
+  Running total orders managers by highest shift count first. Light highlight = below prorated minimum for the period.
+</p>
+{% else %}
+<p class="mt-4 text-muted">No manager line shifts in this range. Import schedules for weeks in the window, widen the dates, or use <strong>All data in database</strong> above.</p>
+{% endif %}
+
+<h2 class="bmf-section-title">Detail</h2>
+{% if shifts %}
+<div class="table-responsive">
+<table class="table table-sm table-bordered bg-white align-middle">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Name</th>
+      <th>Role</th>
+      <th>Base</th>
+      <th>RW/GR</th>
+      <th>D/N</th>
+      <th>Unit</th>
+      <th>OT</th>
+      <th>Source value</th>
+      <th>Week start</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in shifts %}
+    <tr>
+      <td>{{ s.shift_date }}</td>
+      <td>{{ s.person_display }}</td>
+      <td>{% if s.role == "MEDIC" %}Medic{% else %}{{ s.role }}{% endif %}</td>
+      <td>{{ s.base_name }}</td>
+      <td>{{ s.service_type }}</td>
+      <td>{{ s.day_night }}</td>
+      <td><code>{{ s.unit_code }}</code></td>
+      <td>{% if s.overtime %}Yes{% else %}—{% endif %}</td>
+      <td><code>{{ s.raw_value }}</code></td>
+      <td>{{ s.week_start }}</td>
+      <td class="small">{{ s.source_tab }} {{ s.source_cell }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

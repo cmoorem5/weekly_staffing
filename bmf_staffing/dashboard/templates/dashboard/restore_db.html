@@ -1,0 +1,53 @@
+{% extends "dashboard/base.html" %}
+{% block title %}BMF Staffing – Restore DB{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Restore staffing.db</h1>
+
+<div class="alert alert-danger">
+  <strong>Danger:</strong> This overwrites the current <code>staffing.db</code> with a backup from <code>archive/</code>.
+  This tool is restricted to <strong>staff users</strong> on <strong>localhost</strong>.
+</div>
+
+<dl class="row">
+  <dt class="col-sm-3">Target DB</dt>
+  <dd class="col-sm-9"><code>{{ src_path }}</code></dd>
+  <dt class="col-sm-3">Archive folder</dt>
+  <dd class="col-sm-9"><code>{{ archive_dir }}</code></dd>
+</dl>
+
+{% if not backups %}
+  <p class="text-muted">No backups found in <code>archive/</code>. Create one first using <a href="{% url 'backup_db' %}">Backup DB</a>.</p>
+  <p class="mb-0">
+    <a class="btn btn-outline-secondary" href="/admin/">Back to admin</a>
+    <a class="btn btn-outline-primary" href="{% url 'home' %}">Back to home</a>
+  </p>
+{% else %}
+  <form method="post" class="mt-3" style="max-width: 56rem;">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label" for="id_backup_name">Backup file</label>
+      <select class="form-select" name="backup_name" id="id_backup_name" required>
+        <option value="">Select a backup…</option>
+        {% for name in backups %}
+          <option value="{{ name }}"{% if selected == name %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Backups are read from <code>archive/*.db</code> (newest first).</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label" for="id_confirm_text">Type <code>RESTORE</code> to confirm</label>
+      <input class="form-control" type="text" name="confirm_text" id="id_confirm_text" autocomplete="off" placeholder="RESTORE" required>
+      <div class="form-text">
+        Before overwriting, the app will automatically create a timestamped backup of the current DB into <code>archive/</code>.
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <button type="submit" class="btn btn-danger">Restore DB</button>
+      <a class="btn btn-outline-secondary" href="/admin/">Cancel</a>
+    </div>
+  </form>
+{% endif %}
+{% endblock %}
+

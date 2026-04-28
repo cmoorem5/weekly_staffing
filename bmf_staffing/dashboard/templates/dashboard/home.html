@@ -2,15 +2,15 @@
 {% block title %}BMF Staffing – Home{% endblock %}
 {% block content %}
 <h1 class="h2 mb-3">Boston MedFlight staffing</h1>
-<p class="text-muted">Enter weekly data, import schedules, and export the Excel summary. Week start is always <strong>Sunday</strong> (Sun–Sat).</p>
+<p class="text-muted">Enter weekly data, import schedules, and export the weekly Excel summary. Week start is always <strong>Sunday</strong> (Sun–Sat).</p>
 
 {% if latest_week_start %}
   <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3">Rolling overview</h2>
   <p class="text-muted small mb-2">
     <strong>{{ overview_weeks_count }}</strong> week{% if overview_weeks_count != 1 %}s{% endif %} averaged
     <span class="text-muted">({{ overview_range_label }})</span>.
-    Each card is the <strong>mean</strong> of that KPI across those weeks. RAG uses the same targets as a single week.
-    Per-week values are in the table below.
+    Each card shows the <strong>mean</strong> of that KPI across those weeks. Status colors (Green/Yellow/Red) use the same thresholds as a single week.
+    Weekly values are listed below.
   </p>
 
   {% if overview_red_count or overview_yellow_count %}
@@ -66,7 +66,7 @@
   </p>
 
   <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3 mt-4">Last four weeks</h2>
-  <p class="text-muted small mb-2">Weekly values (newest first). RAG here is from <strong>staffing rate</strong> only.</p>
+  <p class="text-muted small mb-2">Weekly values (newest first). Status color is based on <strong>staffing rate</strong> only.</p>
   <div class="table-responsive mb-4">
     <table class="table table-sm table-bordered bg-white align-middle">
       <thead>
@@ -74,7 +74,7 @@
           <th>Week (Sun)</th>
           <th>Staffing</th>
           <th>OT dep</th>
-          <th>Leave exp</th>
+          <th>Shift exc</th>
           <th>RW sys</th>
           <th>GR sys</th>
           <th>RAG</th>
@@ -103,9 +103,18 @@
   </div>
 {% endif %}
 
+<h2 class="h6 text-uppercase fw-bold text-muted border-bottom pb-2 mb-2">Admin tools</h2>
+<div class="bg-white border rounded p-3 mb-4">
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <a class="btn btn-sm btn-outline-secondary" href="/admin/">Django admin</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'base_totals' %}">Base totals</a>
+    <a class="btn btn-sm btn-outline-danger" href="{% url 'backup_db' %}">Backup DB</a>
+    <span class="text-muted small">RW/GR unit-days per base (set once).</span>
+  </div>
+</div>
+
 <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3">Quick links</h2>
 <ul class="mb-2">
-  <li><a href="{% url 'base_totals' %}">Base totals</a> – RW/GR unit-days per base (set once).</li>
   <li><a href="{% url 'week_list' %}">Weeks</a> – Recent weeks, edit, export.</li>
   <li><a href="{% url 'week_add' %}">Add week</a> – New Sunday week + base coverage.</li>
   <li><a href="{% url 'import_schedule' %}">Import schedule</a> – Upload Excel schedule workbook.</li>

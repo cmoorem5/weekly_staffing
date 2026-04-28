@@ -16,10 +16,13 @@ from .db import (
     get_engine,
     init_db,
     migrate_add_base_coverage_day_night,
+    migrate_leave_exposure_to_shift_exception_metric,
     migrate_system_gr_kpi_thresholds,
+    migrate_unpartnered_note_columns,
     migrate_weekly_staffing_columns,
     session_scope,
 )
+from .manager_roster import seed_manager_roster_if_empty
 from .metrics import compute_week_metrics
 from .models import (
     BaseConfig,
@@ -63,8 +66,12 @@ def _cmd_migrate(args: argparse.Namespace, db_path: str) -> None:
     engine = get_engine(db_path)
     create_tables(engine)
     migrate_weekly_staffing_columns(engine)
+    migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
+    migrate_leave_exposure_to_shift_exception_metric(engine)
     migrate_system_gr_kpi_thresholds(engine)
+    with session_scope(db_path) as session:
+        seed_manager_roster_if_empty(session)
     print("Migration complete. Missing columns/tables added.")
 
 
@@ -429,7 +436,7 @@ def _cmd_list_weeks(args: argparse.Namespace, db_path: str) -> None:
 
         print(
             f"Last {len(week_starts)} weeks "
-            "(rate, OT dep, leave exp, overnight below, RAG):"
+            "(rate, OT dep, shift exc %, overnight below, RAG):"
         )
         for ws in week_starts:
             row = staffing_by_week.get(ws)
@@ -442,7 +449,7 @@ def _cmd_list_weeks(args: argparse.Namespace, db_path: str) -> None:
             print(
                 f"  {ws}  rate={m.staffing_rate:.1%}  "
                 f"OT dep={m.ot_dependency:.1%}  "
-                f"leave_exp={m.leave_exposure:.1%}  "
+                f"shift_exc={m.leave_exposure:.1%}  "
                 f"overnight_below={m.overnights_below}  RAG={rag}"
             )
 

@@ -1,37 +1,41 @@
 {% extends "dashboard/base.html" %}
 {% block title %}Import schedule – preview{% endblock %}
 {% block content %}
-<h1>Import schedule – preview</h1>
-<p>File: <code>{{ upload_path }}</code></p>
+<h1 class="bmf-page-title">Import schedule – preview</h1>
+<p class="text-muted mb-3">File: <code>{{ upload_path }}</code></p>
 
 <form method="post" style="margin-top: 1rem;">
   {% csrf_token %}
   <input type="hidden" name="upload_path" value="{{ upload_path }}">
 
-  <h2>Which week from this file?</h2>
-  <p class="text-muted">Multi-week schedules: pick the <strong>Sunday</strong> that starts the week you want, then click <strong>Update preview</strong> to refresh counts, then <strong>Apply</strong>.</p>
-  <p>
-    <label for="id_import_week"><strong>Week start (Sunday)</strong></label><br>
-    <select name="week_start" id="id_import_week" style="max-width: 14rem;">
+  <h2 class="bmf-section-title">Choose the week</h2>
+  <p class="text-muted small mb-2">Select the <strong>Sunday</strong> that starts the week you want. Use <strong>Update preview</strong> to refresh counts before applying.</p>
+  <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div>
+      <label class="form-label mb-0" for="id_import_week">Week start (Sunday)</label>
+      <select name="week_start" id="id_import_week" class="form-select" style="max-width: 14rem;">
       {% for w in detected_weeks %}
         <option value="{{ w }}" {% if w == week_start %}selected{% endif %}>{{ w }}</option>
       {% endfor %}
-    </select>
-    <button type="submit" name="action" value="update_preview" class="btn btn-secondary" style="margin-left: 0.5rem;">Update preview</button>
-  </p>
+      </select>
+    </div>
+    <button type="submit" name="action" value="update_preview" class="btn btn-outline-secondary">Update preview</button>
+  </div>
 
-<h2>Summary (for week {{ week_start }})</h2>
+<h2 class="bmf-section-title">Summary (week {{ week_start }})</h2>
 <ul>
   <li><strong>Total parsed cells</strong>: {{ records_count }}</li>
   <li><strong>Filled shifts (unit-level)</strong>: {{ filled_count }}</li>
   <li><strong>OT shifts</strong>: {{ ot_count }}</li>
   <li><strong>Leave cells</strong>: {{ leave_count }}</li>
+  <li><strong>Manager line shifts</strong> (staffed units on manager rows): {{ manager_line_count }}</li>
 </ul>
 
 {% if unknown_units %}
-  <h2>Unknown / unmapped unit codes</h2>
-  <p>Map each code to how it should be treated. Examples: <code>D7BCP</code> → <code>D7BC</code> (overtime), <code>TYPO</code> → <code>D7B/LT</code> (leave). Leave blank to skip (not staffed).</p>
-  <table>
+  <h2 class="bmf-section-title">Unknown unit codes</h2>
+  <p class="text-muted small">Map each code to how it should be treated. Leave blank to skip (not staffed).</p>
+  <div class="table-responsive">
+  <table class="table table-sm table-bordered bg-white align-middle">
     <thead>
       <tr><th>Sheet</th><th>Cell</th><th>Raw value</th><th>Map to</th><th>Message</th></tr>
     </thead>
@@ -43,21 +47,24 @@
         <td><code>{{ issue.raw_value }}</code></td>
         <td>
           <input type="hidden" name="raw_{{ forloop.counter0 }}" value="{{ issue.raw_value }}">
-          <input type="text" name="map_{{ forloop.counter0 }}" value="" placeholder="D7BC, D7B/LT, etc." size="16">
+          <input type="text" class="form-control form-control-sm" name="map_{{ forloop.counter0 }}" value="" placeholder="e.g., D7BC or D7B/LT" aria-label="Map {{ issue.raw_value }}" style="min-width: 10rem;">
         </td>
         <td>{{ issue.message }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 {% else %}
-  <p>No unknown unit codes detected.</p>
+  <p class="text-muted">No unknown unit codes detected.</p>
 {% endif %}
 
-  <h2>Next steps</h2>
-  <p>If the preview looks reasonable, apply it to create/update that week in the database (filled day/night, OT, leave totals, base RW/GR from OPS View when present).</p>
-  <button type="submit" name="action" value="apply" class="btn btn-primary">Apply &amp; save week</button>
-  <a href="{% url 'import_schedule' %}" class="btn btn-secondary">Back to upload</a>
-  <a href="{% url 'week_list' %}" class="btn btn-secondary">Back to weeks</a>
+  <h2 class="bmf-section-title">Apply</h2>
+  <p class="text-muted small">If the preview looks correct, apply it to create/update the week in the database.</p>
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" name="action" value="apply" class="btn btn-primary">Apply &amp; save week</button>
+    <a href="{% url 'import_schedule' %}" class="btn btn-outline-secondary">Back to upload</a>
+    <a href="{% url 'week_list' %}" class="btn btn-outline-secondary">Back to weeks</a>
+  </div>
 </form>
 {% endblock %}

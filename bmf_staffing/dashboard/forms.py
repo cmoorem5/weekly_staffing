@@ -64,6 +64,24 @@ class WeekForm(forms.Form):
         label="RN unpartnered staff",
         help_text="Manual; appears on Weekly Detail export.",
     )
+    unpartnered_note_medic = forms.CharField(
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control form-control-sm", "maxlength": "200"}
+        ),
+        label="Why unpartnered (Medic)",
+        help_text="Short note in Weekly Detail (Notes column).",
+    )
+    unpartnered_note_rn = forms.CharField(
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control form-control-sm", "maxlength": "200"}
+        ),
+        label="Why unpartnered (RN)",
+        help_text="Short note in Weekly Detail (Notes column).",
+    )
     notes = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"rows": 2, "cols": 50}),
