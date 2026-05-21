@@ -21,9 +21,12 @@ from .leave_grid import (
 )
 from .metrics import (
     TOTAL_PERSON_SHIFTS,
+    PeriodRollups,
     WeekMetrics,
+    compute_period_rollups,
     compute_week_metrics,
     get_metric_value,
+    get_pooled_metric_value,
 )
 from .models import (
     BaseConfig,
@@ -33,6 +36,7 @@ from .models import (
     WeeklyStaffing,
 )
 from .rag import RAG, direction_for_metric, evaluate_rag
+from .validation import ot_action_ceiling, shift_exception_monitor_ceiling
 
 # ----- Boston MedFlight brand (Clinical Operations guidelines) -----
 # Colors: Blue #2a4492, Navy #052c47, Gray #e6e6e6, Medium Gray #cbc7d1, White #ffffff, Black #000000, Red #c12126
@@ -572,15 +576,17 @@ def _generate_narrative(
                 f"Staffing rate declined week-over-week ({sr_prior:.1%} → {sr_now:.1%})."
             )
         ot_now, ot_prior = this_week.ot_dependency, prior_week.ot_dependency
-        if ot_now > 0.12 and ot_now > ot_prior:
+        ot_ceil = ot_action_ceiling(thresholds)
+        exc_monitor = shift_exception_monitor_ceiling(thresholds)
+        if ot_now > ot_ceil and ot_now > ot_prior:
             drivers.append(
                 f"OT dependency increased ({ot_prior:.1%} → {ot_now:.1%}); overtime filling gaps."
             )
-        if this_week.leave_exposure > 0.25:
+        if this_week.leave_exposure > exc_monitor:
             drivers.append(
                 f"Shift exception % at {this_week.leave_exposure:.1%}; contributes to coverage pressure."
             )
-        if this_week.ot_dependency > 0.12:
+        if this_week.ot_dependency > ot_ceil:
             risks.append("High OT dependency; fatigue and sustainability risk.")
         if (
             rag_statuses.get("System RW Coverage %") == "Red"
@@ -616,6 +622,8 @@ def _write_board_summary(
     prior_metrics: WeekMetrics | None,
     avg_4w: WeekMetrics | None,
     avg_12w: WeekMetrics | None,
+    rollups_4w: PeriodRollups | None,
+    rollups_12w: PeriodRollups | None,
     trend_list: list[tuple[str, WeekMetrics]],
     thresholds: dict[str, KpiThreshold],
     narrative: dict[str, list[str]],
@@ -660,7 +668,9 @@ def _write_board_summary(
         "This Week",
         "Prior Week",
         "4-Week Avg",
+        "4-Week Pooled",
         "12-Week Avg",
+        "12-Week Pooled",
         "Target",
         "Status",
         "Direction",
@@ -678,7 +688,13 @@ def _write_board_summary(
             get_metric_value(prior_metrics, metric_key) if prior_metrics else None
         )
         val_4 = get_metric_value(avg_4w, metric_key) if avg_4w else None
+        val_4_pool = (
+            get_pooled_metric_value(rollups_4w, metric_key) if rollups_4w else None
+        )
         val_12 = get_metric_value(avg_12w, metric_key) if avg_12w else None
+        val_12_pool = (
+            get_pooled_metric_value(rollups_12w, metric_key) if rollups_12w else None
+        )
         rag = (
             _rag_for_metric(metric_key, val_this or 0, thresholds)
             if val_this is not None
@@ -691,10 +707,12 @@ def _write_board_summary(
         _write_pct_or_num(ws, row, 2, val_this, metric_key)
         _write_pct_or_num(ws, row, 3, val_prior, metric_key)
         _write_pct_or_num(ws, row, 4, val_4, metric_key)
-        _write_pct_or_num(ws, row, 5, val_12, metric_key)
-        tcell = ws.cell(row, 6, _target_display(metric_key, thr))
+        _write_pct_or_num(ws, row, 5, val_4_pool, metric_key)
+        _write_pct_or_num(ws, row, 6, val_12, metric_key)
+        _write_pct_or_num(ws, row, 7, val_12_pool, metric_key)
+        tcell = ws.cell(row, 8, _target_display(metric_key, thr))
         tcell.border = THIN_BORDER
-        status_cell = ws.cell(row, 7, _status_display(rag))
+        status_cell = ws.cell(row, 9, _status_display(rag))
         status_cell.border = THIN_BORDER
         fill, font = _fill_and_font_for_status(
             rag,
@@ -704,7 +722,7 @@ def _write_board_summary(
         )
         status_cell.fill = fill
         status_cell.font = font
-        ws.cell(row, 8, direction).border = THIN_BORDER
+        ws.cell(row, 10, direction).border = THIN_BORDER
         row += 1
 
     row += 1
@@ -1643,6 +1661,10 @@ def export_board_pack(
         last_4 = trend_metrics[-4:] if len(trend_metrics) >= 4 else trend_metrics
         avg_4w = _averages(last_4) if last_4 else None
         avg_12w = _averages(trend_metrics) if trend_metrics else None
+        rollups_4w = compute_period_rollups(last_4) if last_4 else None
+        rollups_12w = (
+            compute_period_rollups(trend_metrics) if trend_metrics else None
+        )
 
         rag_statuses = {}
         for name in [
@@ -1671,6 +1693,8 @@ def export_board_pack(
             prior_metrics,
             avg_4w,
             avg_12w,
+            rollups_4w,
+            rollups_12w,
             trend_data,
             thresholds,
             narrative,

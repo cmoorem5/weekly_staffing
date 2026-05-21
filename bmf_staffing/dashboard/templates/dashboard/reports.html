@@ -1,0 +1,47 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Reports &amp; analytics</h1>
+<p class="bmf-page-subtitle">
+  Choose a report below. Each opens with <strong>FY{{ fy_label }} year-to-date</strong> defaults
+  (through {{ data_through }}). Adjust filters on the report page before exporting.
+</p>
+
+{% if last_import_week_start %}
+<div class="alert alert-info py-2 mb-3" role="alert">
+  <strong>Last schedule import applied:</strong> {{ last_import_week_start }}
+  {% if last_import_updated_at %}<span class="text-muted small">&middot; updated {{ last_import_updated_at }}</span>{% endif %}
+</div>
+{% elif latest_week_start %}
+<div class="alert alert-light py-2 mb-3" role="alert">
+  <strong>Latest week in database:</strong> {{ latest_week_start }}
+  {% if latest_updated_at %}<span class="text-muted small">&middot; updated {{ latest_updated_at }}</span>{% endif %}
+</div>
+{% endif %}
+
+<p class="small text-muted mb-4">
+  FY{{ fy_label }}: <strong>{{ fy_start }}</strong> → <strong>{{ fy_end }}</strong>
+  &middot; {{ pp_count }} pay periods in this FY
+</p>
+
+<div class="row g-4">
+  {% for card in report_cards %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card bmf-card shadow-sm h-100">
+      <div class="card-header bmf-card-header">{{ card.title }}</div>
+      <div class="card-body d-flex flex-column">
+        <p class="small text-muted flex-grow-1">{{ card.description }}</p>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <a class="btn btn-primary btn-sm" href="{% url card.open_url_name %}{% if card.open_qs %}?{{ card.open_qs }}{% endif %}">Open report</a>
+          {% for ex in card.exports %}
+            <a class="btn btn-outline-secondary btn-sm" href="{% url ex.url_name %}?{{ ex.qs }}">{{ ex.label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="small text-muted mt-4 mb-0">{{ fy_policy_note }}</p>
+{% endblock %}

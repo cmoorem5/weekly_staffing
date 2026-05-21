@@ -6,7 +6,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.http import Http404
-from staffing_tool.db import init_db, session_scope
+from staffing_tool.db import ensure_db_ready, session_scope
 from staffing_tool.manager_roster import (
     default_manager_last_names_upper,
     manager_last_names_upper_from_session,
@@ -124,9 +124,97 @@ def _archive_dir_under_repo_root() -> Path:
 
 
 def _ensure_db():
-    """Create DB if missing; run migrations (e.g. add leave_brev) on existing DBs."""
+    """Ensure staffing.db is initialized once per process (migrations, seed)."""
     if DB_PATH:
-        init_db(DB_PATH)
+        ensure_db_ready(DB_PATH)
+
+
+def staffing_db_health(db_path: str | None = None) -> dict[str, object]:
+    """Snapshot for Settings health panel: paths, import markers, row counts."""
+    path = db_path or DB_PATH
+    health: dict[str, object] = {
+        "db_path": path,
+        "db_exists": bool(path and os.path.isfile(path)),
+        **staffing_db_snapshot(path),
+        "week_count": 0,
+        "manager_shift_count": 0,
+    }
+    if not path or not health["db_exists"]:
+        return health
+    from staffing_tool.models import WeeklyManagerShift, WeeklyStaffing
+
+    try:
+        with session_scope(path) as session:
+            health["week_count"] = session.query(WeeklyStaffing).count()
+            health["manager_shift_count"] = session.query(
+                WeeklyManagerShift
+            ).count()
+            from staffing_tool.data_quality import audit_kpi_data_quality
+
+            health["data_quality"] = audit_kpi_data_quality(session)
+    except Exception:
+        pass
+    return health
+
+
+def staffing_db_snapshot(db_path: str | None = None) -> dict[str, str | None]:
+    """
+    Latest week and last schedule-import markers from staffing.db.
+
+    Used by the operations banner and reports hub.
+    """
+    path = db_path or DB_PATH
+    empty: dict[str, str | None] = {
+        "latest_week_start": None,
+        "latest_updated_at": None,
+        "last_import_week_start": None,
+        "last_import_updated_at": None,
+    }
+    if not path:
+        return empty
+    from staffing_tool.models import WeeklyStaffing
+
+    try:
+        with session_scope(path) as session:
+            latest = (
+                session.query(WeeklyStaffing)
+                .order_by(WeeklyStaffing.week_start.desc())
+                .first()
+            )
+            if latest:
+                empty["latest_week_start"] = latest.week_start
+                empty["latest_updated_at"] = latest.updated_at
+            imported = (
+                session.query(WeeklyStaffing)
+                .filter(
+                    (WeeklyStaffing.entered_by == "import")
+                    | (WeeklyStaffing.notes.ilike("imported from schedule%"))
+                )
+                .order_by(
+                    WeeklyStaffing.updated_at.desc(),
+                    WeeklyStaffing.week_start.desc(),
+                )
+                .first()
+            )
+            if imported:
+                empty["last_import_week_start"] = imported.week_start
+                empty["last_import_updated_at"] = imported.updated_at
+    except Exception:
+        pass
+    return empty
+
+
+# URL names that show the operations import-status banner (see context_processors).
+OPS_PAGE_URL_NAMES = frozenset(
+    {
+        "home",
+        "week_list",
+        "week_add",
+        "week_edit",
+        "week_delete",
+        "import_schedule",
+    }
+)
 
 
 def _last_sunday():

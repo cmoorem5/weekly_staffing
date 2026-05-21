@@ -2,14 +2,7 @@
 
 from django.contrib import admin
 
-from .models import ManagerRosterLastName
+# Manager roster is edited in-app: Settings → Manager roster.
+# Django admin index still links to Settings hub and backup tools.
 
-# Add a small "Admin tools" section to the admin index page.
 admin.site.index_template = "dashboard/admin_index.html"
-
-
-@admin.register(ManagerRosterLastName)
-class ManagerRosterLastNameAdmin(admin.ModelAdmin):
-    list_display = ("last_name",)
-    search_fields = ("last_name",)
-    ordering = ("last_name",)

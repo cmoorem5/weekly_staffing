@@ -136,6 +136,8 @@
       LOA: "#5c2d91",
       SICK: "#b31b1b",
       AT: "#052c47",
+      JURY: "#198754",
+      BREV: "#6f42c1",
       Other: "#6c757d",
       Total: "#c12126",
       Trend: "#212529",
@@ -169,6 +171,8 @@
         { key: "LOA", label: "LOA", color: colors.LOA },
         { key: "SICK", label: "SICK/SL", color: colors.SICK },
         { key: "AT", label: "AT", color: colors.AT },
+        { key: "JURY", label: "JURY", color: colors.JURY },
+        { key: "BREV", label: "BREV", color: colors.BREV },
       ];
       if (includeOther.checked) {
         base.push({ key: "Other", label: "Other", color: colors.Other });

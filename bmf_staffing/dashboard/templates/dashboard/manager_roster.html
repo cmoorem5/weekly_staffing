@@ -1,0 +1,74 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Manager roster{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Manager roster</li>
+  </ol>
+</nav>
+
+<h1 class="bmf-page-title">Manager roster</h1>
+<p class="bmf-page-subtitle">
+  Last names matched against schedule columns A–B during import. Managers on this list are excluded
+  from leave counts and tracked on the <a href="{% url 'manager_shifts' %}">Manager shifts</a> report.
+</p>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Add last name</div>
+      <div class="card-body">
+        <form method="post" class="row g-2 align-items-end">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add">
+          <div class="col">
+            <label class="form-label mb-0" for="id_last_name">Last name</label>
+            {{ add_form.last_name }}
+            {% if add_form.last_name.errors %}
+              <div class="text-danger small">{{ add_form.last_name.errors }}</div>
+            {% endif %}
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Current roster ({{ roster|length }})</div>
+      <div class="card-body p-0">
+        {% if roster %}
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Last name</th>
+              <th scope="col" class="text-end" style="width: 6rem;">Remove</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in roster %}
+            <tr>
+              <td>{{ row.last_name }}</td>
+              <td class="text-end">
+                <form method="post" class="d-inline" onsubmit="return confirm('Remove {{ row.last_name }} from the roster?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="roster_id" value="{{ row.id }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No names on the roster. Add one above or re-run database init to seed defaults.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "dashboard/base.html" %}
+{% block title %}KPI thresholds{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">KPI thresholds</li>
+  </ol>
+</nav>
+
+<h1 class="bmf-page-title">KPI thresholds</h1>
+<p class="bmf-page-subtitle">
+  Green / yellow / red ranges for dashboard status badges and board pack targets.
+  Percent metrics are entered as 0–100 (e.g. 95 for 95%). Count metrics use whole numbers.
+</p>
+
+<form method="post">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered bg-white align-middle">
+      <thead>
+        <tr>
+          <th scope="col">Metric</th>
+          <th scope="col" class="text-end">Green min</th>
+          <th scope="col" class="text-end">Green max</th>
+          <th scope="col" class="text-end">Yellow min</th>
+          <th scope="col" class="text-end">Yellow max</th>
+          <th scope="col" class="text-end">Red min</th>
+          <th scope="col" class="text-end">Red max</th>
+          <th scope="col" class="text-center">Higher<br>is better</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in metric_rows %}
+        <tr>
+          <td>
+            <strong>{{ row.form.metric_name.value }}</strong>
+            {% if row.is_percent %}<span class="text-muted small">(%)</span>{% endif %}
+            {{ row.form.metric_name }}
+          </td>
+          <td class="text-end">{{ row.form.green_min }}</td>
+          <td class="text-end">{{ row.form.green_max }}</td>
+          <td class="text-end">{{ row.form.yellow_min }}</td>
+          <td class="text-end">{{ row.form.yellow_max }}</td>
+          <td class="text-end">{{ row.form.red_min }}</td>
+          <td class="text-end">{{ row.form.red_max }}</td>
+          <td class="text-center">{{ row.form.higher_is_better }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-3">
+    <button type="submit" class="btn btn-primary">Save thresholds</button>
+    <a class="btn btn-outline-secondary" href="{% url 'settings_index' %}">Back to settings</a>
+  </p>
+</form>
+{% endblock %}

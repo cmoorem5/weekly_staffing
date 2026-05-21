@@ -23,8 +23,8 @@ class DashboardConfig(AppConfig):
 
     def ready(self) -> None:
         from django.conf import settings
-        from staffing_tool.db import init_db
+        from staffing_tool.db import ensure_db_ready
 
         db_path = getattr(settings, "STAFFING_DB_PATH", None)
         if db_path:
-            init_db(db_path)
+            ensure_db_ready(db_path)

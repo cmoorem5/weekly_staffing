@@ -34,7 +34,7 @@ from .models import (
 )
 from .rag import evaluate_rag
 from .report import export_board_pack, export_week_excel
-from .validation import notes_required
+from .validation import notes_required, notes_required_message
 
 DB_PATH_DEFAULT = "staffing.db"
 
@@ -285,18 +285,17 @@ def _cmd_upsert_week(args: argparse.Namespace, db_path: str) -> None:
                 base_staffed_gt_total = True
                 break
 
+        thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
         if notes_required(
             m.staffing_rate,
             m.ot_dependency,
             m.filled_total,
             required_total=m.required_total,
             base_staffed_gt_total=base_staffed_gt_total,
+            thresholds=thresholds,
         ):
             if not (row.notes and row.notes.strip()):
-                raise ValueError(
-                    "Notes are required when: staffing_rate < 0.90, OT dependency > 0.12, "
-                    "any base staffed > total, or filled_total > required_total + 10. Please add --notes."
-                )
+                raise ValueError(notes_required_message(thresholds) + " Please add --notes.")
 
     print(f"Week {week_start} upserted.")
 

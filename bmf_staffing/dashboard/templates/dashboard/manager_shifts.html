@@ -1,14 +1,36 @@
 {% extends "dashboard/base.html" %}
+{% load static %}
 {% block title %}Manager shifts{% endblock %}
 {% block content %}
 <h1 class="bmf-page-title">Manager line shifts</h1>
 <p class="bmf-page-subtitle">
-  Staffed unit assignments for managers on the roster (last names maintained in
-  <a href="{% url 'admin:dashboard_managerrosterlastname_changelist' %}">Admin → Manager roster</a>).
+  Staffed unit assignments for managers on the roster (last names in
+  <a href="{% url 'manager_roster_settings' %}">Settings → Manager roster</a>).
   This list updates when you <strong>Apply</strong> a schedule import; manual week edits do not change it.
+  Names are grouped by roster last name (e.g. <code>m, Ender</code> and <code>Ender</code> count together).
+</p>
+<p class="small text-muted mb-0">
+  <strong>OT note:</strong> Overtime flags on manager line shifts are informational only. Board <strong>OT %</strong> (backfill rate) counts RN/Medic/EMT OT on filled crew shifts from the weekly staffing import — not manager line assignments.
 </p>
 
-<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" style="max-width: 44rem;" autocomplete="off" aria-label="Manager shift filters">
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Manager shift filters">
+  <div class="col-auto" style="min-width: 22rem;">
+    <label class="form-label mb-0" for="id_fy">Fiscal year</label>
+    <select name="fy" id="id_fy" class="form-select">
+      {% for row in fy_choices %}
+        <option value="{{ row.fy_label }}"{% if row.fy_label == fy_label %} selected{% endif %}>{{ row.option_label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_granularity">Period type</label>
+    <select name="granularity" id="id_granularity" class="form-select">
+      <option value="pay_period"{% if granularity == "pay_period" %} selected{% endif %}>Pay period (biweekly)</option>
+      <option value="month"{% if granularity == "month" %} selected{% endif %}>Month</option>
+      <option value="quarter"{% if granularity == "quarter" %} selected{% endif %}>Fiscal quarter</option>
+      <option value="fy_total"{% if granularity == "fy_total" %} selected{% endif %}>FY total (single bucket)</option>
+    </select>
+  </div>
   <div class="col-auto">
     <label class="form-label mb-0" for="id_date_start">Start date</label>
     <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
@@ -20,19 +42,40 @@
   <div class="col-auto">
     <button type="submit" class="btn btn-primary">Update</button>
   </div>
+  {% if preset_links %}
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.fy_ytd.qs }}">{{ preset_links.fy_ytd.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.last_6_pp.qs }}">{{ preset_links.last_6_pp.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.full_fy.qs }}">{{ preset_links.full_fy.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.fy_total.qs }}">{{ preset_links.fy_total.label }}</a>
+      {% for q in quarter_presets %}
+        <a class="btn btn-outline-secondary btn-sm" href="?{{ q.qs }}">{{ q.label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% if filters_qs %}
+  <div class="col-12 mt-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'manager_shifts_export_csv' %}?{{ filters_qs }}">Export CSV</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'manager_shifts_export_xlsx' %}?{{ filters_qs }}">Export Excel</a>
+  </div>
+  {% endif %}
 </form>
 
 <div class="print-only mb-3">
   <h2 class="h4 mb-1">Manager line shifts</h2>
   <div class="small">
-    Window: <strong>{{ date_start }}</strong> → <strong>{{ date_end }}</strong>
+    FY{{ fy_label }} &middot; Window: <strong>{{ date_start }}</strong> → <strong>{{ date_end }}</strong>
   </div>
 </div>
 
 <p class="small text-muted mt-2 mb-0">
-  Quick ranges:
-  <a href="?fy={{ fy_label_current }}&amp;date_start={{ fy_start_iso }}&amp;date_end={{ today_iso }}">Fiscal year to date</a>
-  <span class="text-muted">(FY{{ fy_label_current }}: {{ fy_start_iso }} → {{ fy_end_iso }})</span>
+  FY{{ fy_label }} window: <strong>{{ fy_start }}</strong> → <strong>{{ fy_end }}</strong>
+  {% if is_current_fy %}
+    &middot; FY YTD data through: <strong>{{ data_through }}</strong>
+  {% endif %}
   &middot;
   <a href="?date_start={{ calendar_year_start_iso }}&amp;date_end={{ today_iso }}">Calendar year to date</a>
   {% if db_date_min and db_date_max %}
@@ -42,8 +85,8 @@
 </p>
 
 {% if cumulative_rows %}
-<p class="small mt-4 mb-2" style="max-width: 44rem;">
-  <strong>Minimum expectation:</strong> {{ manager_min_fy }} manager line-shifts per person per fiscal year (Sun on/before Sep&nbsp;28 → day before next FY start),
+<p class="small mt-4 mb-2" style="max-width: 56rem;">
+  <strong>Minimum expectation:</strong> {{ manager_min_fy }} manager line-shifts per person per fiscal year,
   equivalent to {{ manager_min_per_pp }} per biweekly pay period ({{ manager_pp_per_fy }} periods in the current FY).
   {% if fy_overlap_days > 0 %}
   The <strong>Min (prorated)</strong> column scales those {{ manager_min_fy }} shifts over the overlap of your dates with FY <strong>{{ fy_target_start }}</strong> → <strong>{{ fy_target_end }}</strong>
@@ -52,11 +95,38 @@
   Your selected dates do not overlap that fiscal year window, so prorated minimum is 0 and status shows N/A.
   {% endif %}
 </p>
-<div class="card bmf-card shadow-sm mb-4" style="max-width: 44rem;">
+
+<div class="row g-4 mb-4 no-print">
+  <div class="col-lg-6">
+    <div class="card bmf-card shadow-sm h-100">
+      <div class="card-header bmf-card-header">
+        FY progress vs prorated minimum
+      </div>
+      <div class="card-body">
+        <canvas id="chartManagerProgress" height="280"></canvas>
+        <p class="small text-muted mb-0 mt-2">Blue = shifts worked. Gray outline = prorated minimum for selected dates. Amber rows = below minimum.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card bmf-card shadow-sm h-100">
+      <div class="card-header bmf-card-header">
+        Shifts by {% if granularity == "pay_period" %}pay period{% elif granularity == "month" %}month{% elif granularity == "quarter" %}quarter{% else %}period{% endif %}
+      </div>
+      <div class="card-body">
+        <canvas id="chartManagerByPeriod" height="280"></canvas>
+        <p class="small text-muted mb-0 mt-2">Top managers by shift count; remaining managers grouped as “Other” when more than 10.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card bmf-card shadow-sm mb-4">
   <div class="card-header bmf-card-header">
     Cumulative totals — {{ date_start }} through {{ date_end }}
   </div>
   <div class="card-body p-0">
+    <div class="table-responsive">
     <table class="table mb-0">
       <thead>
         <tr>
@@ -94,20 +164,95 @@
         </tr>
       </tfoot>
     </table>
+    </div>
   </div>
 </div>
+
+{% if period_table_rows and bucket_labels %}
+<div class="card bmf-card shadow-sm mb-4">
+  <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span>Shifts by manager and period</span>
+    <button
+      class="btn btn-outline-secondary btn-sm"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#mgrPeriodCollapse"
+      aria-expanded="false"
+      aria-controls="mgrPeriodCollapse"
+    >
+      Show breakdown
+    </button>
+  </div>
+  <div id="mgrPeriodCollapse" class="collapse">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr>
+          <th scope="col">Manager</th>
+          {% for label in bucket_labels %}
+          <th scope="col" class="text-end small">{{ label }}</th>
+          {% endfor %}
+          <th scope="col" class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in period_table_rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          {% for c in row.counts %}
+          <td class="text-end">{% if c %}{{ c }}{% else %}—{% endif %}</td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ row.total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  </div>
+</div>
+{% endif %}
+
 <p class="text-muted small mb-4">
-  <strong>{{ shift_count }}</strong> person-shift{{ shift_count|pluralize }} in this range (each row in the detail table = one role on one unit for one day).
+  <strong>{{ shift_count }}</strong> person-shift{{ shift_count|pluralize }} in this range (each detail row = one role on one unit for one day).
   Running total orders managers by highest shift count first. Light highlight = below prorated minimum for the period.
 </p>
 {% else %}
 <p class="mt-4 text-muted">No manager line shifts in this range. Import schedules for weeks in the window, widen the dates, or use <strong>All data in database</strong> above.</p>
 {% endif %}
 
-<h2 class="bmf-section-title">Detail</h2>
 {% if shifts %}
-<div class="table-responsive">
-<table class="table table-sm table-bordered bg-white align-middle">
+<div class="card bmf-card shadow-sm mb-4">
+  <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span>Shift-level detail <span class="text-muted fw-normal small">({{ detail_total }} row{{ detail_total|pluralize }})</span></span>
+    <button
+      class="btn btn-outline-secondary btn-sm"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#mgrShiftDetailCollapse"
+      aria-expanded="false"
+      aria-controls="mgrShiftDetailCollapse"
+    >
+      Show detail
+    </button>
+  </div>
+  <div id="mgrShiftDetailCollapse" class="collapse">
+    {% if detail_page_count > 1 %}
+    <div class="card-body py-2 border-bottom">
+      <nav aria-label="Manager shift detail pages" class="d-flex flex-wrap align-items-center gap-2 small">
+        <span class="text-muted">Page {{ detail_page }} of {{ detail_page_count }}</span>
+        {% if detail_page > 1 %}
+          <a class="btn btn-outline-secondary btn-sm" href="?{{ filters_qs }}&amp;page={{ detail_page|add:'-1' }}">Previous</a>
+        {% endif %}
+        {% if detail_page < detail_page_count %}
+          <a class="btn btn-outline-secondary btn-sm" href="?{{ filters_qs }}&amp;page={{ detail_page|add:'1' }}">Next</a>
+        {% endif %}
+      </nav>
+    </div>
+    {% endif %}
+    <div class="table-responsive">
+<table class="table table-sm table-bordered bg-white align-middle mb-0">
   <thead>
     <tr>
       <th>Date</th>
@@ -127,7 +272,12 @@
     {% for s in shifts %}
     <tr>
       <td>{{ s.shift_date }}</td>
-      <td>{{ s.person_display }}</td>
+      <td>
+        {{ s.person_display }}
+        {% if s.raw_person_display %}
+          <span class="text-muted small" title="Legacy label before roster normalization">({{ s.raw_person_display }})</span>
+        {% endif %}
+      </td>
       <td>{% if s.role == "MEDIC" %}Medic{% else %}{{ s.role }}{% endif %}</td>
       <td>{{ s.base_name }}</td>
       <td>{{ s.service_type }}</td>
@@ -141,6 +291,20 @@
     {% endfor %}
   </tbody>
 </table>
+    </div>
+  </div>
 </div>
+{% endif %}
+
+{% if cumulative_rows %}
+<script type="application/json" id="mgr-chart-labels">{{ chart_labels_json|safe }}</script>
+<script type="application/json" id="mgr-chart-stacked">{{ chart_stacked_json|safe }}</script>
+<script type="application/json" id="mgr-chart-colors">{{ chart_colors_json|safe }}</script>
+<script type="application/json" id="mgr-chart-progress-labels">{{ chart_progress_labels_json|safe }}</script>
+<script type="application/json" id="mgr-chart-progress-shifts">{{ chart_progress_shifts_json|safe }}</script>
+<script type="application/json" id="mgr-chart-progress-targets">{{ chart_progress_targets_json|safe }}</script>
+<script type="application/json" id="mgr-chart-progress-met">{{ chart_progress_met_json|safe }}</script>
+<script src="{% static 'dashboard/vendor/chartjs/chart.umd.min.js' %}"></script>
+<script src="{% static 'dashboard/js/manager_shifts_charts.js' %}"></script>
 {% endif %}
 {% endblock %}

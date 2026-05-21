@@ -26,7 +26,7 @@ from staffing_tool.models import (
 )
 from staffing_tool.rag import evaluate_rag
 from staffing_tool.report import export_board_pack
-from staffing_tool.validation import notes_required
+from staffing_tool.validation import notes_required, notes_required_message
 
 from ..forms import BaseCoverageFormSet, BaseTotalsFormSet, WeekForm
 from .helpers import (
@@ -401,6 +401,7 @@ def _save_week_and_coverage(request, data, formset, week_start):
 
     now = _utc_now_iso()
     with session_scope(DB_PATH) as session:
+        thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
         base_by_name = {b.base_name: b for b in session.query(BaseConfig).all()}
 
         base_staffed_gt = False
@@ -441,14 +442,11 @@ def _save_week_and_coverage(request, data, formset, week_start):
                 filled_total,
                 required_total=required_total,
                 base_staffed_gt_total=base_staffed_gt,
+                thresholds=thresholds,
             )
             and not notes
         ):
-            messages.error(
-                request,
-                "Notes are required when staffing rate < 90%, OT dependency > 12%, "
-                "any base staffed > total, or filled > required+10.",
-            )
+            messages.error(request, notes_required_message(thresholds))
             return
 
         row = (

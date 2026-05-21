@@ -1,0 +1,75 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Settings</h1>
+<p class="bmf-page-subtitle">
+  Configuration for schedule import, KPI status colors, and database maintenance.
+  Business rules (FY boundaries, report calculations) are fixed in code and documented below.
+</p>
+
+<div class="row g-4">
+  {% for card in setting_cards %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card bmf-card shadow-sm h-100">
+      <div class="card-header bmf-card-header d-flex justify-content-between align-items-center">
+        <span>{{ card.title }}</span>
+        {% if card.meta %}
+          <span class="badge bg-secondary fw-normal">{{ card.meta }}</span>
+        {% endif %}
+      </div>
+      <div class="card-body d-flex flex-column">
+        <p class="small text-muted flex-grow-1 mb-3">{{ card.description }}</p>
+        <a class="btn btn-outline-primary btn-sm align-self-start" href="{% url card.url_name %}">Open</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if db_health %}
+<div class="card bmf-card shadow-sm mt-4">
+  <div class="card-header bmf-card-header">Database health</div>
+  <div class="card-body">
+    <dl class="row mb-0 small">
+      <dt class="col-sm-3">Database file</dt>
+      <dd class="col-sm-9"><code>{{ db_health.db_path }}</code>{% if not db_health.db_exists %} <span class="text-danger">(missing)</span>{% endif %}</dd>
+      <dt class="col-sm-3">Weeks in DB</dt>
+      <dd class="col-sm-9">{{ db_health.week_count }}</dd>
+      <dt class="col-sm-3">Manager shifts</dt>
+      <dd class="col-sm-9">{{ db_health.manager_shift_count }}</dd>
+      <dt class="col-sm-3">Latest week</dt>
+      <dd class="col-sm-9">{% if db_health.latest_week_start %}{{ db_health.latest_week_start }}{% if db_health.latest_updated_at %} <span class="text-muted">({{ db_health.latest_updated_at }})</span>{% endif %}{% else %}—{% endif %}</dd>
+      <dt class="col-sm-3">Last import applied</dt>
+      <dd class="col-sm-9">{% if db_health.last_import_week_start %}{{ db_health.last_import_week_start }}{% if db_health.last_import_updated_at %} <span class="text-muted">({{ db_health.last_import_updated_at }})</span>{% endif %}{% else %}—{% endif %}</dd>
+    </dl>
+    {% if db_health.data_quality %}
+    <hr class="my-3">
+    <h3 class="h6 mb-2">KPI data quality</h3>
+    {% if db_health.data_quality.all_ok %}
+      <p class="small text-success mb-2">All {{ db_health.data_quality.weeks_checked }} weeks passed consistency checks.</p>
+    {% else %}
+      <p class="small text-warning mb-2">{{ db_health.data_quality.issue_count }} issue(s) across {{ db_health.data_quality.weeks_checked }} weeks.</p>
+    {% endif %}
+    <dl class="row mb-0 small">
+      <dt class="col-sm-3">Exception grid vs stored</dt>
+      <dd class="col-sm-9">{% if db_health.data_quality.leave_mismatch_count == 0 %}<span class="text-success">OK</span>{% else %}<span class="text-danger">{{ db_health.data_quality.leave_mismatch_count }} mismatch(es)</span>{% if db_health.data_quality.leave_mismatch_samples %}<br><code class="small">{{ db_health.data_quality.leave_mismatch_samples|join:"; " }}</code>{% endif %}{% endif %}</dd>
+      <dt class="col-sm-3">OT components</dt>
+      <dd class="col-sm-9">{% if db_health.data_quality.ot_mismatch_count == 0 %}<span class="text-success">OK</span>{% else %}<span class="text-danger">{{ db_health.data_quality.ot_mismatch_count }} mismatch(es)</span>{% if db_health.data_quality.ot_mismatch_samples %}<br><code class="small">{{ db_health.data_quality.ot_mismatch_samples|join:"; " }}</code>{% endif %}{% endif %}</dd>
+      <dt class="col-sm-3">Legacy PFML rows</dt>
+      <dd class="col-sm-9">{% if db_health.data_quality.legacy_pfml_count == 0 %}<span class="text-success">None</span>{% else %}<span class="text-warning">{{ db_health.data_quality.legacy_pfml_count }} week(s)</span>{% if db_health.data_quality.legacy_pfml_samples %} — {{ db_health.data_quality.legacy_pfml_samples|join:", " }}{% endif %}{% endif %}</dd>
+    </dl>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card bmf-card shadow-sm mt-4">
+  <div class="card-header bmf-card-header">Fiscal year &amp; pay period policy</div>
+  <div class="card-body">
+    <p class="small mb-0">{{ fy_policy_note }}</p>
+    <p class="small text-muted mb-0 mt-2">
+      Advanced Django admin remains available at <a href="/admin/">/admin/</a> for developer fallback.
+    </p>
+  </div>
+</div>
+{% endblock %}

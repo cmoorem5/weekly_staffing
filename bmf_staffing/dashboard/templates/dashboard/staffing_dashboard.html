@@ -102,12 +102,26 @@
 
 {% if data_quality_rows %}
 <div class="card bmf-card shadow-sm mt-3">
-  <div class="card-header bmf-card-header">
-    Data quality — {{ date_start }} through {{ date_end }}
-    {% if expected_week_starts_count %}
-      <span class="text-muted fw-normal small">&middot; expected Sundays: {{ expected_week_starts_count }}</span>
-    {% endif %}
+  <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span>
+      Data quality — {{ date_start }} through {{ date_end }}
+      {% if expected_week_starts_count %}
+        <span class="text-muted fw-normal small">&middot; expected Sundays: {{ expected_week_starts_count }}</span>
+      {% endif %}
+      <span class="badge bg-warning text-dark ms-1">{{ data_quality_rows|length }} issue{{ data_quality_rows|length|pluralize }}</span>
+    </span>
+    <button
+      class="btn btn-outline-secondary btn-sm"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#dataQualityCollapse"
+      aria-expanded="false"
+      aria-controls="dataQualityCollapse"
+    >
+      Show issues
+    </button>
   </div>
+  <div id="dataQualityCollapse" class="collapse">
   <div class="card-body">
     <p class="small text-muted mb-2">
       Checks for missing <code>week_start</code> rows and for weeks that do not appear to have had a schedule import applied.
@@ -128,6 +142,7 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
   </div>
 </div>
 {% endif %}
@@ -232,11 +247,11 @@
             <th scope="col" class="text-end">
               <span title="Range of week_start (Sunday) dates included in this period.">Week starts</span>
             </th>
-            <th scope="col" class="text-end">Staffing %</th>
-            <th scope="col" class="text-end">OT %</th>
-            <th scope="col" class="text-end">Shift exception %</th>
-            <th scope="col" class="text-end">System RW %</th>
-            <th scope="col" class="text-end">System GR %</th>
+            <th scope="col" class="text-end">Staffing %<br><span class="fw-normal small text-muted">avg / pooled</span></th>
+            <th scope="col" class="text-end">OT %<br><span class="fw-normal small text-muted">avg / pooled</span></th>
+            <th scope="col" class="text-end">Shift exception %<br><span class="fw-normal small text-muted">avg / pooled</span></th>
+            <th scope="col" class="text-end">System RW %<br><span class="fw-normal small text-muted">avg / pooled</span></th>
+            <th scope="col" class="text-end">System GR %<br><span class="fw-normal small text-muted">avg / pooled</span></th>
           </tr>
         </thead>
         <tbody>
@@ -251,11 +266,11 @@
             </td>
             <td class="text-end">{{ r.weeks_included }}</td>
             <td class="text-end"><span class="text-muted">{{ r.week_start_range_label }}</span></td>
-            <td class="text-end">{{ r.staffing_rate_pct }}</td>
-            <td class="text-end">{{ r.ot_dependency_pct }}</td>
-            <td class="text-end">{{ r.shift_exception_pct }}</td>
-            <td class="text-end">{{ r.system_rw_coverage_pct }}</td>
-            <td class="text-end">{{ r.system_gr_coverage_pct }}</td>
+            <td class="text-end">{{ r.staffing_rate_pct }} <span class="text-muted">/ {{ r.staffing_rate_pooled_pct }}</span></td>
+            <td class="text-end">{{ r.ot_dependency_pct }} <span class="text-muted">/ {{ r.ot_dependency_pooled_pct }}</span></td>
+            <td class="text-end">{{ r.shift_exception_pct }} <span class="text-muted">/ {{ r.shift_exception_pooled_pct }}</span></td>
+            <td class="text-end">{{ r.system_rw_coverage_pct }} <span class="text-muted">/ {{ r.system_rw_coverage_pooled_pct }}</span></td>
+            <td class="text-end">{{ r.system_gr_coverage_pct }} <span class="text-muted">/ {{ r.system_gr_coverage_pooled_pct }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -338,6 +353,8 @@
             <th scope="col" class="text-end">LOA</th>
             <th scope="col" class="text-end">SICK/SL</th>
             <th scope="col" class="text-end">AT</th>
+            <th scope="col" class="text-end">JURY</th>
+            <th scope="col" class="text-end">BREV</th>
             <th scope="col" class="text-end">Other</th>
           </tr>
         </thead>
@@ -356,6 +373,8 @@
             <td class="text-end">{{ r.exceptions_loa }}</td>
             <td class="text-end">{{ r.exceptions_sick }}</td>
             <td class="text-end">{{ r.exceptions_at }}</td>
+            <td class="text-end">{{ r.exceptions_jury }}</td>
+            <td class="text-end">{{ r.exceptions_brev }}</td>
             <td class="text-end">{{ r.exceptions_other }}</td>
           </tr>
           {% endfor %}

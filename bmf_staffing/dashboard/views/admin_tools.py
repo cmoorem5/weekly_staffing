@@ -6,7 +6,6 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
@@ -14,7 +13,6 @@ from django.views.decorators.http import require_http_methods
 from .helpers import _archive_dir_under_repo_root, _is_local_request
 
 
-@staff_member_required
 @require_http_methods(["GET", "POST"])
 def backup_db(request):
     """
@@ -71,7 +69,6 @@ def _backup_db_to_archive(src: Path, archive_dir: Path) -> Path:
     return dest
 
 
-@staff_member_required
 @require_http_methods(["GET", "POST"])
 def restore_db(request):
     """

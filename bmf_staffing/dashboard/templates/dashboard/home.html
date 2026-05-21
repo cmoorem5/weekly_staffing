@@ -9,17 +9,17 @@
   <p class="text-muted small mb-2">
     <strong>{{ overview_weeks_count }}</strong> week{% if overview_weeks_count != 1 %}s{% endif %} averaged
     <span class="text-muted">({{ overview_range_label }})</span>.
-    Each card shows the <strong>mean</strong> of that KPI across those weeks. Status colors (Green/Yellow/Red) use the same thresholds as a single week.
+    Each card shows the <strong>mean of weekly ratios</strong> across those weeks; the subtitle shows the <strong>pooled period rate</strong> (totals ÷ totals). Status colors (Green/Yellow/Red) use the <strong>pooled</strong> rate against the same thresholds as a single week.
     Weekly values are listed below.
   </p>
 
   {% if overview_red_count or overview_yellow_count %}
   <div class="alert {% if overview_red_count %}alert-danger{% else %}alert-warning{% endif %} py-2 mb-3" role="alert">
     {% if overview_red_count %}
-      <strong>Attention (rolling averages):</strong> {{ overview_red_count }} metric{% if overview_red_count != 1 %}s{% endif %} at <strong>Red</strong>
+      <strong>Attention (rolling period):</strong> {{ overview_red_count }} metric{% if overview_red_count != 1 %}s{% endif %} at <strong>Red</strong>
       {% if overview_yellow_count %} &middot; {{ overview_yellow_count }} at Yellow{% endif %}
     {% else %}
-      <strong>Watch (rolling averages):</strong> {{ overview_yellow_count }} metric{% if overview_yellow_count != 1 %}s{% endif %} at Yellow (none at Red).
+      <strong>Watch (rolling period):</strong> {{ overview_yellow_count }} metric{% if overview_yellow_count != 1 %}s{% endif %} at Yellow (none at Red).
     {% endif %}
   </div>
   {% endif %}
@@ -42,6 +42,7 @@
             {% endif %}
           </div>
           <p class="display-6 fw-bold mb-0 mt-2">{{ k.value_pct }}%</p>
+          <p class="small text-muted mb-0">{{ k.pooled_pct }}% period (pooled)</p>
         </div>
       </div>
     </div>
@@ -58,6 +59,9 @@
   <p class="small text-muted mb-3">
     Filled crew shifts: <strong>{{ latest_filled_total }}</strong> / {{ latest_required_total }}
     {% if latest_vacancies %}&middot; vacancies: <strong>{{ latest_vacancies }}</strong>{% endif %}
+    {% if latest_staffing_over_required %}
+      &middot; <span class="text-muted">Staffing rate {{ latest_staffing_rate_pct }}% — filled exceeds the 84-shift weekly requirement (extra paired RN+Medic coverage from the schedule).</span>
+    {% endif %}
   </p>
   <p class="mb-4">
     <a href="{% url 'week_edit' latest_week_start %}" class="btn btn-primary">Edit latest week</a>
@@ -103,21 +107,16 @@
   </div>
 {% endif %}
 
-<h2 class="h6 text-uppercase fw-bold text-muted border-bottom pb-2 mb-2">Admin tools</h2>
-<div class="bg-white border rounded p-3 mb-4">
-  <div class="d-flex flex-wrap gap-2 align-items-center">
-    <a class="btn btn-sm btn-outline-secondary" href="/admin/">Django admin</a>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'base_totals' %}">Base totals</a>
-    <a class="btn btn-sm btn-outline-danger" href="{% url 'backup_db' %}">Backup DB</a>
-    <span class="text-muted small">RW/GR unit-days per base (set once).</span>
-  </div>
+<h2 class="h6 text-uppercase fw-bold text-muted border-bottom pb-2 mb-2">Quick links</h2>
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-outline-primary btn-sm" href="{% url 'reports_index' %}">Reports &amp; analytics</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'settings_index' %}">Settings</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'import_schedule' %}">Import schedule</a>
 </div>
-
-<h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3">Quick links</h2>
 <ul class="mb-2">
   <li><a href="{% url 'week_list' %}">Weeks</a> – Recent weeks, edit, export.</li>
-  <li><a href="{% url 'week_add' %}">Add week</a> – New Sunday week + base coverage.</li>
-  <li><a href="{% url 'import_schedule' %}">Import schedule</a> – Upload Excel schedule workbook.</li>
+  <li><a href="{% url 'reports_index' %}">Reports</a> – Staffing dashboard, manager shifts, monthly board pack.</li>
+  <li><a href="{% url 'settings_index' %}">Settings</a> – Manager roster, KPI thresholds, base totals, backup.</li>
 </ul>
 <p class="text-muted small mb-0">Calendar Sunday for new entries: <strong>{{ last_sunday }}</strong></p>
 {% endblock %}

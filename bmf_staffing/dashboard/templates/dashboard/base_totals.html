@@ -1,26 +1,39 @@
 {% extends "dashboard/base.html" %}
 {% block title %}Base totals{% endblock %}
 {% block content %}
-<h1>Base totals (RW / GR per week)</h1>
-<p>Set once; edit if denominators change.</p>
-<form method="post">
-  {% csrf_token %}
-  {{ formset.management_form }}
-  <table>
-    <thead>
-      <tr><th>Base</th><th>RW</th><th>GR</th></tr>
-    </thead>
-    <tbody>
-      {% for base, form in base_forms %}
-      <tr>
-        <td>{{ base }}</td>
-        <td>{{ form.rw_total }}</td>
-        <td>{{ form.gr_total }}</td>
-        <td>{{ form.base_name }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p style="margin-top: 1rem;"><button type="submit" class="btn">Save base totals</button></p>
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Base totals</li>
+  </ol>
+</nav>
+
+<h1 class="bmf-page-title">Base totals (RW / GR per week)</h1>
+<p class="bmf-page-subtitle">Set once per base; edit if RW/GR unit-day denominators change.</p>
+
+<form method="post" class="card bmf-card shadow-sm" style="max-width: 32rem;">
+  <div class="card-body">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <table class="table mb-0">
+      <thead>
+        <tr><th scope="col">Base</th><th scope="col">RW</th><th scope="col">GR</th></tr>
+      </thead>
+      <tbody>
+        {% for base, form in base_forms %}
+        <tr>
+          <td>{{ base }}</td>
+          <td>{{ form.rw_total }}</td>
+          <td>{{ form.gr_total }}</td>
+          <td class="d-none">{{ form.base_name }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="mt-3 mb-0">
+      <button type="submit" class="btn btn-primary">Save base totals</button>
+      <a class="btn btn-outline-secondary" href="{% url 'settings_index' %}">Back to settings</a>
+    </p>
+  </div>
 </form>
 {% endblock %}

@@ -115,7 +115,8 @@ MAX_GR_UNIT_DAYS_PER_WEEK: dict[str, int] = {
     "Plymouth": 7,
 }
 
-LEAVE_CODES = {"AT", "LT", "SICK", "LOA", "RN", "EMT", "PFML", "JURY", "BREV"}
+# Absence/exception cell values only — not roles (RN/Medic/EMT are row types, not leave codes).
+LEAVE_CODES = {"AT", "LT", "SICK", "LOA", "PFML", "JURY", "BREV"}
 
 # Raw values that count as AT for leave/exception totals.
 AT_ALIASES: set[str] = {"SM/AT", "AT/SIM"}

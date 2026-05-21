@@ -217,25 +217,45 @@
         <div class="collapse navbar-collapse" id="mainNav">
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
             <li class="nav-item">
-              <a class="nav-link" href="{% url 'week_list' %}">Weeks</a>
+              <a class="nav-link{% if request.resolver_match.url_name == 'home' %} active{% endif %}" href="{% url 'home' %}">Home</a>
             </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'week_add' %}">Add week</a>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle{% if request.path == '/weeks/' or '/week/' in request.path or '/import-schedule/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Operations
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item" href="{% url 'week_list' %}">Weeks</a></li>
+                <li><a class="dropdown-item" href="{% url 'week_add' %}">Add week</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'import_schedule' %}">Import schedule</a></li>
+              </ul>
             </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'import_schedule' %}">Import schedule</a>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle{% if '/reports/' in request.path or '/staffing-dashboard/' in request.path or '/manager-shifts/' in request.path or '/report/monthly/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Reports
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item fw-semibold" href="{% url 'reports_index' %}">All reports</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a></li>
+                <li><a class="dropdown-item" href="{% url 'manager_shifts' %}">Manager shifts</a></li>
+                <li><a class="dropdown-item" href="{% url 'monthly_report' %}">Monthly board report</a></li>
+              </ul>
             </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'monthly_report' %}">Monthly report</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'manager_shifts' %}">Manager shifts</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="/admin/">Admin</a>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle{% if '/settings/' in request.path or '/base-totals/' in request.path or '/admin-tools/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Settings
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item fw-semibold" href="{% url 'settings_index' %}">All settings</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'manager_roster_settings' %}">Manager roster</a></li>
+                <li><a class="dropdown-item" href="{% url 'kpi_thresholds_settings' %}">KPI thresholds</a></li>
+                <li><a class="dropdown-item" href="{% url 'base_totals' %}">Base totals (RW / GR)</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'backup_db' %}">Backup database</a></li>
+                <li><a class="dropdown-item" href="{% url 'restore_db' %}">Restore database</a></li>
+              </ul>
             </li>
           </ul>
         </div>
@@ -254,6 +274,24 @@
             <div class="alert alert-secondary mb-2" role="alert">{{ message }}</div>
           {% endif %}
         {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if show_ops_import_banner %}
+      <div class="alert {% if last_import_week_start %}alert-info{% elif latest_week_start %}alert-light{% else %}alert-secondary{% endif %} py-2 mb-3 no-print" role="status">
+        {% if last_import_week_start %}
+          <strong>Last schedule import applied:</strong> {{ last_import_week_start }}
+          {% if last_import_updated_at %}<span class="text-muted small">&middot; updated {{ last_import_updated_at }}</span>{% endif %}
+        {% elif latest_week_start %}
+          <strong>Latest week in database:</strong> {{ latest_week_start }}
+          {% if latest_updated_at %}<span class="text-muted small">&middot; updated {{ latest_updated_at }}</span>{% endif %}
+          <span class="text-muted small">&middot; No schedule import marker found for recent weeks.</span>
+        {% else %}
+          No weekly data yet. <a href="{% url 'import_schedule' %}">Import a schedule</a> or <a href="{% url 'week_add' %}">add a week</a>.
+        {% endif %}
+        {% if last_import_week_start or latest_week_start %}
+          <span class="ms-1"><a href="{% url 'import_schedule' %}" class="alert-link">Import schedule</a></span>
+        {% endif %}
       </div>
       {% endif %}
 

@@ -106,3 +106,73 @@ class BaseCoverageForm(forms.Form):
 
 
 BaseCoverageFormSet = forms.formset_factory(BaseCoverageForm, extra=0)
+
+
+# KPI metrics stored as fractions in DB but edited as 0–100 in the UI.
+PERCENT_KPI_METRICS = frozenset(
+    {
+        "Staffing Rate",
+        "OT Dependency",
+        "Shift Exception %",
+        "System RW Coverage %",
+        "System GR Coverage %",
+    }
+)
+
+
+class KpiThresholdRowForm(forms.Form):
+    metric_name = forms.CharField(widget=forms.HiddenInput())
+    green_min = forms.FloatField(
+        required=False,
+        label="Green min",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+    )
+    green_max = forms.FloatField(
+        required=False,
+        label="Green max",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+    )
+    yellow_min = forms.FloatField(
+        required=False,
+        label="Yellow min",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+    )
+    yellow_max = forms.FloatField(
+        required=False,
+        label="Yellow max",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+    )
+    red_min = forms.FloatField(
+        required=False,
+        label="Red min",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+    )
+    red_max = forms.FloatField(
+        required=False,
+        label="Red max",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+    )
+    higher_is_better = forms.BooleanField(
+        required=False,
+        label="Higher is better",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+
+KpiThresholdFormSet = forms.formset_factory(KpiThresholdRowForm, extra=0)
+
+
+class ManagerRosterAddForm(forms.Form):
+    last_name = forms.CharField(
+        max_length=128,
+        label="Last name",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "e.g. Ender", "autocomplete": "off"}
+        ),
+    )
+
+    def clean_last_name(self):
+        name = (self.cleaned_data.get("last_name") or "").strip()
+        if not name:
+            raise forms.ValidationError("Enter a last name.")
+        return name.title()

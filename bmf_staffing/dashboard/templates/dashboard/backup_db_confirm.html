@@ -1,6 +1,12 @@
 {% extends "dashboard/base.html" %}
 {% block title %}BMF Staffing – Backup DB{% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Backup database</li>
+  </ol>
+</nav>
 <h1 class="h3 mb-3">Backup staffing.db</h1>
 
 <div class="alert alert-warning">

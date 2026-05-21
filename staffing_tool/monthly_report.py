@@ -24,6 +24,7 @@ from .leave_grid import (
 from .metrics import (
     SYSTEM_GR_MAX_SHIFTS_PER_WEEK,
     TOTAL_PERSON_SHIFTS,
+    compute_period_rollups,
     compute_week_metrics,
 )
 from .models import (
@@ -196,11 +197,17 @@ def export_monthly_report(
         weekly_metrics.append(compute_week_metrics(w, cov, bases_cfg))
 
     n_m = len(weekly_metrics)
-    avg_staffing = sum(m.staffing_rate for m in weekly_metrics) / n_m if n_m else 0.0
-    avg_ot_dep = sum(m.ot_dependency for m in weekly_metrics) / n_m if n_m else 0.0
-    avg_leave_exp = sum(m.leave_exposure for m in weekly_metrics) / n_m if n_m else 0.0
-    avg_sys_rw = sum(m.system_rw_pct for m in weekly_metrics) / n_m if n_m else 0.0
-    avg_sys_gr = sum(m.system_gr_pct for m in weekly_metrics) / n_m if n_m else 0.0
+    rollups = compute_period_rollups(weekly_metrics)
+    avg_staffing = rollups.avg_staffing_rate if rollups else 0.0
+    avg_ot_dep = rollups.avg_ot_dependency if rollups else 0.0
+    avg_leave_exp = rollups.avg_leave_exposure if rollups else 0.0
+    avg_sys_rw = rollups.avg_system_rw_pct if rollups else 0.0
+    avg_sys_gr = rollups.avg_system_gr_pct if rollups else 0.0
+    pooled_staffing = rollups.pooled_staffing_rate if rollups else 0.0
+    pooled_ot_dep = rollups.pooled_ot_dependency if rollups else 0.0
+    pooled_leave_exp = rollups.pooled_leave_exposure if rollups else 0.0
+    pooled_sys_rw = rollups.pooled_system_rw_pct if rollups else 0.0
+    pooled_sys_gr = rollups.pooled_system_gr_pct if rollups else 0.0
 
     # -------- Sheet: Summary (dashboard-style) --------
     ws0 = wb.create_sheet("Monthly_Summary", 0)
@@ -281,6 +288,26 @@ def export_monthly_report(
         fill=FILL_HEADER_LIGHT,
     )
     _bmf_cell_border(ws0, kpi_row, 6, TOTAL_PERSON_SHIFTS, align=ALIGN_CENTER)
+    _bmf_border_block(ws0, kpi_row, kpi_row, 1, 6)
+    kpi_row += 1
+    _bmf_merge_band(
+        ws0,
+        kpi_row,
+        1,
+        6,
+        "Pooled period rates (sum ÷ sum)",
+        fill=FILL_BMF_GRAY_BG,
+        font=FONT_BMF_SUBTITLE,
+        alignment=ALIGN_CENTER,
+    )
+    kpi_row += 1
+    kpi_cell(kpi_row, 1, "Pooled staffing rate", pooled_staffing, "0.0%", 2)
+    kpi_cell(kpi_row, 3, "Pooled OT dependency", pooled_ot_dep, "0.0%", 4)
+    kpi_cell(kpi_row, 5, "Pooled shift exception %", pooled_leave_exp, "0.0%", 6)
+    _bmf_border_block(ws0, kpi_row, kpi_row, 1, 6)
+    kpi_row += 1
+    kpi_cell(kpi_row, 1, "Pooled system RW %", pooled_sys_rw, "0.0%", 2)
+    kpi_cell(kpi_row, 3, "Pooled system GR %", pooled_sys_gr, "0.0%", 4)
     _bmf_border_block(ws0, kpi_row, kpi_row, 1, 6)
     r = kpi_row + 1
 

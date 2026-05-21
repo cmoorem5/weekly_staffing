@@ -30,6 +30,26 @@ SYSTEM_GR_MAX_SHIFTS_PER_WEEK = 28
 
 
 @dataclass
+class PeriodRollups:
+    """Weekly averages vs pooled period rates (sum numerators / sum denominators)."""
+
+    n_weeks: int
+    filled_total: int
+    ot_shifts: int
+    leave_total: int
+    avg_staffing_rate: float
+    avg_ot_dependency: float
+    avg_leave_exposure: float
+    avg_system_rw_pct: float
+    avg_system_gr_pct: float
+    pooled_staffing_rate: float
+    pooled_ot_dependency: float
+    pooled_leave_exposure: float
+    pooled_system_rw_pct: float
+    pooled_system_gr_pct: float
+
+
+@dataclass
 class WeekMetrics:
     """All computed metrics for one week."""
 
@@ -195,6 +215,53 @@ def compute_week_metrics(
     )
 
 
+def compute_period_rollups(metrics_list: list[WeekMetrics]) -> PeriodRollups | None:
+    """
+    Aggregate weekly metrics into period averages and pooled rates.
+
+    Averages: arithmetic mean of each week's ratio (legacy dashboard behavior).
+    Pooled: period totals divided by period denominators (e.g. sum OT / sum filled).
+    """
+    n = len(metrics_list)
+    if not n:
+        return None
+    filled_total = sum(m.filled_total for m in metrics_list)
+    ot_shifts = sum(m.ot_shifts for m in metrics_list)
+    leave_total = sum(m.leave_total for m in metrics_list)
+    required_total = n * REQUIRED_TOTAL
+    person_shifts = n * TOTAL_PERSON_SHIFTS
+    rw_staffed = sum(m.rw_staffed_unit_days for m in metrics_list)
+    gr_staffed = sum(m.gr_staffed_unit_days for m in metrics_list)
+    rw_denom = n * metrics_list[0].rw_total_unit_days
+    gr_denom = n * SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+    return PeriodRollups(
+        n_weeks=n,
+        filled_total=filled_total,
+        ot_shifts=ot_shifts,
+        leave_total=leave_total,
+        avg_staffing_rate=sum(m.staffing_rate for m in metrics_list) / n,
+        avg_ot_dependency=sum(m.ot_dependency for m in metrics_list) / n,
+        avg_leave_exposure=sum(m.leave_exposure for m in metrics_list) / n,
+        avg_system_rw_pct=sum(m.system_rw_pct for m in metrics_list) / n,
+        avg_system_gr_pct=sum(m.system_gr_pct for m in metrics_list) / n,
+        pooled_staffing_rate=(
+            float(filled_total) / float(required_total) if required_total else 0.0
+        ),
+        pooled_ot_dependency=(
+            float(ot_shifts) / float(filled_total) if filled_total else 0.0
+        ),
+        pooled_leave_exposure=(
+            float(leave_total) / float(person_shifts) if person_shifts else 0.0
+        ),
+        pooled_system_rw_pct=(
+            float(rw_staffed) / float(rw_denom) if rw_denom else 0.0
+        ),
+        pooled_system_gr_pct=(
+            float(gr_staffed) / float(gr_denom) if gr_denom else 0.0
+        ),
+    )
+
+
 def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:
     """Return the numeric value for a board KPI metric name."""
     mapping = {
@@ -207,5 +274,18 @@ def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:
         "Pilot Vacancies": float(metrics.pilot_vacancies),
         "System RW Coverage %": metrics.system_rw_pct,
         "System GR Coverage %": metrics.system_gr_pct,
+    }
+    return mapping.get(metric_name)
+
+
+def get_pooled_metric_value(rollups: PeriodRollups, metric_name: str) -> float | None:
+    """Return pooled period rate for a board KPI metric name."""
+    mapping = {
+        "Staffing Rate": rollups.pooled_staffing_rate,
+        "OT Dependency": rollups.pooled_ot_dependency,
+        "Backfill Rate": rollups.pooled_ot_dependency,
+        "Shift Exception %": rollups.pooled_leave_exposure,
+        "System RW Coverage %": rollups.pooled_system_rw_pct,
+        "System GR Coverage %": rollups.pooled_system_gr_pct,
     }
     return mapping.get(metric_name)

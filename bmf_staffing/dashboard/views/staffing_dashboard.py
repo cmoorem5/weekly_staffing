@@ -6,7 +6,6 @@ import json
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import cast
-from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
@@ -15,19 +14,14 @@ from openpyxl import Workbook
 from sqlalchemy import func
 from staffing_tool.db import session_scope
 from staffing_tool.fiscal_year import (
-    fiscal_quarter_label,
-    fiscal_quarter_windows_for_fy,
     fy_end_date,
     fy_label_year,
-    fy_week1_for_label_year,
     fy_week1_sunday_containing,
-    next_fy_week1_sunday,
-    normalize_fy_anchor,
-    pay_period_index_overlapping,
     pay_periods_for_fy,
 )
+from staffing_tool.time_buckets import bucket_label, buckets_for_range
 from staffing_tool.leave_grid import EXCEPTION_COL_BREAKDOWN_KEYS
-from staffing_tool.metrics import compute_week_metrics
+from staffing_tool.metrics import compute_period_rollups, compute_week_metrics
 from staffing_tool.models import (
     BaseConfig,
     WeeklyBaseCoverage,
@@ -36,147 +30,16 @@ from staffing_tool.models import (
     WeeklyStaffing,
 )
 
+from .dashboard_filters import (
+    fy_choice_rows,
+    last_closed_pay_period_end_for_fy,
+    parse_date_param,
+    parse_fy_week1_from_request,
+    serialize_filters_query,
+    serialize_filters_query_from_parts,
+)
 from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db, _utc_now_iso
 
-
-def _last_closed_pay_period_end_for_fy(today: date, fy_week1: date) -> date:
-    """
-    End date of the last pay period in ``fy_week1``'s FY that is fully before ``today``.
-
-    If none, returns the day before ``fy_week1`` (legacy edge case for brand-new FY).
-    """
-    periods = pay_periods_for_fy(fy_week1)
-    closed = [p for p in periods if p.end < today]
-    return closed[-1].end if closed else fy_week1 - timedelta(days=1)
-
-
-def _parse_fy_week1_from_request(request, today: date) -> date:
-    """
-    Resolve FY week-1 Sunday from ``fy`` (display label year, e.g. 2026 for FY2026) or
-    legacy ``fy_start`` (any date normalized to its FY's week-1 Sunday).
-    """
-    fy_raw = (request.GET.get("fy") or "").strip()
-    if fy_raw.isdigit():
-        w1 = fy_week1_for_label_year(int(fy_raw))
-        if w1 is not None:
-            return w1
-    fy_start_raw = (request.GET.get("fy_start") or "").strip()
-    if fy_start_raw:
-        d = _parse_date_param(fy_start_raw, today)
-        return normalize_fy_anchor(d)
-    return fy_week1_sunday_containing(today)
-
-
-def _staffing_dashboard_fy_choice_rows(center_label: int) -> list[dict[str, object]]:
-    """Dropdown rows: FY label, PP#1 Sunday, human-readable option text."""
-    rows: list[dict[str, object]] = []
-    for lab in range(center_label - 6, center_label + 3):
-        w1 = fy_week1_for_label_year(lab)
-        if w1 is None:
-            continue
-        rows.append(
-            {
-                "fy_label": lab,
-                "pp1_iso": w1.isoformat(),
-                "option_label": f"FY{lab} — PP#1 starts {w1:%b %d, %Y} (Sun)",
-            }
-        )
-    return rows
-
-
-def _bucket_label(
-    granularity: str,
-    bucket_start: date,
-    bucket_end: date,
-    *,
-    fy_week1: date | None = None,
-) -> str:
-    if granularity == "quarter":
-        return fiscal_quarter_label(bucket_start)
-    if granularity == "month":
-        return bucket_start.strftime("%Y-%m")
-    if granularity == "pay_period" and fy_week1 is not None:
-        idx = pay_period_index_overlapping(fy_week1, bucket_start, bucket_end)
-        if idx is not None:
-            return f"PP#{idx} ({bucket_start.isoformat()}–{bucket_end.isoformat()})"
-    if granularity == "pay_period":
-        return f"{bucket_start.isoformat()}–{bucket_end.isoformat()}"
-    return f"{bucket_start.isoformat()}–{bucket_end.isoformat()}"
-
-
-def _buckets_for_range(
-    granularity: str, range_start: date, range_end: date
-) -> list[tuple[date, date]]:
-    """
-    Return inclusive (start, end) buckets.
-    """
-    buckets: list[tuple[date, date]] = []
-    if range_start > range_end:
-        return buckets
-
-    if granularity == "pay_period":
-        # Periods are FY-scoped; include any periods that overlap the range (may span FYs).
-        fy_a = fy_week1_sunday_containing(range_start)
-        fy_b = fy_week1_sunday_containing(range_end)
-        cur_fy = fy_a
-        while True:
-            for p in pay_periods_for_fy(cur_fy):
-                if p.end < range_start or p.start > range_end:
-                    continue
-                buckets.append((max(p.start, range_start), min(p.end, range_end)))
-            if cur_fy == fy_b:
-                break
-            cur_fy = next_fy_week1_sunday(cur_fy)
-        return buckets
-
-    if granularity == "month":
-        cur = date(range_start.year, range_start.month, 1)
-        while cur <= range_end:
-            # month end
-            next_month = (cur.replace(day=28) + timedelta(days=4)).replace(day=1)
-            end = next_month - timedelta(days=1)
-            buckets.append((max(cur, range_start), min(end, range_end)))
-            cur = next_month
-        return buckets
-
-    # Fiscal quarters: Q1 Sep–Nov, Q2 Dec–Feb, Q3 Mar–May, Q4 Jun through FY end.
-    end_fy = fy_week1_sunday_containing(range_end)
-    cur_fy = fy_week1_sunday_containing(range_start)
-    while True:
-        for _, qa, qb in fiscal_quarter_windows_for_fy(cur_fy):
-            rs = max(qa, range_start)
-            re = min(qb, range_end)
-            if rs <= re:
-                buckets.append((rs, re))
-        if cur_fy == end_fy:
-            break
-        cur_fy = next_fy_week1_sunday(cur_fy)
-    return buckets
-
-
-def _parse_date_param(value: str, fallback: date) -> date:
-    try:
-        return date.fromisoformat(value.strip())
-    except Exception:
-        return fallback
-
-
-def _serialize_filters_query(
-    fy_label: int, granularity: str, date_start: date, date_end: date
-) -> str:
-    return urlencode(
-        {
-            "fy": str(fy_label),
-            "granularity": granularity,
-            "date_start": date_start.isoformat(),
-            "date_end": date_end.isoformat(),
-        }
-    )
-
-
-def _serialize_filters_query_from_parts(parts: dict[str, str]) -> str:
-    clean = {k: v for k, v in parts.items() if v is not None and str(v).strip() != ""}
-    return urlencode(clean)
 
 def _parse_multi_param(request, key: str) -> list[str]:
     """
@@ -249,6 +112,10 @@ def _exc_types_label(exc_types: list[str]) -> str:
     return ", ".join(exc_types)
 
 
+# Exception chart/table series order (matches leave grid columns + Other for unmapped).
+EXC_BREAKDOWN_SERIES_ORDER = ["LT", "LOA", "SICK", "AT", "JURY", "BREV", "Other"]
+
+
 def _exc_breakdown_groups() -> dict[str, list[str]]:
     """
     Exception breakdown series for the staffing dashboard chart/export.
@@ -256,12 +123,13 @@ def _exc_breakdown_groups() -> dict[str, list[str]]:
     Keys are display series names; values are WeeklyLeaveDetail.leave_type keys that
     roll up into that series. Any leave_type not covered here is treated as "Other".
     """
-    # Use the shared leave-grid mapping so rollups match the rest of the app.
     return {
         "LT": EXCEPTION_COL_BREAKDOWN_KEYS["LT"],
         "LOA": EXCEPTION_COL_BREAKDOWN_KEYS["LOA"],
         "SICK": EXCEPTION_COL_BREAKDOWN_KEYS["SICK"],
         "AT": EXCEPTION_COL_BREAKDOWN_KEYS["AT"],
+        "JURY": EXCEPTION_COL_BREAKDOWN_KEYS["JURY"],
+        "BREV": EXCEPTION_COL_BREAKDOWN_KEYS["BREV"],
     }
 
 
@@ -281,10 +149,10 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         raise Http404("Database is not configured (STAFFING_DB_PATH).")
 
     today = date.today()
-    fy_start = _parse_fy_week1_from_request(request, today)
+    fy_start = parse_fy_week1_from_request(request, today)
     fy_end = fy_end_date(fy_start)
     fy_label = fy_label_year(fy_start)
-    fy_choices = _staffing_dashboard_fy_choice_rows(
+    fy_choices = fy_choice_rows(
         fy_label_year(fy_week1_sunday_containing(today))
     )
 
@@ -293,19 +161,19 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         granularity = "pay_period"
 
     # FY-to-date ends at last closed pay period within the selected FY when that FY is current.
-    last_closed_in_fy = _last_closed_pay_period_end_for_fy(today, fy_start)
+    last_closed_in_fy = last_closed_pay_period_end_for_fy(today, fy_start)
     is_current_fy = fy_start == fy_week1_sunday_containing(today)
     default_end = last_closed_in_fy if is_current_fy else fy_end
     default_start = fy_start
 
-    date_start = _parse_date_param(request.GET.get("date_start", ""), default_start)
-    date_end = _parse_date_param(request.GET.get("date_end", ""), default_end)
+    date_start = parse_date_param(request.GET.get("date_start", ""), default_start)
+    date_end = parse_date_param(request.GET.get("date_end", ""), default_end)
     date_start = max(date_start, fy_start)
     date_end = min(date_end, fy_end)
     if date_start > date_end:
         date_start, date_end = default_start, default_end
 
-    buckets = _buckets_for_range(granularity, date_start, date_end)
+    buckets = buckets_for_range(granularity, date_start, date_end)
     labels: list[str] = []
     staffing_rate_series: list[float] = []
     ot_dependency_series: list[float] = []
@@ -321,11 +189,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
     manager_line_shifts_table: list[dict[str, object]] = []
     exc_total_series: list[int] = []
     exc_breakdown_series: dict[str, list[int]] = {
-        "LT": [],
-        "LOA": [],
-        "SICK": [],
-        "AT": [],
-        "Other": [],
+        k: [] for k in EXC_BREAKDOWN_SERIES_ORDER
     }
     exc_table_rows: list[dict[str, object]] = []
 
@@ -348,7 +212,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
     preset_links = {
         "fy_ytd": {
             "label": "FY YTD (last closed PP)",
-            "qs": _serialize_filters_query_from_parts(
+            "qs": serialize_filters_query_from_parts(
                 {
                     "fy": str(fy_label),
                     "granularity": "pay_period",
@@ -359,7 +223,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         },
         "last_6_pp": {
             "label": "Last 6 pay periods",
-            "qs": _serialize_filters_query_from_parts(
+            "qs": serialize_filters_query_from_parts(
                 {
                     "fy": str(fy_label),
                     "granularity": "pay_period",
@@ -370,7 +234,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         },
         "last_12_weeks": {
             "label": "Last 12 weeks",
-            "qs": _serialize_filters_query_from_parts(
+            "qs": serialize_filters_query_from_parts(
                 {
                     "fy": str(fy_label),
                     "granularity": "month",
@@ -381,7 +245,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         },
         "full_fy": {
             "label": "Full FY",
-            "qs": _serialize_filters_query_from_parts(
+            "qs": serialize_filters_query_from_parts(
                 {
                     "fy": str(fy_label),
                     "granularity": "quarter",
@@ -486,14 +350,14 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "system_rw_series_json": "[]",
                 "system_gr_series_json": "[]",
                 "table_rows": [],
-                "filters_qs": _serialize_filters_query(
+                "filters_qs": serialize_filters_query(
                     fy_label, granularity, date_start, date_end
                 ),
                 "manager_line_shifts_total_series_json": "[]",
                 "manager_line_shifts_breakdown_order": [],
                 "manager_line_shifts_breakdown_series_json": "{}",
                 "manager_line_shifts_table": [],
-                "exc_breakdown_order": ["LT", "LOA", "SICK", "AT", "Other"],
+                "exc_breakdown_order": EXC_BREAKDOWN_SERIES_ORDER,
                 "exc_total_series_json": "[]",
                 "exc_breakdown_series_json": "{}",
                 "exc_table_rows": [],
@@ -578,16 +442,15 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         in_bucket = [(d0, m) for d0, m in weekly_metrics if b_start <= d0 <= b_end]
         if not in_bucket:
             continue
-        n = len(in_bucket)
-        avg_staffing = (
-            sum(cast(float, getattr(m, "staffing_rate")) for _d0, m in in_bucket) / n
-        )
-        avg_ot = sum(cast(float, getattr(m, "ot_dependency")) for _d0, m in in_bucket) / n
-        avg_exc = (
-            sum(cast(float, getattr(m, "leave_exposure")) for _d0, m in in_bucket) / n
-        )
-        avg_rw = sum(cast(float, getattr(m, "system_rw_pct")) for _d0, m in in_bucket) / n
-        avg_gr = sum(cast(float, getattr(m, "system_gr_pct")) for _d0, m in in_bucket) / n
+        bucket_metrics = [m for _d0, m in in_bucket]
+        rollups = compute_period_rollups(bucket_metrics)
+        assert rollups is not None
+        n = rollups.n_weeks
+        avg_staffing = rollups.avg_staffing_rate
+        avg_ot = rollups.avg_ot_dependency
+        avg_exc = rollups.avg_leave_exposure
+        avg_rw = rollups.avg_system_rw_pct
+        avg_gr = rollups.avg_system_gr_pct
 
         week_start_min = min(d0 for d0, _m in in_bucket)
         week_start_max = max(d0 for d0, _m in in_bucket)
@@ -597,7 +460,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             else f"{week_start_min.isoformat()}–{week_start_max.isoformat()}"
         )
 
-        label = _bucket_label(
+        label = bucket_label(
             granularity,
             b_start,
             b_end,
@@ -610,7 +473,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         system_rw_series.append(round(100.0 * avg_rw, 2))
         system_gr_series.append(round(100.0 * avg_gr, 2))
 
-        drill_qs = _serialize_filters_query_from_parts(
+        drill_qs = serialize_filters_query_from_parts(
             {
                 "fy": str(fy_label),
                 "granularity": granularity,
@@ -632,6 +495,21 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "shift_exception_pct": round(100.0 * avg_exc, 2),
                 "system_rw_coverage_pct": round(100.0 * avg_rw, 2),
                 "system_gr_coverage_pct": round(100.0 * avg_gr, 2),
+                "staffing_rate_pooled_pct": round(
+                    100.0 * rollups.pooled_staffing_rate, 2
+                ),
+                "ot_dependency_pooled_pct": round(
+                    100.0 * rollups.pooled_ot_dependency, 2
+                ),
+                "shift_exception_pooled_pct": round(
+                    100.0 * rollups.pooled_leave_exposure, 2
+                ),
+                "system_rw_coverage_pooled_pct": round(
+                    100.0 * rollups.pooled_system_rw_pct, 2
+                ),
+                "system_gr_coverage_pooled_pct": round(
+                    100.0 * rollups.pooled_system_gr_pct, 2
+                ),
                 "drill_qs": drill_qs,
             }
         )
@@ -661,7 +539,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                     int(mgr_bucket_by_base.get(b, 0))
                     for b in manager_line_shifts_breakdown_order
                 ],
-                "drill_manager_shifts_qs": _serialize_filters_query_from_parts(
+                "drill_manager_shifts_qs": serialize_filters_query_from_parts(
                     {
                         "fy": str(fy_label),
                         "date_start": b_start.isoformat(),
@@ -672,7 +550,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         )
 
         # Exceptions per bucket: sum weekly totals where week_start falls in bucket
-        totals = {k: 0 for k in ["LT", "LOA", "SICK", "AT", "Other"]}
+        totals = {k: 0 for k in EXC_BREAKDOWN_SERIES_ORDER}
         total_all = 0
         for ws, _m in [(d0.isoformat(), m) for d0, m in weekly_metrics]:
             d_ws = date.fromisoformat(ws)
@@ -680,11 +558,11 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 continue
             total_all += int(exc_total_by_week.get(ws, 0))
             by_group = exc_by_week_by_group.get(ws, {})
-            for k in totals.keys():
+            for k in EXC_BREAKDOWN_SERIES_ORDER:
                 totals[k] += int(by_group.get(k, 0))
 
         exc_total_series.append(int(total_all))
-        for k in ["LT", "LOA", "SICK", "AT", "Other"]:
+        for k in EXC_BREAKDOWN_SERIES_ORDER:
             exc_breakdown_series[k].append(int(totals[k]))
         exc_table_rows.append(
             {
@@ -696,6 +574,8 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "exceptions_loa": int(totals["LOA"]),
                 "exceptions_sick": int(totals["SICK"]),
                 "exceptions_at": int(totals["AT"]),
+                "exceptions_jury": int(totals["JURY"]),
+                "exceptions_brev": int(totals["BREV"]),
                 "exceptions_other": int(totals["Other"]),
                 "drill_qs": drill_qs,
             }
@@ -728,11 +608,11 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             manager_line_shifts_breakdown_series
         ),
         "manager_line_shifts_table": manager_line_shifts_table,
-        "exc_breakdown_order": ["LT", "LOA", "SICK", "AT", "Other"],
+        "exc_breakdown_order": EXC_BREAKDOWN_SERIES_ORDER,
         "exc_total_series_json": json.dumps(exc_total_series),
         "exc_breakdown_series_json": json.dumps(exc_breakdown_series),
         "exc_table_rows": exc_table_rows,
-        "filters_qs": _serialize_filters_query(fy_label, granularity, date_start, date_end),
+        "filters_qs": serialize_filters_query(fy_label, granularity, date_start, date_end),
         "no_data": False,
         "preset_links": preset_links,
         "data_quality_rows": data_quality_rows,
@@ -782,10 +662,15 @@ def staffing_dashboard_export_csv(request):
             "Weeks included",
             "Week starts included",
             "Staffing rate (%)",
+            "Staffing rate pooled (%)",
             "OT dependency (%)",
+            "OT dependency pooled (%)",
             "Shift exception (%)",
+            "Shift exception pooled (%)",
             "System RW coverage (%)",
+            "System RW coverage pooled (%)",
             "System GR coverage (%)",
+            "System GR coverage pooled (%)",
         ]
     )
     for r in rows:
@@ -797,10 +682,15 @@ def staffing_dashboard_export_csv(request):
                 r.get("weeks_included"),
                 r.get("week_start_range_label"),
                 r.get("staffing_rate_pct"),
+                r.get("staffing_rate_pooled_pct"),
                 r.get("ot_dependency_pct"),
+                r.get("ot_dependency_pooled_pct"),
                 r.get("shift_exception_pct"),
+                r.get("shift_exception_pooled_pct"),
                 r.get("system_rw_coverage_pct"),
+                r.get("system_rw_coverage_pooled_pct"),
                 r.get("system_gr_coverage_pct"),
+                r.get("system_gr_coverage_pooled_pct"),
             ]
         )
 
@@ -835,6 +725,8 @@ def staffing_dashboard_export_csv(request):
             "LOA (count)",
             "SICK/SL (count)",
             "AT (count)",
+            "JURY (count)",
+            "BREV (count)",
             "Other (count)",
         ]
     )
@@ -849,6 +741,8 @@ def staffing_dashboard_export_csv(request):
                 r.get("exceptions_loa"),
                 r.get("exceptions_sick"),
                 r.get("exceptions_at"),
+                r.get("exceptions_jury"),
+                r.get("exceptions_brev"),
                 r.get("exceptions_other"),
             ]
         )
@@ -894,10 +788,15 @@ def staffing_dashboard_export_xlsx(request):
             "Weeks included",
             "Week starts included",
             "Staffing rate (%)",
+            "Staffing rate pooled (%)",
             "OT dependency (%)",
+            "OT dependency pooled (%)",
             "Shift exception (%)",
+            "Shift exception pooled (%)",
             "System RW coverage (%)",
+            "System RW coverage pooled (%)",
             "System GR coverage (%)",
+            "System GR coverage pooled (%)",
         ]
     )
     for r in rows:
@@ -909,10 +808,15 @@ def staffing_dashboard_export_xlsx(request):
                 r.get("weeks_included"),
                 r.get("week_start_range_label"),
                 r.get("staffing_rate_pct"),
+                r.get("staffing_rate_pooled_pct"),
                 r.get("ot_dependency_pct"),
+                r.get("ot_dependency_pooled_pct"),
                 r.get("shift_exception_pct"),
+                r.get("shift_exception_pooled_pct"),
                 r.get("system_rw_coverage_pct"),
+                r.get("system_rw_coverage_pooled_pct"),
                 r.get("system_gr_coverage_pct"),
+                r.get("system_gr_coverage_pooled_pct"),
             ]
         )
 
@@ -941,6 +845,8 @@ def staffing_dashboard_export_xlsx(request):
             "LOA (count)",
             "SICK/SL (count)",
             "AT (count)",
+            "JURY (count)",
+            "BREV (count)",
             "Other (count)",
         ]
     )
@@ -955,6 +861,8 @@ def staffing_dashboard_export_xlsx(request):
                 r.get("exceptions_loa"),
                 r.get("exceptions_sick"),
                 r.get("exceptions_at"),
+                r.get("exceptions_jury"),
+                r.get("exceptions_brev"),
                 r.get("exceptions_other"),
             ]
         )

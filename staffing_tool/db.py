@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Importing from .models loads models.py fully so all tables register on Base.
+from .manager_names import backfill_canonical_manager_shift_names
 from .manager_roster import seed_manager_roster_if_empty
 from .models import Base, BaseConfig, KpiThreshold, VehicleSlot
 
@@ -324,6 +325,23 @@ def seed_kpi_thresholds(session: Session) -> None:
             )
 
 
+# Process-local: DB paths that have completed init_db in this worker.
+_DB_READY_PATHS: set[str] = set()
+
+
+def ensure_db_ready(db_path: str | None = None) -> None:
+    """
+    Run ``init_db`` once per process for each DB file path.
+
+    Safe to call from Django ``ready()`` and from view helpers on every request.
+    """
+    resolved = _resolve_db_path(db_path)
+    if resolved in _DB_READY_PATHS:
+        return
+    init_db(resolved)
+    _DB_READY_PATHS.add(resolved)
+
+
 def init_db(db_path: str | None = None) -> None:
     """Create tables, run migrations, and seed base_config + kpi_thresholds."""
     engine = get_engine(db_path)
@@ -337,6 +355,7 @@ def init_db(db_path: str | None = None) -> None:
         seed_kpi_thresholds(session)
         seed_vehicle_slots(session)
         seed_manager_roster_if_empty(session)
+        backfill_canonical_manager_shift_names(session)
         session.commit()
     migrate_leave_exposure_to_shift_exception_metric(engine)
     migrate_system_gr_kpi_thresholds(engine)

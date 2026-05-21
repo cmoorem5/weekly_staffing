@@ -1,7 +1,6 @@
 @echo off
-setlocal
-
-REM Open staffing dashboard in browser. Starts Django only if port 8000 is closed.
+REM Opens the Staffing Dashboard directly (starts server if needed).
+REM Primary launcher: desktop "BMF Staffing" shortcut or Run_Staffing_Django.bat (home page).
 
 cd /d "%~dp0"
 
@@ -11,10 +10,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 if errorlevel 1 (
   echo Django not detected on port 8000. Starting server...
-  if exist ".venv\\Scripts\\python.exe" (
-    start \"BMF Staffing - Django\" /MIN /D \"%~dp0\" .venv\\Scripts\\python.exe bmf_staffing\\manage.py runserver
+  if exist ".venv\Scripts\python.exe" (
+    start "BMF Staffing - Django" /MIN /D "%~dp0" .venv\Scripts\python.exe bmf_staffing\manage.py runserver
   ) else (
-    start \"BMF Staffing - Django\" /MIN /D \"%~dp0\" python bmf_staffing\\manage.py runserver
+    start "BMF Staffing - Django" /MIN /D "%~dp0" python bmf_staffing\manage.py runserver
   )
 
   powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -27,4 +26,3 @@ if errorlevel 1 (
 
 start "" "http://127.0.0.1:8000/staffing-dashboard/"
 exit /b 0
-

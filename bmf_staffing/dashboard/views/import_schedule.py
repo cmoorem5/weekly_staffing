@@ -50,7 +50,7 @@ def _build_import_preview_context(
         manager_last_names_upper=mgr_names,
     )
     filled_count = sum(1 for r in records if r.filled)
-    ot_count = sum(1 for r in records if r.overtime)
+    ot_count = sum(1 for r in records if r.overtime and r.filled)
     leave_count = sum(1 for r in records if r.leave_type)
     manager_line_count = sum(
         1

@@ -12,9 +12,15 @@ from .views import (
     export_excel,
     home,
     import_schedule,
+    kpi_thresholds_settings,
+    manager_roster_settings,
     manager_shifts,
+    manager_shifts_export_csv,
+    manager_shifts_export_xlsx,
     monthly_report,
+    reports_index,
     restore_db,
+    settings_index,
     staffing_dashboard,
     staffing_dashboard_export_csv,
     staffing_dashboard_export_xlsx,
@@ -26,6 +32,10 @@ from .views import (
 
 urlpatterns = [
     path("", home, name="home"),
+    path("reports/", reports_index, name="reports_index"),
+    path("settings/", settings_index, name="settings_index"),
+    path("settings/manager-roster/", manager_roster_settings, name="manager_roster_settings"),
+    path("settings/kpi-thresholds/", kpi_thresholds_settings, name="kpi_thresholds_settings"),
     path("admin-tools/backup-db/", backup_db, name="backup_db"),
     path("admin-tools/restore-db/", restore_db, name="restore_db"),
     path("staffing-dashboard/", staffing_dashboard, name="staffing_dashboard"),
@@ -60,4 +70,14 @@ urlpatterns = [
     ),
     path("report/monthly/", monthly_report, name="monthly_report"),
     path("manager-shifts/", manager_shifts, name="manager_shifts"),
+    path(
+        "manager-shifts/export.csv",
+        manager_shifts_export_csv,
+        name="manager_shifts_export_csv",
+    ),
+    path(
+        "manager-shifts/export.xlsx",
+        manager_shifts_export_xlsx,
+        name="manager_shifts_export_xlsx",
+    ),
 ]

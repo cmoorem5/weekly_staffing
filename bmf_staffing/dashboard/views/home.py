@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from django.shortcuts import render
 from staffing_tool.db import session_scope
-from staffing_tool.metrics import compute_week_metrics
+from staffing_tool.metrics import PeriodRollups, compute_period_rollups, compute_week_metrics
 from staffing_tool.models import (
     BaseConfig,
     KpiThreshold,
@@ -17,26 +17,32 @@ from .helpers import DB_PATH, _ensure_db, _last_sunday
 
 # Home overview cards: (card label, KpiThreshold metric_name) — values are rolling averages
 HOME_OVERVIEW_METRICS = [
-    ("Avg staffing rate", "Staffing Rate"),
-    ("Avg OT dependency", "OT Dependency"),
-    ("Avg shift exception %", "Shift Exception %"),
-    ("Avg system RW coverage", "System RW Coverage %"),
-    ("Avg system GR coverage", "System GR Coverage %"),
+    ("Avg staffing rate", "Staffing Rate", "pooled_staffing_rate"),
+    ("Avg OT dependency", "OT Dependency", "pooled_ot_dependency"),
+    ("Avg shift exception %", "Shift Exception %", "pooled_leave_exposure"),
+    ("Avg system RW coverage", "System RW Coverage %", "pooled_system_rw_pct"),
+    ("Avg system GR coverage", "System GR Coverage %", "pooled_system_gr_pct"),
 ]
 
 
-def _home_rolling_averages(metrics_list):
-    """Mean of each board KPI across weekly metrics (same thresholds, averaged values)."""
-    n = len(metrics_list)
-    if not n:
-        return {}
-    return {
-        "Staffing Rate": sum(m.staffing_rate for m in metrics_list) / n,
-        "OT Dependency": sum(m.ot_dependency for m in metrics_list) / n,
-        "Shift Exception %": sum(m.leave_exposure for m in metrics_list) / n,
-        "System RW Coverage %": sum(m.system_rw_pct for m in metrics_list) / n,
-        "System GR Coverage %": sum(m.system_gr_pct for m in metrics_list) / n,
+def _metric_avg_and_pooled(
+    rollups: PeriodRollups, internal: str, pooled_attr: str
+) -> tuple[float, float]:
+    avg_map = {
+        "Staffing Rate": rollups.avg_staffing_rate,
+        "OT Dependency": rollups.avg_ot_dependency,
+        "Shift Exception %": rollups.avg_leave_exposure,
+        "System RW Coverage %": rollups.avg_system_rw_pct,
+        "System GR Coverage %": rollups.avg_system_gr_pct,
     }
+    pooled_map = {
+        "pooled_staffing_rate": rollups.pooled_staffing_rate,
+        "pooled_ot_dependency": rollups.pooled_ot_dependency,
+        "pooled_leave_exposure": rollups.pooled_leave_exposure,
+        "pooled_system_rw_pct": rollups.pooled_system_rw_pct,
+        "pooled_system_gr_pct": rollups.pooled_system_gr_pct,
+    }
+    return avg_map[internal], pooled_map[pooled_attr]
 
 
 def home(request):
@@ -100,16 +106,18 @@ def home(request):
 
         latest = week_rows[0]
         m_latest = metrics_list[0]
-        avgs = _home_rolling_averages(metrics_list)
+        rollups = compute_period_rollups(metrics_list)
         kpis = []
         red_n = yellow_n = 0
-        for label, internal in HOME_OVERVIEW_METRICS:
-            val = avgs.get(internal)
-            if val is None:
+        for label, internal, pooled_attr in HOME_OVERVIEW_METRICS:
+            if rollups is None:
                 continue
+            avg_val, pooled_val = _metric_avg_and_pooled(
+                rollups, internal, pooled_attr
+            )
             th = thresholds.get(internal)
             if th:
-                rag = evaluate_rag(val, th)
+                rag = evaluate_rag(pooled_val, th)
                 if rag == "Red":
                     red_n += 1
                 elif rag == "Yellow":
@@ -119,7 +127,8 @@ def home(request):
             kpis.append(
                 {
                     "label": label,
-                    "value_pct": round(val * 100, 1),
+                    "value_pct": round(avg_val * 100, 1),
+                    "pooled_pct": round(pooled_val * 100, 1),
                     "rag": rag,
                 }
             )
@@ -137,6 +146,9 @@ def home(request):
                 "latest_filled_total": m_latest.filled_total,
                 "latest_required_total": m_latest.required_total,
                 "latest_vacancies": m_latest.vacancies,
+                "latest_staffing_over_required": m_latest.filled_total
+                > m_latest.required_total,
+                "latest_staffing_rate_pct": round(m_latest.staffing_rate * 100, 1),
                 "recent_weeks": recent_weeks,
                 "overview_weeks_count": n_weeks,
                 "overview_range_label": range_label,

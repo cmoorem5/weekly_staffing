@@ -1,11 +1,17 @@
 {% extends "dashboard/base.html" %}
 {% block title %}BMF Staffing – Restore DB{% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Restore database</li>
+  </ol>
+</nav>
 <h1 class="h3 mb-3">Restore staffing.db</h1>
 
 <div class="alert alert-danger">
   <strong>Danger:</strong> This overwrites the current <code>staffing.db</code> with a backup from <code>archive/</code>.
-  This tool is restricted to <strong>staff users</strong> on <strong>localhost</strong>.
+  This tool is restricted to <strong>localhost</strong> only.
 </div>
 
 <dl class="row">
