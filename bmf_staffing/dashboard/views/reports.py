@@ -75,7 +75,7 @@ def reports_index(request):
             "title": "Manager line shifts",
             "description": (
                 "Per-manager FY shift counts vs the 52-shift annual minimum, "
-                "with period breakdown and progress charts."
+                "AOC day totals, period breakdown, and progress charts."
             ),
             "open_url_name": "manager_shifts",
             "open_qs": _report_card_qs(**mgr_ytd_parts),
@@ -91,6 +91,26 @@ def reports_index(request):
                     "qs": _report_card_qs(**mgr_ytd_parts),
                 },
             ],
+        },
+        {
+            "title": "Weekly staffing report",
+            "description": (
+                "Polished PDF and HTML email summary for one week — KPIs, 8-week trend, "
+                "exception breakdown (AT/LT/SICK/LOA/JURY/BREV), and base coverage from staffing.db."
+            ),
+            "open_url_name": "weekly_staffing_report",
+            "open_qs": "",
+            "exports": [],
+        },
+        {
+            "title": "Quarterly staffing report",
+            "description": (
+                "Fiscal-quarter PDF — weekly trend, exception breakdown (AT/LT/SICK/LOA/JURY/BREV), "
+                "period volumes, base coverage, and week-by-week detail from staffing.db."
+            ),
+            "open_url_name": "quarterly_staffing_report",
+            "open_qs": "",
+            "exports": [],
         },
         {
             "title": "Monthly board report",

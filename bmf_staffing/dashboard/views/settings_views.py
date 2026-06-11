@@ -4,15 +4,24 @@ from django.contrib import messages
 from django.db import IntegrityError
 from django.shortcuts import redirect, render
 from staffing_tool.db import session_scope
-from staffing_tool.models import KpiThreshold
+from staffing_tool.models import KpiThreshold, StaffRosterEntry as SaStaffRosterEntry
+
+from staffing_tool.staff_roster import (
+    add_roster_entries,
+    canonical_display,
+    list_roster_import_weeks,
+    parse_roster_import_form_key,
+    suggest_roster_imports,
+)
 
 from ..forms import (
     KpiThresholdFormSet,
     ManagerRosterAddForm,
     PERCENT_KPI_METRICS,
+    StaffRosterAddForm,
 )
-from ..models import ManagerRosterLastName
-from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db, staffing_db_health
+from ..models import ManagerRosterLastName, StaffRosterEntry
+from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db, _utc_now_iso, staffing_db_health
 
 
 def _threshold_to_form_initial(row: KpiThreshold) -> dict[str, object]:
@@ -70,9 +79,13 @@ def settings_index(request):
     """Settings hub — configuration and database tools."""
     _ensure_db()
     roster_count = 0
+    staff_roster_count = 0
     threshold_count = 0
     if DB_PATH:
         roster_count = ManagerRosterLastName.objects.using("staffing").count()
+        staff_roster_count = (
+            StaffRosterEntry.objects.using("staffing").filter(active=True).count()
+        )
         with session_scope(DB_PATH) as session:
             threshold_count = session.query(KpiThreshold).count()
 
@@ -85,6 +98,19 @@ def settings_index(request):
             ),
             "url_name": "manager_roster_settings",
             "meta": f"{roster_count} name{'s' if roster_count != 1 else ''}",
+        },
+        {
+            "title": "Staff roster (RN / Medic / EMT)",
+            "description": (
+                "Clinical staff on imported schedules. Auto-updated on each "
+                "schedule import; deactivate here to stop auto-add."
+            ),
+            "url_name": "staff_roster_settings",
+            "meta": (
+                f"{staff_roster_count} active"
+                if staff_roster_count
+                else "auto-fills on import"
+            ),
         },
         {
             "title": "KPI thresholds",
@@ -168,6 +194,208 @@ def manager_roster_settings(request):
         "dashboard/manager_roster.html",
         {"roster": roster, "add_form": add_form},
     )
+
+
+def _staff_roster_import_context(week_start: str | None) -> dict[str, object]:
+    """Week list and import suggestions for the staff roster page."""
+    if not DB_PATH:
+        return {
+            "import_weeks": [],
+            "selected_import_week": "",
+            "import_suggestions": [],
+            "import_suggestions_by_role": {"RN": [], "MEDIC": [], "EMT": []},
+        }
+    with session_scope(DB_PATH) as session:
+        weeks = list_roster_import_weeks(session)
+        selected = week_start or (weeks[0] if weeks else "")
+        suggestions = (
+            suggest_roster_imports(session, selected) if selected else []
+        )
+    by_role: dict[str, list[dict[str, object]]] = {
+        "RN": [],
+        "MEDIC": [],
+        "EMT": [],
+    }
+    for item in suggestions:
+        by_role.setdefault(item.role, []).append(
+            {
+                "form_key": item.form_key,
+                "display": item.display,
+                "shift_count": item.shift_count,
+            }
+        )
+    return {
+        "import_weeks": weeks,
+        "selected_import_week": selected,
+        "import_suggestions": suggestions,
+        "import_suggestions_by_role": by_role,
+    }
+
+
+def staff_roster_settings(request):
+    """Add, deactivate, or reactivate RN / Medic / EMT staff roster entries."""
+    _ensure_db()
+    add_form = StaffRosterAddForm()
+    import_week = (request.GET.get("import_week") or "").strip()
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "import_names":
+            import_week = (request.POST.get("import_week") or "").strip()
+            import_all = (request.POST.get("import_all") or "").strip() == "1"
+            entries: list[tuple[str, str, str]] = []
+            if import_all and DB_PATH and import_week:
+                with session_scope(DB_PATH) as session:
+                    for item in suggest_roster_imports(session, import_week):
+                        entries.append(
+                            (item.role, item.last_name, item.first_name)
+                        )
+            else:
+                for key in request.POST.getlist("import_key"):
+                    parsed = parse_roster_import_form_key(key)
+                    if parsed:
+                        entries.append(parsed)
+            if not entries:
+                messages.warning(
+                    request,
+                    "No people selected to add. Choose names from the import list.",
+                )
+            elif not DB_PATH:
+                messages.error(request, "Database is not configured.")
+            else:
+                with session_scope(DB_PATH) as session:
+                    added, skipped = add_roster_entries(
+                        session,
+                        entries,
+                        created_at=_utc_now_iso(),
+                    )
+                if added:
+                    messages.success(
+                        request,
+                        f"Added {added} name{'s' if added != 1 else ''} to the staff roster.",
+                    )
+                if skipped and not added:
+                    messages.warning(
+                        request,
+                        "Those names are already on the roster.",
+                    )
+                elif skipped:
+                    messages.info(
+                        request,
+                        f"Skipped {skipped} duplicate name{'s' if skipped != 1 else ''}.",
+                    )
+            return redirect(
+                f"{request.path}?import_week={import_week}" if import_week else request.path
+            )
+        if action == "add":
+            add_form = StaffRosterAddForm(request.POST)
+            if add_form.is_valid():
+                last_name = add_form.cleaned_data["last_name"]
+                first_name = add_form.cleaned_data["first_name"]
+                role = add_form.cleaned_data["role"]
+                try:
+                    StaffRosterEntry.objects.using("staffing").create(
+                        last_name=last_name,
+                        first_name=first_name,
+                        role=role,
+                        active=True,
+                        created_at=_utc_now_iso(),
+                    )
+                    label = f"{last_name}, {first_name}" if first_name else last_name
+                    messages.success(
+                        request, f"Added {label} ({role}) to the staff roster."
+                    )
+                except IntegrityError:
+                    messages.error(
+                        request,
+                        f"{last_name} is already on the {role} roster.",
+                    )
+                return redirect("staff_roster_settings")
+        elif action == "deactivate":
+            raw_id = (request.POST.get("roster_id") or "").strip()
+            if raw_id.isdigit() and DB_PATH:
+                entry_id = int(raw_id)
+                label = ""
+                role = ""
+                with session_scope(DB_PATH) as session:
+                    row = (
+                        session.query(SaStaffRosterEntry)
+                        .filter(
+                            SaStaffRosterEntry.id == entry_id,
+                            SaStaffRosterEntry.active == 1,
+                        )
+                        .first()
+                    )
+                    if row:
+                        label = canonical_display(row)
+                        role = row.role
+                        row.active = 0
+                if label:
+                    messages.success(
+                        request,
+                        f"Removed {label} ({role}) from the active roster.",
+                    )
+                else:
+                    messages.error(request, "Entry not found or already inactive.")
+            elif raw_id.isdigit():
+                messages.error(request, "Database is not configured.")
+            else:
+                messages.error(request, "Invalid roster entry.")
+            return redirect("staff_roster_settings")
+        elif action == "reactivate":
+            raw_id = (request.POST.get("roster_id") or "").strip()
+            if raw_id.isdigit() and DB_PATH:
+                with session_scope(DB_PATH) as session:
+                    updated = (
+                        session.query(SaStaffRosterEntry)
+                        .filter(
+                            SaStaffRosterEntry.id == int(raw_id),
+                            SaStaffRosterEntry.active == 0,
+                        )
+                        .update({SaStaffRosterEntry.active: 1})
+                    )
+                if updated:
+                    messages.success(request, "Reactivated roster entry.")
+                else:
+                    messages.error(request, "Entry not found.")
+            elif raw_id.isdigit():
+                messages.error(request, "Database is not configured.")
+            return redirect("staff_roster_settings")
+
+    active_rows = list(
+        StaffRosterEntry.objects.using("staffing")
+        .filter(active=True)
+        .order_by("role", "last_name", "first_name")
+    )
+    inactive_rows = list(
+        StaffRosterEntry.objects.using("staffing")
+        .filter(active=False)
+        .order_by("role", "last_name", "first_name")
+    )
+    roster_by_role: dict[str, list[dict[str, object]]] = {
+        "RN": [],
+        "MEDIC": [],
+        "EMT": [],
+    }
+    for row in active_rows:
+        roster_by_role.setdefault(row.role, []).append(
+            {
+                "id": row.id,
+                "role": row.role,
+                "display": canonical_display(row),
+                "last_name": row.last_name,
+                "first_name": row.first_name,
+            }
+        )
+
+    ctx = {
+        "add_form": add_form,
+        "roster_by_role": roster_by_role,
+        "inactive_rows": inactive_rows,
+        "active_count": len(active_rows),
+    }
+    ctx.update(_staff_roster_import_context(import_week or None))
+    return render(request, "dashboard/staff_roster.html", ctx)
 
 
 def kpi_thresholds_settings(request):

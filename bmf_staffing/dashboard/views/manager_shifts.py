@@ -44,6 +44,13 @@ from .helpers import (
 MANAGER_MIN_SHIFTS_PER_FY = 52
 MANAGER_MIN_PER_PAY_PERIOD = 2
 MANAGER_DETAIL_PAGE_SIZE = 50
+MANAGER_AOC_DETAIL_PAGE_SIZE = 50
+
+
+def _manager_row_event_type(row: WeeklyManagerShift) -> str:
+    """Normalize stored event_type (legacy rows default to line_shift)."""
+    et = (getattr(row, "event_type", None) or "").strip().lower()
+    return et if et in {"line_shift", "aoc"} else "line_shift"
 
 # Distinct colors for stacked period chart (BMF palette + extras).
 MANAGER_CHART_COLORS = (
@@ -134,7 +141,9 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
     date_end_s = date_end.isoformat()
 
     totals: dict[str, int] = defaultdict(int)
+    aoc_totals: dict[str, int] = defaultdict(int)
     shift_rows: list[dict[str, object]] = []
+    aoc_rows: list[dict[str, object]] = []
     with session_scope(DB_PATH) as session:
         db_min, db_max = (
             session.query(
@@ -159,6 +168,22 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         for m in shifts_raw:
             raw_name = (m.person_display or "").strip() or "(unknown)"
             canon = canonical_manager_name(raw_name, roster_upper)
+            event_type = _manager_row_event_type(m)
+            if event_type == "aoc":
+                aoc_totals[canon] += 1
+                aoc_rows.append(
+                    {
+                        "shift_date": m.shift_date,
+                        "person_display": canon,
+                        "raw_person_display": raw_name if raw_name != canon else "",
+                        "role": m.role,
+                        "raw_value": m.raw_value,
+                        "week_start": m.week_start,
+                        "source_tab": m.source_tab,
+                        "source_cell": m.source_cell,
+                    }
+                )
+                continue
             totals[canon] += 1
             shift_rows.append(
                 {
@@ -179,6 +204,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
             )
 
     grand_total = len(shift_rows)
+    aoc_grand_total = len(aoc_rows)
     range_start_d = date_start
     range_end_d = date_end
     prorated_min, fy_anchor_start, fy_anchor_end, overlap_days, fy_total_days = (
@@ -187,21 +213,29 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
 
     cumulative_rows: list[dict[str, object]] = []
     running = 0
+    all_manager_names = sorted(
+        set(totals) | set(aoc_totals),
+        key=lambda n: (-(totals.get(n, 0) + aoc_totals.get(n, 0)), n.lower()),
+    )
     totals_by_person = sorted(totals.items(), key=lambda x: (-x[1], x[0].lower()))
-    for name, n in totals_by_person:
-        running += n
+    for name in all_manager_names:
+        n = totals.get(name, 0)
+        aoc_n = aoc_totals.get(name, 0)
+        if n:
+            running += n
         pct = round(100.0 * n / grand_total, 1) if grand_total else 0.0
         status_label, met, delta, target_disp = _status_for_count(n, prorated_min)
         cumulative_rows.append(
             {
                 "name": name,
                 "count": n,
+                "aoc_count": aoc_n,
                 "pct": pct,
-                "running": running,
+                "running": running if n else None,
                 "target": target_disp,
                 "delta": delta,
                 "met": met,
-                "status_label": status_label,
+                "status_label": status_label if n else "—",
             }
         )
 
@@ -324,15 +358,49 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         detail_start : detail_start + MANAGER_DETAIL_PAGE_SIZE
     ]
 
+    aoc_page_raw = (request.GET.get("aoc_page") or "1").strip()
+    try:
+        aoc_detail_page = max(1, int(aoc_page_raw))
+    except ValueError:
+        aoc_detail_page = 1
+    aoc_detail_total = len(aoc_rows)
+    aoc_detail_page_count = max(
+        1,
+        (aoc_detail_total + MANAGER_AOC_DETAIL_PAGE_SIZE - 1)
+        // MANAGER_AOC_DETAIL_PAGE_SIZE,
+    )
+    aoc_detail_page = min(aoc_detail_page, aoc_detail_page_count)
+    aoc_detail_start = (aoc_detail_page - 1) * MANAGER_AOC_DETAIL_PAGE_SIZE
+    aoc_detail_page_rows = aoc_rows[
+        aoc_detail_start : aoc_detail_start + MANAGER_AOC_DETAIL_PAGE_SIZE
+    ]
+
+    aoc_summary_rows = sorted(
+        (
+            {"name": name, "count": aoc_totals[name]}
+            for name in all_manager_names
+            if aoc_totals.get(name, 0)
+        ),
+        key=lambda row: (-row["count"], row["name"].lower()),
+    )
+
     return {
         "date_start": date_start_s,
         "date_end": date_end_s,
         "shifts": detail_page_rows,
         "all_shifts": shift_rows,
+        "aoc_rows": aoc_detail_page_rows,
+        "all_aoc_rows": aoc_rows,
+        "aoc_summary_rows": aoc_summary_rows,
+        "aoc_grand_total": aoc_grand_total,
         "detail_page": detail_page,
         "detail_page_count": detail_page_count,
         "detail_page_size": MANAGER_DETAIL_PAGE_SIZE,
         "detail_total": detail_total,
+        "aoc_detail_page": aoc_detail_page,
+        "aoc_detail_page_count": aoc_detail_page_count,
+        "aoc_detail_page_size": MANAGER_AOC_DETAIL_PAGE_SIZE,
+        "aoc_detail_total": aoc_detail_total,
         "cumulative_rows": cumulative_rows,
         "period_table_rows": period_table_rows,
         "bucket_labels": bucket_labels_full,
@@ -416,12 +484,14 @@ def manager_shifts_export_csv(request):
     writer.writerow(["FY target window start", ctx.get("fy_target_start")])
     writer.writerow(["FY target window end", ctx.get("fy_target_end")])
     writer.writerow(["Total person-shifts", ctx.get("grand_total")])
+    writer.writerow(["Total AOC days", ctx.get("aoc_grand_total")])
     writer.writerow([])
 
     writer.writerow(
         [
             "Manager (last name)",
             "Shifts",
+            "AOC days",
             "Min (prorated)",
             "Delta",
             "Status",
@@ -434,21 +504,23 @@ def manager_shifts_export_csv(request):
             [
                 row.get("name"),
                 row.get("count"),
+                row.get("aoc_count"),
                 row.get("target"),
                 row.get("delta"),
                 row.get("status_label"),
                 row.get("pct"),
-                row.get("running"),
+                row.get("running") if row.get("running") is not None else "",
             ]
         )
     writer.writerow(
         [
             "Total (all managers)",
             ctx.get("grand_total"),
+            ctx.get("aoc_grand_total"),
             "",
             "",
             "",
-            100,
+            100 if ctx.get("grand_total") else "",
             ctx.get("grand_total"),
         ]
     )
@@ -503,6 +575,38 @@ def manager_shifts_export_csv(request):
             ]
         )
 
+    aoc_rows = cast(
+        list[dict[str, object]], ctx.get("all_aoc_rows") or ctx.get("aoc_rows") or []
+    )
+    if aoc_rows:
+        writer.writerow([])
+        writer.writerow(["AOC detail (one row per AOC cell on manager roster rows)"])
+        writer.writerow(
+            [
+                "Date",
+                "Manager",
+                "Legacy label",
+                "Role",
+                "Source value",
+                "Week start",
+                "Source tab",
+                "Source cell",
+            ]
+        )
+        for row in aoc_rows:
+            writer.writerow(
+                [
+                    row.get("shift_date"),
+                    row.get("person_display"),
+                    row.get("raw_person_display") or "",
+                    row.get("role"),
+                    row.get("raw_value"),
+                    row.get("week_start"),
+                    row.get("source_tab"),
+                    row.get("source_cell"),
+                ]
+            )
+
     filename = (
         f"manager_shifts_{ctx.get('granularity')}_"
         f"{ctx.get('date_start')}_to_{ctx.get('date_end')}.csv"
@@ -545,12 +649,14 @@ def manager_shifts_export_xlsx(request):
     ws_meta.append(["FY target window start", ctx.get("fy_target_start")])
     ws_meta.append(["FY target window end", ctx.get("fy_target_end")])
     ws_meta.append(["Total person-shifts", ctx.get("grand_total")])
+    ws_meta.append(["Total AOC days", ctx.get("aoc_grand_total")])
 
     ws_summary = wb.create_sheet("Summary", 1)
     ws_summary.append(
         [
             "Manager (last name)",
             "Shifts",
+            "AOC days",
             "Min (prorated)",
             "Delta",
             "Status",
@@ -563,6 +669,7 @@ def manager_shifts_export_xlsx(request):
             [
                 row.get("name"),
                 row.get("count"),
+                row.get("aoc_count"),
                 row.get("target"),
                 row.get("delta"),
                 row.get("status_label"),
@@ -574,10 +681,11 @@ def manager_shifts_export_xlsx(request):
         [
             "Total (all managers)",
             ctx.get("grand_total"),
+            ctx.get("aoc_grand_total"),
             None,
             None,
             None,
-            100,
+            100 if ctx.get("grand_total") else None,
             ctx.get("grand_total"),
         ]
     )
@@ -627,6 +735,37 @@ def manager_shifts_export_xlsx(request):
                 row.get("source_cell"),
             ]
         )
+
+    aoc_rows = cast(
+        list[dict[str, object]], ctx.get("all_aoc_rows") or ctx.get("aoc_rows") or []
+    )
+    if aoc_rows:
+        ws_aoc = wb.create_sheet("AOC detail")
+        ws_aoc.append(
+            [
+                "Date",
+                "Manager",
+                "Legacy label",
+                "Role",
+                "Source value",
+                "Week start",
+                "Source tab",
+                "Source cell",
+            ]
+        )
+        for row in aoc_rows:
+            ws_aoc.append(
+                [
+                    row.get("shift_date"),
+                    row.get("person_display"),
+                    row.get("raw_person_display") or "",
+                    row.get("role"),
+                    row.get("raw_value"),
+                    row.get("week_start"),
+                    row.get("source_tab"),
+                    row.get("source_cell"),
+                ]
+            )
 
     out = io.BytesIO()
     wb.save(out)

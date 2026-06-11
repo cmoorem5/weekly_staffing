@@ -1,0 +1,204 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Staff roster{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Staff roster</li>
+  </ol>
+</nav>
+
+<h1 class="bmf-page-title">Staff roster (RN / Medic / EMT)</h1>
+<p class="bmf-page-subtitle">
+  The roster updates automatically when you import a schedule — new clinical staff are added and
+  shift rows are linked in the same pass. Use this page to remove people who should not appear in
+  the <a href="{% url 'person_ops_report' %}">Staff ops report</a>, or add someone manually.
+  Deactivated people are not re-added on import. Optional backfill below is for older weeks
+  imported before auto-sync was enabled.
+</p>
+
+{% if import_weeks %}
+<div class="card bmf-card shadow-sm mb-4">
+  <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span>Backfill names from past import (optional)</span>
+    {% if selected_import_week %}
+    <span class="small text-muted fw-normal">Week of {{ selected_import_week }}</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end mb-3">
+      <div class="col-sm-auto">
+        <label class="form-label mb-0" for="import_week">Imported week</label>
+        <select name="import_week" id="import_week" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for wk in import_weeks %}
+          <option value="{{ wk }}"{% if wk == selected_import_week %} selected{% endif %}>{{ wk }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+
+    {% if import_suggestions %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="import_names">
+      <input type="hidden" name="import_week" value="{{ selected_import_week }}">
+      <p class="small text-muted mb-2">
+        <strong>{{ import_suggestions|length }}</strong> name{{ import_suggestions|length|pluralize }}
+        from week {{ selected_import_week }} not on the roster yet (manager rows and junk labels excluded).
+        Uncheck anyone who should not be added, then use <strong>Add selected</strong>.
+        <strong>Add all</strong> adds every name below — review the list first.
+      </p>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="fw-semibold small mb-1">RN ({{ import_suggestions_by_role.RN|length }})</div>
+          {% for row in import_suggestions_by_role.RN %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="import_key" value="{{ row.form_key }}" id="imp-rn-{{ forloop.counter }}">
+            <label class="form-check-label small" for="imp-rn-{{ forloop.counter }}">{{ row.display }}</label>
+          </div>
+          {% empty %}
+          <p class="small text-muted mb-0">None new</p>
+          {% endfor %}
+        </div>
+        <div class="col-md-4">
+          <div class="fw-semibold small mb-1">Medic ({{ import_suggestions_by_role.MEDIC|length }})</div>
+          {% for row in import_suggestions_by_role.MEDIC %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="import_key" value="{{ row.form_key }}" id="imp-med-{{ forloop.counter }}">
+            <label class="form-check-label small" for="imp-med-{{ forloop.counter }}">{{ row.display }}</label>
+          </div>
+          {% empty %}
+          <p class="small text-muted mb-0">None new</p>
+          {% endfor %}
+        </div>
+        <div class="col-md-4">
+          <div class="fw-semibold small mb-1">EMT ({{ import_suggestions_by_role.EMT|length }})</div>
+          {% for row in import_suggestions_by_role.EMT %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="import_key" value="{{ row.form_key }}" id="imp-emt-{{ forloop.counter }}">
+            <label class="form-check-label small" for="imp-emt-{{ forloop.counter }}">{{ row.display }}</label>
+          </div>
+          {% empty %}
+          <p class="small text-muted mb-0">None new</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button type="submit" class="btn btn-primary btn-sm">Add selected</button>
+        <button type="submit" name="import_all" value="1" class="btn btn-outline-primary btn-sm"
+                onclick="return confirm('Add all {{ import_suggestions|length }} names from week {{ selected_import_week }}?');">
+          Add all from week {{ selected_import_week }}
+        </button>
+      </div>
+    </form>
+    {% else %}
+    <p class="text-muted mb-0 small">
+      {% if active_count %}
+      Everyone from this week is already on the roster.
+      {% else %}
+      No new names to suggest for this week (import a schedule first if the list is empty).
+      {% endif %}
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Add person</div>
+      <div class="card-body">
+        <form method="post" class="row g-2 align-items-end">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add">
+          <div class="col-12">
+            <label class="form-label mb-0" for="id_role">Role</label>
+            {{ add_form.role }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label mb-0" for="id_last_name">Last name</label>
+            {{ add_form.last_name }}
+            {% if add_form.last_name.errors %}
+              <div class="text-danger small">{{ add_form.last_name.errors }}</div>
+            {% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label mb-0" for="id_first_name">First name</label>
+            {{ add_form.first_name }}
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Active roster ({{ active_count }})</div>
+      <div class="card-body p-0">
+        {% if active_count %}
+        <ul class="nav nav-tabs px-3 pt-2" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#roster-rn" type="button" role="tab">RN ({{ roster_by_role.RN|length }})</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#roster-medic" type="button" role="tab">Medic ({{ roster_by_role.MEDIC|length }})</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#roster-emt" type="button" role="tab">EMT ({{ roster_by_role.EMT|length }})</button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active p-0" id="roster-rn" role="tabpanel">
+            {% include "dashboard/_staff_roster_table.html" with rows=roster_by_role.RN %}
+          </div>
+          <div class="tab-pane fade p-0" id="roster-medic" role="tabpanel">
+            {% include "dashboard/_staff_roster_table.html" with rows=roster_by_role.MEDIC %}
+          </div>
+          <div class="tab-pane fade p-0" id="roster-emt" role="tabpanel">
+            {% include "dashboard/_staff_roster_table.html" with rows=roster_by_role.EMT %}
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No active staff on the roster yet. Import a schedule to populate automatically, or add manually.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if inactive_rows %}
+    <div class="card bmf-card shadow-sm mt-4">
+      <div class="card-header bmf-card-header">Inactive ({{ inactive_rows|length }})</div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Role</th>
+              <th scope="col">Name</th>
+              <th scope="col" class="text-end" style="width: 7rem;">Restore</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in inactive_rows %}
+            <tr class="text-muted">
+              <td>{{ row.role }}</td>
+              <td>{{ row.last_name }}{% if row.first_name %}, {{ row.first_name }}{% endif %}</td>
+              <td class="text-end">
+                <form method="post" class="d-inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="reactivate">
+                  <input type="hidden" name="roster_id" value="{{ row.id }}">
+                  <button type="submit" class="btn btn-outline-secondary btn-sm">Restore</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Staff ops report{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Staff ops report</h1>
+<p class="bmf-page-subtitle">
+  Person-level detail from schedule imports: RW/GR mix, staffed shifts, leave/exceptions, and OT.
+  The person list comes from the <a href="{% url 'staff_roster_settings' %}">staff roster</a>.
+  Data updates when you <strong>Apply</strong> a schedule import (RN, Medic, and EMT grids).
+  CEO weekly and quarterly reports remain aggregate-only.
+</p>
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Staff ops filters">
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_role">Role</label>
+    <select name="role" id="id_role" class="form-select">
+      {% for value, label in role_choices %}
+      <option value="{{ value }}"{% if value == role_filter %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto" style="min-width: 18rem;">
+    <label class="form-label mb-0" for="id_person">Person</label>
+    <select name="person" id="id_person" class="form-select">
+      {% if not person_options %}
+        <option value="">— Add staff to roster —</option>
+      {% else %}
+        {% for group in person_option_groups %}
+        <optgroup label="{{ group.letter }}">
+          {% for name in group.names %}
+          <option value="{{ name }}"{% if name == selected_person %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      {% endif %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">End date</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Update</button>
+  </div>
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?person={{ selected_person|urlencode }}&amp;date_start={{ fy_start }}&amp;date_end={{ fy_end }}">Current FY</a>
+      {% if db_date_min and db_date_max %}
+      <a class="btn btn-outline-secondary btn-sm" href="?person={{ selected_person|urlencode }}&amp;date_start={{ db_date_min }}&amp;date_end={{ db_date_max }}">All data</a>
+      {% endif %}
+    </div>
+  </div>
+  {% if filters_qs and selected_person %}
+  <div class="col-12 mt-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'person_ops_export_csv' %}?{{ filters_qs }}">Export CSV</a>
+  </div>
+  {% endif %}
+</form>
+
+<p class="small text-muted mt-2 mb-0">
+  Default window: last {{ default_weeks_back }} weeks.
+  {% if db_date_min and db_date_max %}
+  Database spans <strong>{{ db_date_min }}</strong> → <strong>{{ db_date_max }}</strong>.
+  {% endif %}
+</p>
+
+{% if not person_options %}
+<div class="alert alert-secondary mt-4" role="status">
+  No active staff on the roster{% if role_filter %} for this role{% endif %}.
+  <a href="{% url 'staff_roster_settings' %}">Add people to the staff roster</a>, then
+  <a href="{% url 'import_schedule' %}">import schedules</a>.
+</div>
+{% elif summary %}
+<h2 class="bmf-section-title mt-4">Summary — {{ selected_person }}</h2>
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Staffed shifts</div>
+        <div class="fs-4 fw-semibold">{{ summary.staffed_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">RW / GR (staffed)</div>
+        <div class="fs-4 fw-semibold">{{ summary.rw_count }} / {{ summary.gr_count }}</div>
+        <div class="small text-muted">
+          RW%:
+          {% if summary.rw_pct is not None %}
+            <strong>{{ summary.rw_pct }}%</strong>
+          {% else %}
+            —
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">OT shifts</div>
+        <div class="fs-4 fw-semibold">{{ summary.ot_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Exceptions (leave)</div>
+        <div class="fs-4 fw-semibold">{{ summary.leave_total }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if summary.leave_counts %}
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Exceptions by type</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr><th>Type</th><th>Count</th></tr>
+      </thead>
+      <tbody>
+        {% for lt, n in summary.leave_counts.items %}
+        <tr><td>{{ lt }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<h2 class="bmf-section-title">Shift detail ({{ detail_count }})</h2>
+{% if detail_rows %}
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Role</th>
+        <th>Event</th>
+        <th>Base</th>
+        <th>RW/GR</th>
+        <th>D/N</th>
+        <th>Unit</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in detail_rows %}
+      <tr>
+        <td>{{ row.shift_date }}</td>
+        <td>{{ row.role }}</td>
+        <td>{{ row.event_label }}</td>
+        <td>{{ row.base_name }}</td>
+        <td>{{ row.service_type }}</td>
+        <td>{{ row.day_night }}</td>
+        <td>{{ row.unit_code }}</td>
+        <td class="small text-muted">{{ row.raw_value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">No rows for this person in the selected range.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

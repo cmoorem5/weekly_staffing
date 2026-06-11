@@ -17,6 +17,8 @@ ParseIssue instances so the UI can present them for correction.
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -27,10 +29,22 @@ from openpyxl.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .manager_roster import default_manager_last_names_upper
+from .person_names import person_displays_for_role
+from .staff_roster import (
+    StaffRosterMatchIndex,
+    canonical_display,
+    match_parsed_person_to_roster,
+)
+
+PARSER_VERSION = "2"
 
 Role = str  # "RN", "MEDIC", "EMT", "PILOT"
 ServiceType = str  # "RW" or "GR"
 DayNight = str  # "D" or "N"
+SkipReason = str  # training, open, admin, ignored_unit, schedule_row, manager_row, retired_unit
+
+# Max non-empty cells archived per week (SQLite-friendly).
+RAW_CELL_ARCHIVE_LIMIT = 5000
 
 
 @dataclass
@@ -52,7 +66,15 @@ class ShiftRecord:
     unit_code: str = ""
     # Row identity from schedule grid (cols A–B); used for manager line-shift tracking.
     person_display: str = ""
+    # All people on this grid row (EMT pairs); person_display is the first entry.
+    person_displays: tuple[str, ...] = ()
     is_manager_row: bool = False
+    skip_reason: SkipReason | None = None
+    included_in_aggregates: bool = True
+    # Manager-only events persisted to weekly_manager_shifts (e.g. aoc).
+    manager_event_type: str | None = None
+    excel_row: int = 0
+    excel_col: int = 0
 
 
 @dataclass
@@ -79,7 +101,6 @@ UNIT_MAP: dict[str, tuple[str, ServiceType, DayNight]] = {
     "N7B": ("Bedford", "RW", "N"),
     "GR": ("Bedford", "GR", "D"),
     "NG": ("Bedford", "GR", "N"),
-    "D11B": ("Bedford", "RW", "D"),
     # Lawrence: D9L, N9L, LG
     "D9L": ("Lawrence", "RW", "D"),
     "N9L": ("Lawrence", "RW", "N"),
@@ -97,6 +118,17 @@ UNIT_MAP: dict[str, tuple[str, ServiceType, DayNight]] = {
     # EMT GR shorthand (Bedford ground, aligns with D7B EMT staffing)
     "GR2": ("Bedford", "GR", "D"),
 }
+
+# Historical Manchester codes → canonical D11H (same base, RW day as today).
+# raw_value keeps the original cell text; unit_code is canonical for aggregates.
+LEGACY_UNIT_ALIASES: dict[str, str] = {
+    "D9P": "D11H",
+    "D9B": "D11H",
+    "D11B": "D11H",
+}
+
+# Retired units: skip staffed parse; excluded from CEO aggregates.
+RETIRED_UNIT_CODES: frozenset[str] = frozenset({"FW"})
 
 # Max RW/GR staffed unit-days per base per week (cap OPS View counts to these).
 # Bedford, Plymouth, Lawrence: 14 RW; Bedford: 14 GR;
@@ -151,6 +183,24 @@ SKIP_CELL_VALUES: set[str] = {
     "SM(VIRTUAL)",
 }
 
+SKIP_TRAINING_VALUES: set[str] = {
+    "SM",
+    "SIM",
+    "AIRWAY SIM",
+    "SM (LIVE)",
+    "SM (VIRTUAL)",
+    "SM(LIVE)",
+    "SM(VIRTUAL)",
+}
+
+SKIP_ADMIN_VALUES: set[str] = {
+    "AOC",
+    "CLINICAL",
+    "FLOAT",
+    "LTM",
+    "MIL",
+}
+
 # Merge rules: apply to ALL unit codes (D7B, N7B, D9L, D11M, D7P, N7P, etc.).
 # - OT: trailing "C" or " C" on any known unit → overtime.
 #   E.g. D7PC, N7BC, D9LC, D7P C.
@@ -189,6 +239,66 @@ def _normalize_cell_value(raw: object) -> str:
     return s
 
 
+def _classify_skip_reason(text: str) -> SkipReason:
+    """Map a skipped cell value to a persistence skip_reason."""
+    if text == "OPEN":
+        return "open"
+    if text in SKIP_TRAINING_VALUES:
+        return "training"
+    if text in SKIP_ADMIN_VALUES or text in IGNORE_UNIT_CODES:
+        return "admin"
+    return "admin"
+
+
+def _append_skipped_shift(
+    records: list[ShiftRecord],
+    *,
+    ws: Worksheet,
+    row_idx: int,
+    col_idx: int,
+    d: date,
+    role: Role,
+    sheet_label: str,
+    text: str,
+    person_displays: tuple[str, ...],
+    person_display: str,
+    is_manager_row: bool,
+    skip_reason: SkipReason,
+) -> None:
+    cell_ref = f"{get_column_letter(col_idx)}{row_idx}"
+    records.append(
+        ShiftRecord(
+            date=d,
+            base="",
+            service_type="",
+            day_night="D",
+            role=role,
+            filled=False,
+            overtime=False,
+            leave_type=None,
+            source_tab=sheet_label,
+            source_cell=cell_ref,
+            raw_value=text,
+            person_display=person_display,
+            person_displays=person_displays,
+            is_manager_row=is_manager_row,
+            skip_reason=skip_reason,
+            included_in_aggregates=False,
+            excel_row=row_idx,
+            excel_col=col_idx,
+        )
+    )
+
+
+def schedule_file_sha256(path: str) -> str:
+    """SHA-256 hex digest of a schedule workbook file."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _name_tokens_for_grid_row(ws: Worksheet, row_idx: int) -> set[str]:
     """Tokens from columns A–B (last/first names) for manager filtering."""
     tokens: set[str] = set()
@@ -201,37 +311,42 @@ def _name_tokens_for_grid_row(ws: Worksheet, row_idx: int) -> set[str]:
     return tokens
 
 
-def _person_display_for_row(ws: Worksheet, row_idx: int) -> str:
-    """Human-readable name from columns A–B (same rows as schedule grid)."""
-    raw_a = ws.cell(row=row_idx, column=1).value
-    raw_b = ws.cell(row=row_idx, column=2).value
-
+def _grid_name_cells(ws: Worksheet, row_idx: int) -> tuple[str, str]:
     def _cell_str(v: object) -> str:
         if v is None:
             return ""
         return str(v).strip()
 
-    a, b = _cell_str(raw_a), _cell_str(raw_b)
-    if a and b:
-        return (f"{a}, {b}")[:256]
-    return (a or b)[:256]
+    return (
+        _cell_str(ws.cell(row=row_idx, column=1).value),
+        _cell_str(ws.cell(row=row_idx, column=2).value),
+    )
 
 
-def _manager_row_label_and_flag(
-    ws: Worksheet, row_idx: int, manager_last_names_upper: frozenset[str]
-) -> tuple[str, bool]:
-    """Label for shift records and whether this row is on the manager roster.
-
-    Manager rows: show the roster last name only (title case), not raw col A+B
-    (which may include row-type letters like ``m`` / ``P`` in column A).
-    """
+def _row_person_displays_and_manager_flag(
+    ws: Worksheet,
+    row_idx: int,
+    role: Role,
+    manager_last_names_upper: frozenset[str],
+) -> tuple[tuple[str, ...], bool]:
+    """Clean person label(s) from columns A–B and manager-roster flag."""
     tokens = _name_tokens_for_grid_row(ws, row_idx)
     roster_hit = (
         tokens & manager_last_names_upper if manager_last_names_upper else set()
     )
     if roster_hit:
-        return min(roster_hit).title(), True
-    return _person_display_for_row(ws, row_idx), False
+        return (min(roster_hit).title(),), True
+
+    raw_a, raw_b = _grid_name_cells(ws, row_idx)
+    persons = person_displays_for_role(role, raw_a, raw_b)
+    return persons, False
+
+
+def _shift_record_persons(rec: ShiftRecord) -> tuple[str, ...]:
+    if rec.person_displays:
+        return rec.person_displays
+    person = (rec.person_display or "").strip()
+    return (person,) if person else ()
 
 
 def _header_cell_to_date(value: object, default_year: int | None = None) -> date | None:
@@ -257,14 +372,27 @@ def _header_cell_to_date(value: object, default_year: int | None = None) -> date
     return None
 
 
+def _canonical_unit_code(code: str) -> str | None:
+    """Map legacy aliases to canonical UNIT_MAP keys; None if retired."""
+    if code in RETIRED_UNIT_CODES:
+        return None
+    return LEGACY_UNIT_ALIASES.get(code, code)
+
+
+def _is_resolvable_unit(code: str) -> bool:
+    """True when code (or its legacy alias) maps to a known staffed unit."""
+    canonical = _canonical_unit_code(code)
+    return canonical is not None and canonical in UNIT_MAP
+
+
 def _split_unit_suffix(code: str) -> tuple[str, bool, bool]:
     """
     Split a unit-like code into (base_unit, is_ot, is_dual_role).
 
     Strip trailing 'C' (OT) and 'P' (dual-role) only when the remainder is in
-    UNIT_MAP, so D7P/N7P (Plymouth) are preserved. If core is already in
-    UNIT_MAP, do not strip. E.g. N7PC -> N7P (strip C); D7PP -> D7P (strip P);
-    D7P -> D7P (no strip).
+    UNIT_MAP (or LEGACY_UNIT_ALIASES), so D7P/N7P (Plymouth) are preserved.
+    If core is already resolvable, do not strip. E.g. N7PC -> N7P (strip C);
+    D9PC -> D9P (strip C); D7PP -> D7P (strip P); D7P -> D7P (no strip).
 
     Also supports " C" (space + C) for OT merge: D7P C, D7B C etc. → overtime.
     """
@@ -276,17 +404,17 @@ def _split_unit_suffix(code: str) -> tuple[str, bool, bool]:
     for suffix in OT_SUFFIXES:
         if core.endswith(suffix):
             candidate = core[: -len(suffix)].strip()
-            if candidate in UNIT_MAP:
+            if _is_resolvable_unit(candidate):
                 core = candidate
                 is_ot = True
                 break
 
     while len(core) > 1 and core[-1] in {"C", "P"}:
-        if core in UNIT_MAP:
+        if _is_resolvable_unit(core):
             break
         last = core[-1]
         candidate = core[:-1]
-        if candidate in UNIT_MAP:
+        if _is_resolvable_unit(candidate):
             core = candidate
             if last == "C":
                 is_ot = True
@@ -303,10 +431,10 @@ def _split_unit_suffix(code: str) -> tuple[str, bool, bool]:
 
 def _classify_unit(code: str) -> tuple[str, ServiceType, DayNight] | None:
     """Return (base, service_type, day_night) for a cleaned unit, or None."""
-    # Exact match first
-    if code in UNIT_MAP:
-        return UNIT_MAP[code]
-    return None
+    canonical = _canonical_unit_code(code)
+    if canonical is None:
+        return None
+    return UNIT_MAP.get(canonical)
 
 
 def _iter_date_headers(
@@ -498,20 +626,35 @@ def _parse_grid(
         return records, issues
 
     for row_idx in range(first_row_idx, last_row_idx + 1):
-        person_display, is_manager_row = _manager_row_label_and_flag(
-            ws, row_idx, mgr_upper
+        person_displays, is_manager_row = _row_person_displays_and_manager_flag(
+            ws, row_idx, role, mgr_upper
         )
+        person_display = person_displays[0] if person_displays else ""
         for col_idx, d in col_dates:
+            cell = ws.cell(row=row_idx, column=col_idx)
+            raw = cell.value
+            text = _normalize_cell_value(raw)
+            if not text:
+                continue
             if (
                 sheet_label.startswith("RN & Medic")
                 and row_idx in RN_MEDIC_SKIP_SCHEDULE_ROWS
                 and _SCHEDULE_COL_B <= col_idx <= _SCHEDULE_COL_P
             ):
-                continue
-            cell = ws.cell(row=row_idx, column=col_idx)
-            raw = cell.value
-            text = _normalize_cell_value(raw)
-            if not text:
+                _append_skipped_shift(
+                    records,
+                    ws=ws,
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    d=d,
+                    role=role,
+                    sheet_label=sheet_label,
+                    text=text,
+                    person_displays=person_displays,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
+                    skip_reason="schedule_row",
+                )
                 continue
             # Apply import mapping: unknown code -> treat as this value
             # (e.g. D7BCP -> D7BC)
@@ -525,22 +668,104 @@ def _parse_grid(
             if role == "EMT" and text == "NL":
                 text = "N9L"
 
-            # Non-staffing / training / manager markers
-            # (no staffed, no leave, no issue).
+            # Non-staffing / training / admin markers — persist as skipped.
             if text in SKIP_CELL_VALUES:
+                if is_manager_row and text == "AOC":
+                    records.append(
+                        ShiftRecord(
+                            date=d,
+                            base="",
+                            service_type="",
+                            day_night="",
+                            role=role,
+                            filled=False,
+                            overtime=False,
+                            leave_type=None,
+                            source_tab=sheet_label,
+                            source_cell=cell_ref,
+                            raw_value=text,
+                            person_display=person_display,
+                            person_displays=person_displays,
+                            is_manager_row=True,
+                            included_in_aggregates=False,
+                            manager_event_type="aoc",
+                            excel_row=row_idx,
+                            excel_col=col_idx,
+                        )
+                    )
+                    continue
+                _append_skipped_shift(
+                    records,
+                    ws=ws,
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    d=d,
+                    role=role,
+                    sheet_label=sheet_label,
+                    text=text,
+                    person_displays=person_displays,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
+                    skip_reason=_classify_skip_reason(text),
+                )
+                continue
+
+            if text == "OPEN":
+                _append_skipped_shift(
+                    records,
+                    ws=ws,
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    d=d,
+                    role=role,
+                    sheet_label=sheet_label,
+                    text=text,
+                    person_displays=person_displays,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
+                    skip_reason="open",
+                )
                 continue
 
             # Weekday labels (e.g. row 2: SUN, MON, TUE, …) — ignore.
             if text in {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"}:
                 continue
 
-            # Skip ignored unit-like codes (no shift, no issue).
+            # Ignored unit-like codes — persist as skipped admin.
             if text in IGNORE_UNIT_CODES:
+                _append_skipped_shift(
+                    records,
+                    ws=ws,
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    d=d,
+                    role=role,
+                    sheet_label=sheet_label,
+                    text=text,
+                    person_displays=person_displays,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
+                    skip_reason="admin",
+                )
                 continue
 
             # EMT: PER → LT (same bucket as leave time for exception grid).
             if role == "EMT" and text == "PER":
                 if is_manager_row:
+                    _append_skipped_shift(
+                        records,
+                        ws=ws,
+                        row_idx=row_idx,
+                        col_idx=col_idx,
+                        d=d,
+                        role=role,
+                        sheet_label=sheet_label,
+                        text=text,
+                        person_displays=person_displays,
+                        person_display=person_display,
+                        is_manager_row=True,
+                        skip_reason="manager_row",
+                    )
                     continue
                 records.append(
                     ShiftRecord(
@@ -556,7 +781,10 @@ def _parse_grid(
                         source_cell=cell_ref,
                         raw_value=text,
                         person_display=person_display,
+                        person_displays=person_displays,
                         is_manager_row=is_manager_row,
+                        excel_row=row_idx,
+                        excel_col=col_idx,
                     )
                 )
                 continue
@@ -568,6 +796,20 @@ def _parse_grid(
                 leave_display = UNIT_LEAVE_MERGE.get(suffix)
                 if leave_display is not None:
                     if is_manager_row:
+                        _append_skipped_shift(
+                            records,
+                            ws=ws,
+                            row_idx=row_idx,
+                            col_idx=col_idx,
+                            d=d,
+                            role=role,
+                            sheet_label=sheet_label,
+                            text=text,
+                            person_displays=person_displays,
+                            person_display=person_display,
+                            is_manager_row=True,
+                            skip_reason="manager_row",
+                        )
                         continue
                     records.append(
                         ShiftRecord(
@@ -583,7 +825,10 @@ def _parse_grid(
                             source_cell=cell_ref,
                             raw_value=text,
                             person_display=person_display,
+                            person_displays=person_displays,
                             is_manager_row=is_manager_row,
+                            excel_row=row_idx,
+                            excel_col=col_idx,
                         )
                     )
                     continue
@@ -599,8 +844,21 @@ def _parse_grid(
                 leave_code = text
                 leave_display = text
             if leave_code in LEAVE_CODES:
-                # Skip manager rows (last-name match in A/B).
                 if is_manager_row:
+                    _append_skipped_shift(
+                        records,
+                        ws=ws,
+                        row_idx=row_idx,
+                        col_idx=col_idx,
+                        d=d,
+                        role=role,
+                        sheet_label=sheet_label,
+                        text=text,
+                        person_displays=person_displays,
+                        person_display=person_display,
+                        is_manager_row=True,
+                        skip_reason="manager_row",
+                    )
                     continue
                 records.append(
                     ShiftRecord(
@@ -616,12 +874,32 @@ def _parse_grid(
                         source_cell=cell_ref,
                         raw_value=text,
                         person_display=person_display,
+                        person_displays=person_displays,
                         is_manager_row=is_manager_row,
+                        excel_row=row_idx,
+                        excel_col=col_idx,
                     )
                 )
                 continue
 
             base_code, is_ot, is_dual = _split_unit_suffix(text)
+            if base_code in RETIRED_UNIT_CODES:
+                _append_skipped_shift(
+                    records,
+                    ws=ws,
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    d=d,
+                    role=role,
+                    sheet_label=sheet_label,
+                    text=text,
+                    person_displays=person_displays,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
+                    skip_reason="retired_unit",
+                )
+                continue
+
             unit_info = _classify_unit(base_code)
             if not unit_info:
                 issues.append(
@@ -639,6 +917,7 @@ def _parse_grid(
                 continue
 
             base, service_type, dn = unit_info
+            canonical_unit = _canonical_unit_code(base_code) or base_code
             effective_role: Role = role
             if role == "RN" and is_dual:
                 effective_role = "MEDIC"
@@ -656,25 +935,130 @@ def _parse_grid(
                     source_tab=sheet_label,
                     source_cell=cell_ref,
                     raw_value=text,
-                    unit_code=base_code,
+                    unit_code=canonical_unit,
                     person_display=person_display,
+                    person_displays=person_displays,
                     is_manager_row=is_manager_row,
+                    excel_row=row_idx,
+                    excel_col=col_idx,
                 )
             )
 
     return records, issues
 
 
+def _person_shift_event_type(rec: ShiftRecord) -> str | None:
+    """Derive staffed / leave / ot / skipped from a parsed shift record."""
+    if rec.skip_reason:
+        return "skipped"
+    if rec.leave_type:
+        return "leave"
+    if rec.filled:
+        return "ot" if rec.overtime else "staffed"
+    return None
+
+
+def weekly_person_shift_mappings(
+    week_start: str,
+    records: Iterable[ShiftRecord],
+    staff_roster_index: StaffRosterMatchIndex | None = None,
+    *,
+    schedule_import_id: int | None = None,
+) -> list[dict[str, object]]:
+    """
+    Rows for ``WeeklyPersonShift`` bulk insert: staffed, leave, OT, and skipped
+    cells for clinical roles (RN, MEDIC, EMT).
+
+    When ``staff_roster_index`` is provided, ``staff_member_id`` and canonical
+    ``person_display`` are set when a roster match exists; unmatched names are
+    still persisted.
+    """
+    rows: list[dict[str, object]] = []
+    for r in records:
+        event_type = _person_shift_event_type(r)
+        if event_type is None:
+            continue
+        if r.role not in {"RN", "MEDIC", "EMT"}:
+            continue
+        persons = _shift_record_persons(r)
+        if not persons:
+            if event_type != "skipped":
+                continue
+            persons = ("",)
+        base_row = {
+            "week_start": week_start,
+            "schedule_import_id": schedule_import_id,
+            "shift_date": r.date.isoformat(),
+            "role": r.role,
+            "event_type": event_type,
+            "base_name": (r.base or "").strip(),
+            "service_type": (r.service_type or "").strip(),
+            "day_night": (r.day_night or "").strip() or "D",
+            "unit_code": (r.unit_code or "").strip(),
+            "leave_type": (r.leave_type or "").strip() or None,
+            "overtime": 1 if r.overtime else 0,
+            "raw_value": (r.raw_value or "")[:64],
+            "source_tab": (r.source_tab or "")[:128],
+            "source_cell": (r.source_cell or "")[:16],
+            "excel_row": r.excel_row or 0,
+            "excel_col": r.excel_col or 0,
+            "is_manager_row": 1 if r.is_manager_row else 0,
+            "included_in_aggregates": 1 if r.included_in_aggregates else 0,
+            "skip_reason": (r.skip_reason or "")[:32] or None,
+        }
+        for person in persons:
+            staff_member_id = None
+            display = person[:256]
+            if staff_roster_index is not None and person:
+                entry = match_parsed_person_to_roster(
+                    person, r.role, staff_roster_index
+                )
+                if entry is not None:
+                    staff_member_id = entry.id
+                    display = canonical_display(entry)[:256]
+            rows.append(
+                {
+                    **base_row,
+                    "staff_member_id": staff_member_id,
+                    "person_display": display,
+                }
+            )
+    return rows
+
+
 def weekly_manager_shift_mappings(
     week_start: str, records: Iterable[ShiftRecord],
 ) -> list[dict[str, object]]:
     """
-    Rows for ``WeeklyManagerShift`` bulk insert: staffed unit cells on manager
-    roster rows (same last-name set as leave exclusion).
+    Rows for ``WeeklyManagerShift`` bulk insert: staffed unit cells and AOC
+    admin days on manager roster rows (same last-name set as leave exclusion).
     """
     rows: list[dict[str, object]] = []
     for r in records:
-        if not (r.filled and r.is_manager_row):
+        if not r.is_manager_row:
+            continue
+        if r.manager_event_type == "aoc":
+            if r.role not in {"RN", "MEDIC", "EMT"}:
+                continue
+            rows.append(
+                {
+                    "week_start": week_start,
+                    "person_display": (r.person_display or "").strip() or "(unknown)",
+                    "role": r.role,
+                    "shift_date": r.date.isoformat(),
+                    "event_type": "aoc",
+                    "base_name": "",
+                    "service_type": "",
+                    "day_night": "",
+                    "unit_code": "",
+                    "overtime": 0,
+                    "raw_value": (r.raw_value or "")[:64],
+                    "source_tab": (r.source_tab or "")[:128],
+                    "source_cell": (r.source_cell or "")[:16],
+                }
+            )
+            continue
+        if not r.filled:
             continue
         if r.role not in {"RN", "MEDIC", "EMT"}:
             continue
@@ -686,6 +1070,7 @@ def weekly_manager_shift_mappings(
                 "person_display": (r.person_display or "").strip() or "(unknown)",
                 "role": r.role,
                 "shift_date": r.date.isoformat(),
+                "event_type": "line_shift",
                 "base_name": r.base,
                 "service_type": r.service_type,
                 "day_night": r.day_night,
@@ -748,10 +1133,12 @@ def _ops_vehicle_blocks(
         text_a = (_normalize_cell_value(raw_a) or "").strip()
         text_b = (_normalize_cell_value(raw_b) or "").strip()
         # Unit code in A starts a new block (ignore FLOAT, "(Badged)", etc.)
-        if text_a and text_a in UNIT_MAP:
-            if current_unit is not None:
-                blocks.append((current_unit, current_start, role_rows))
-            current_unit = text_a
+        if text_a and text_a not in RETIRED_UNIT_CODES:
+            canonical_a = LEGACY_UNIT_ALIASES.get(text_a, text_a)
+            if canonical_a in UNIT_MAP:
+                if current_unit is not None:
+                    blocks.append((current_unit, current_start, role_rows))
+                current_unit = canonical_a
             current_start = row_idx
             role_rows = {}
         if current_unit is None:
@@ -852,31 +1239,22 @@ def _parse_ops_view_worksheet(
         emt_rows = role_rows.get("EMT") or []
 
         for col_idx, _d in col_dates:
-            rn_ok = any(
-                _ops_cell_staffed(ws.cell(row=r, column=col_idx).value) for r in rn_rows
+            staffed = _ops_staffed_for_column(
+                ws,
+                col_idx,
+                service_type,
+                rn_rows,
+                medic_rows,
+                pic_rows,
+                emt_rows,
             )
-            medic_ok = any(
-                _ops_cell_staffed(ws.cell(row=r, column=col_idx).value)
-                for r in medic_rows
-            )
-            pic_ok = any(
-                _ops_cell_staffed(ws.cell(row=r, column=col_idx).value)
-                for r in pic_rows
-            )
-            emt_ok = any(
-                _ops_cell_staffed(ws.cell(row=r, column=col_idx).value)
-                for r in emt_rows
-            )
-
             if service_type == "RW":
-                staffed = rn_ok and medic_ok and (pic_ok or emt_ok)
                 if staffed:
                     if dn == "N":
                         base_rw_night[base] = base_rw_night.get(base, 0) + 1
                     else:
                         base_rw_day[base] = base_rw_day.get(base, 0) + 1
             elif service_type == "GR":
-                staffed = rn_ok and medic_ok and emt_ok
                 if staffed:
                     if dn == "N":
                         base_gr_night[base] = base_gr_night.get(base, 0) + 1
@@ -1057,6 +1435,17 @@ def parse_schedule_workbook(
 
 
 @dataclass
+class DailyDetailDay:
+    """One row of the weekly report daily detail table."""
+
+    day_date: date
+    filled: int
+    rw: int
+    gr: int
+    exceptions: int
+
+
+@dataclass
 class AggregatedWeek:
     """Aggregated metrics for one week from shift records."""
 
@@ -1083,6 +1472,312 @@ class AggregatedWeek:
     base_rw_staffed_night: dict[str, int]
     base_gr_staffed_day: dict[str, int]
     base_gr_staffed_night: dict[str, int]
+    daily_detail: list[DailyDetailDay]
+
+
+def _ops_staffed_for_column(
+    ws: Worksheet,
+    col_idx: int,
+    service_type: ServiceType,
+    rn_rows: list[int],
+    medic_rows: list[int],
+    pic_rows: list[int],
+    emt_rows: list[int],
+) -> bool:
+    rn_ok = any(
+        _ops_cell_staffed(ws.cell(row=r, column=col_idx).value) for r in rn_rows
+    )
+    medic_ok = any(
+        _ops_cell_staffed(ws.cell(row=r, column=col_idx).value) for r in medic_rows
+    )
+    pic_ok = any(
+        _ops_cell_staffed(ws.cell(row=r, column=col_idx).value) for r in pic_rows
+    )
+    emt_ok = any(
+        _ops_cell_staffed(ws.cell(row=r, column=col_idx).value) for r in emt_rows
+    )
+    if service_type == "RW":
+        return rn_ok and medic_ok and (pic_ok or emt_ok)
+    return rn_ok and medic_ok and emt_ok
+
+
+def _parse_ops_view_daily_worksheet(
+    ws: Worksheet,
+    week_start: str,
+) -> dict[date, tuple[int, int]]:
+    """Per calendar day: (RW staffed unit-days, GR staffed unit-days) from OPS View."""
+    try:
+        week_start_date = datetime.strptime(week_start, "%Y-%m-%d").date()
+    except ValueError:
+        return {}
+    week_end_date = week_start_date + timedelta(days=6)
+
+    col_dates = _ops_parse_dates_row(ws, week_start_date, week_end_date)
+    if not col_dates:
+        return {}
+
+    daily: dict[date, list[int]] = {d: [0, 0] for _, d in col_dates}
+    for unit_code, _first_row, role_rows in _ops_vehicle_blocks(ws):
+        unit_info = UNIT_MAP.get(unit_code)
+        if not unit_info:
+            continue
+        base, service_type, _dn = unit_info
+        rn_rows = role_rows.get("RN") or []
+        medic_rows = role_rows.get("Medic") or []
+        pic_rows = role_rows.get("PIC") or []
+        emt_rows = role_rows.get("EMT") or []
+
+        for col_idx, day_date in col_dates:
+            if not _ops_staffed_for_column(
+                ws,
+                col_idx,
+                service_type,
+                rn_rows,
+                medic_rows,
+                pic_rows,
+                emt_rows,
+            ):
+                continue
+            if service_type == "RW":
+                daily[day_date][0] += 1
+            else:
+                daily[day_date][1] += 1
+
+    return {d: (vals[0], vals[1]) for d, vals in daily.items()}
+
+
+def parse_ops_view_daily(path: str, week_start: str) -> dict[date, tuple[int, int]]:
+    """Load workbook and return per-day RW/GR staffed counts from OPS View."""
+    wb = load_workbook(path, data_only=True)
+    try:
+        sn = resolve_workbook_sheet(wb, "OPS View", "Ops View")
+        if not sn:
+            return {}
+        return _parse_ops_view_daily_worksheet(wb[sn], week_start)
+    finally:
+        wb.close()
+
+
+@dataclass
+class OpsViewDayBase:
+    """OPS View staffed unit-days for one base on one calendar day."""
+
+    day_date: date
+    base_name: str
+    rw_count: int
+    gr_count: int
+
+
+@dataclass
+class OpsViewAssignment:
+    """OPS View name in one unit/role cell for a calendar day."""
+
+    day_date: date
+    unit_code: str
+    role: str
+    excel_row: int
+    person_display: str
+    raw_value: str
+    is_staffed: bool
+
+
+def _ops_role_label(text_b: str) -> str | None:
+    if text_b in _OPS_ROLE_RN:
+        return "RN"
+    if text_b in _OPS_ROLE_MEDIC:
+        return "Medic"
+    if text_b in _OPS_ROLE_PIC:
+        return "PIC"
+    if text_b in _OPS_ROLE_EMT:
+        return "EMT"
+    return None
+
+
+def _parse_ops_view_detail_worksheet(
+    ws: Worksheet,
+    week_start: str,
+) -> tuple[list[OpsViewDayBase], list[OpsViewAssignment]]:
+    """Per-day per-base counts and name-level OPS View assignments."""
+    try:
+        week_start_date = datetime.strptime(week_start, "%Y-%m-%d").date()
+    except ValueError:
+        return [], []
+    week_end_date = week_start_date + timedelta(days=6)
+
+    col_dates = _ops_parse_dates_row(ws, week_start_date, week_end_date)
+    if not col_dates:
+        return [], []
+
+    day_base: dict[tuple[date, str], list[int]] = {
+        (d, base): [0, 0]
+        for _, d in col_dates
+        for base in {
+            info[0] for info in UNIT_MAP.values()
+        }
+    }
+    assignments: list[OpsViewAssignment] = []
+
+    for unit_code, _first_row, role_rows in _ops_vehicle_blocks(ws):
+        unit_info = UNIT_MAP.get(unit_code)
+        if not unit_info:
+            continue
+        base, service_type, _dn = unit_info
+        for role_key, row_list in role_rows.items():
+            role_label = role_key
+            for row_idx in row_list:
+                for col_idx, day_date in col_dates:
+                    cell_val = ws.cell(row=row_idx, column=col_idx).value
+                    staffed = _ops_cell_staffed(cell_val)
+                    raw_s = _normalize_cell_value(cell_val)
+                    if raw_s:
+                        assignments.append(
+                            OpsViewAssignment(
+                                day_date=day_date,
+                                unit_code=unit_code,
+                                role=role_label,
+                                excel_row=row_idx,
+                                person_display=raw_s,
+                                raw_value=raw_s,
+                                is_staffed=staffed,
+                            )
+                        )
+        for col_idx, day_date in col_dates:
+            staffed_slot = _ops_staffed_for_column(
+                ws,
+                col_idx,
+                service_type,
+                role_rows.get("RN") or [],
+                role_rows.get("Medic") or [],
+                role_rows.get("PIC") or [],
+                role_rows.get("EMT") or [],
+            )
+            if not staffed_slot:
+                continue
+            key = (day_date, base)
+            if key not in day_base:
+                day_base[key] = [0, 0]
+            if service_type == "RW":
+                day_base[key][0] += 1
+            else:
+                day_base[key][1] += 1
+
+    day_rows = [
+        OpsViewDayBase(
+            day_date=day_date,
+            base_name=base_name,
+            rw_count=vals[0],
+            gr_count=vals[1],
+        )
+        for (day_date, base_name), vals in sorted(day_base.items())
+        if vals[0] or vals[1]
+    ]
+    return day_rows, assignments
+
+
+def parse_ops_view_detail(
+    path: str,
+    week_start: str,
+) -> tuple[list[OpsViewDayBase], list[OpsViewAssignment]]:
+    """Load workbook and return OPS View day/base counts and assignments."""
+    wb = load_workbook(path, data_only=True)
+    try:
+        sn = resolve_workbook_sheet(wb, "OPS View", "Ops View")
+        if not sn:
+            return [], []
+        return _parse_ops_view_detail_worksheet(wb[sn], week_start)
+    finally:
+        wb.close()
+
+
+# Sheet scan ranges for optional raw-cell archive (row_min, row_max, col_max).
+_RAW_ARCHIVE_SHEETS: tuple[tuple[str, tuple[str, ...], int, int, int], ...] = (
+    ("RN & Medic", ("RN & Medic", "RN AND MEDIC", "RN/MEDIC"), 1, 113, 16),
+    ("EMT", ("EMT",), 1, 29, 16),
+    ("OPS View", ("OPS View", "Ops View"), 1, 66, 16),
+)
+
+
+def collect_schedule_raw_cells(
+    path: str,
+    week_start: str,
+) -> list[dict[str, object]]:
+    """
+    Non-empty cells from schedule grid areas for optional DB archive.
+
+    Returns empty list when the workbook would exceed ``RAW_CELL_ARCHIVE_LIMIT``.
+    """
+    try:
+        week_start_date = datetime.strptime(week_start, "%Y-%m-%d").date()
+    except ValueError:
+        return []
+    week_end_date = week_start_date + timedelta(days=6)
+
+    wb = load_workbook(path, data_only=True)
+    cells: list[dict[str, object]] = []
+    try:
+        for _label, name_variants, row_min, row_max, col_max in _RAW_ARCHIVE_SHEETS:
+            sn = resolve_workbook_sheet(wb, *name_variants)
+            if not sn:
+                continue
+            ws = wb[sn]
+            for row_idx in range(row_min, row_max + 1):
+                for col_idx in range(1, col_max + 1):
+                    val = ws.cell(row=row_idx, column=col_idx).value
+                    if val is None:
+                        continue
+                    text = str(val).strip()
+                    if not text:
+                        continue
+                    if col_idx >= 3:
+                        _hdr_row, header_dates = _best_header_row_in_ws(
+                            ws,
+                            week_start_date=week_start_date,
+                            week_end_date=week_end_date,
+                        )
+                        week_cols = {c for c, _ in header_dates}
+                        if week_cols and col_idx not in week_cols:
+                            continue
+                    cells.append(
+                        {
+                            "week_start": week_start,
+                            "sheet_name": sn[:128],
+                            "row_idx": row_idx,
+                            "col_idx": col_idx,
+                            "value_text": text[:512],
+                        }
+                    )
+                    if len(cells) > RAW_CELL_ARCHIVE_LIMIT:
+                        return []
+        return cells
+    finally:
+        wb.close()
+
+
+def find_schedule_workbook_for_week(
+    week_start: str,
+    search_dirs: Iterable[str],
+) -> str | None:
+    """Return the newest .xlsx in search_dirs whose dates include week_start."""
+    candidates: list[tuple[float, str]] = []
+    for directory in search_dirs:
+        if not directory or not os.path.isdir(directory):
+            continue
+        for name in os.listdir(directory):
+            if not name.lower().endswith((".xlsx", ".xlsm")):
+                continue
+            path = os.path.join(directory, name)
+            if not os.path.isfile(path):
+                continue
+            try:
+                weeks = detect_schedule_week_starts(path)
+            except Exception:
+                continue
+            if week_start in weeks:
+                candidates.append((os.path.getmtime(path), path))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][1]
 
 
 def aggregate_week_from_records(
@@ -1090,6 +1785,7 @@ def aggregate_week_from_records(
     records: Iterable[ShiftRecord],
     ops_coverage: tuple[dict[str, int], dict[str, int], dict[str, int], dict[str, int]]
     | None = None,
+    ops_daily: dict[date, tuple[int, int]] | None = None,
 ) -> AggregatedWeek:
     """
     Aggregate parsed shift records into the fields needed for WeeklyStaffing
@@ -1121,8 +1817,25 @@ def aggregate_week_from_records(
     # slot = unit_code when set, else source_cell so distinct lines do not collapse.
     # EMT is included so GR unit-days match OPS View (RN + Medic + EMT).
     crew_roles: dict[tuple[date, str, ServiceType, DayNight, str], dict[str, bool]] = {}
+    try:
+        week_start_date = datetime.strptime(week_start, "%Y-%m-%d").date()
+    except ValueError:
+        week_start_date = None
+    week_days: list[date] = []
+    daily_filled: dict[date, int] = {}
+    daily_rw: dict[date, int] = {}
+    daily_gr: dict[date, int] = {}
+    daily_exc: dict[date, int] = {}
+    if week_start_date is not None:
+        week_days = [week_start_date + timedelta(days=i) for i in range(7)]
+        daily_filled = {d: 0 for d in week_days}
+        daily_rw = {d: 0 for d in week_days}
+        daily_gr = {d: 0 for d in week_days}
+        daily_exc = {d: 0 for d in week_days}
 
     for rec in records:
+        if not rec.included_in_aggregates:
+            continue
         # Filled staffing: crew slots (RN + MEDIC paired); when not using OPS
         # View, derive base-level staffed unit-days from the same keys (below).
         if rec.filled and rec.day_night in {"D", "N"}:
@@ -1154,6 +1867,8 @@ def aggregate_week_from_records(
 
         # Leave/absence totals and per-role breakdown (leave_type display).
         lt = rec.leave_type
+        if lt and rec.date in daily_exc:
+            daily_exc[rec.date] += 1
         if lt == "AT":
             leave_at += 1
         elif lt in ("LT-D", "LT-N", "LT"):
@@ -1178,12 +1893,24 @@ def aggregate_week_from_records(
             leave_breakdown[key] = leave_breakdown.get(key, 0) + 1
 
     # Convert crew_roles into filled crew shifts by day/night (RN + Medic only).
-    for (_d, _base_name, _service_type, dn, _slot), roles in crew_roles.items():
+    for (day_date, _base_name, service_type, dn, _slot), roles in crew_roles.items():
         if roles.get("RN") and roles.get("MEDIC"):
             if dn == "D":
                 filled_day += 1
             else:
                 filled_night += 1
+            if day_date in daily_filled:
+                daily_filled[day_date] += 1
+        if day_date in daily_rw:
+            if service_type == "RW" and roles.get("RN") and roles.get("MEDIC"):
+                daily_rw[day_date] += 1
+            elif (
+                service_type == "GR"
+                and roles.get("RN")
+                and roles.get("MEDIC")
+                and roles.get("EMT")
+            ):
+                daily_gr[day_date] += 1
 
     # Base coverage without OPS View: one unit-day per staffed slot (not per person-row).
     # Aligns with OPS View — RW: RN+Medic; GR: RN+Medic+EMT.
@@ -1241,6 +1968,28 @@ def aggregate_week_from_records(
     base_rw = {b: base_rw_day.get(b, 0) + base_rw_night.get(b, 0) for b in all_rw}
     base_gr = {b: base_gr_day.get(b, 0) + base_gr_night.get(b, 0) for b in all_gr}
 
+    if ops_daily:
+        for day_date, (rw, gr) in ops_daily.items():
+            if day_date in daily_rw:
+                daily_rw[day_date] = rw
+                daily_gr[day_date] = gr
+
+    if week_days and sum(daily_filled.values()) == 0 and ops_daily:
+        for day_date, (rw, gr) in ops_daily.items():
+            if day_date in daily_filled:
+                daily_filled[day_date] = rw + gr
+
+    daily_detail = [
+        DailyDetailDay(
+            day_date=day_date,
+            filled=daily_filled.get(day_date, 0),
+            rw=daily_rw.get(day_date, 0),
+            gr=daily_gr.get(day_date, 0),
+            exceptions=daily_exc.get(day_date, 0),
+        )
+        for day_date in week_days
+    ]
+
     return AggregatedWeek(
         week_start=week_start,
         filled_day=filled_day,
@@ -1264,4 +2013,5 @@ def aggregate_week_from_records(
         base_rw_staffed_night=base_rw_night,
         base_gr_staffed_day=base_gr_day,
         base_gr_staffed_night=base_gr_night,
+        daily_detail=daily_detail,
     )

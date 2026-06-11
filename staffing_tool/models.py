@@ -2,7 +2,7 @@
 SQLAlchemy ORM models for staffing.db (system of record).
 """
 
-from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -54,8 +54,204 @@ class ManagerRosterLastName(Base):
         return f"ManagerRosterLastName(last_name={self.last_name!r})"
 
 
+STAFF_ROSTER_ROLES: tuple[str, ...] = ("RN", "MEDIC", "EMT")
+
+
+class StaffRosterEntry(Base):
+    """Controlled roster for RN, Medic, and EMT schedule import and ops reports."""
+
+    __tablename__ = "staff_roster_entry"
+    __table_args__ = (
+        UniqueConstraint(
+            "role",
+            "last_name",
+            "first_name",
+            name="uq_staff_roster_role_name",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    last_name = Column(String(128), nullable=False)
+    first_name = Column(String(128), nullable=False, default="")
+    role = Column(String(16), nullable=False)
+    active = Column(Integer, nullable=False, default=1)
+    created_at = Column(String(32), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return (
+            f"StaffRosterEntry(role={self.role!r}, "
+            f"last_name={self.last_name!r}, first_name={self.first_name!r})"
+        )
+
+
+class ScheduleImport(Base):
+    """Audit row for each schedule workbook import (one per week_start)."""
+
+    __tablename__ = "schedule_imports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    source_filename = Column(String(512), nullable=False, default="")
+    imported_at = Column(String(32), nullable=False)
+    file_path = Column(String(1024), nullable=False, default="")
+    file_hash = Column(String(64), nullable=False, default="")
+    parser_version = Column(String(8), nullable=False, default="1")
+    record_count = Column(Integer, nullable=False, default=0)
+    issue_count = Column(Integer, nullable=False, default=0)
+    person_event_count = Column(Integer, nullable=False, default=0)
+    raw_cell_count = Column(Integer, nullable=False, default=0)
+
+
+class WeeklyPersonShift(Base):
+    """Per-person shift row from schedule import (staffed, leave, OT, or skipped)."""
+
+    __tablename__ = "weekly_person_shifts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    schedule_import_id = Column(
+        Integer,
+        ForeignKey("schedule_imports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    person_display = Column(String(256), nullable=False, default="", index=True)
+    staff_member_id = Column(
+        Integer,
+        ForeignKey("staff_roster_entry.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    shift_date = Column(String(10), nullable=False, index=True)
+    role = Column(String(16), nullable=False)
+    event_type = Column(String(16), nullable=False)  # staffed, leave, ot, skipped
+    base_name = Column(String(64), nullable=False, default="")
+    service_type = Column(String(8), nullable=False, default="")
+    day_night = Column(String(1), nullable=False, default="")
+    unit_code = Column(String(32), nullable=False, default="")
+    leave_type = Column(String(32), nullable=True)
+    overtime = Column(Integer, nullable=False, default=0)
+    raw_value = Column(String(64), nullable=False, default="")
+    source_tab = Column(String(128), nullable=False, default="")
+    source_cell = Column(String(16), nullable=False, default="")
+    excel_row = Column(Integer, nullable=False, default=0)
+    excel_col = Column(Integer, nullable=False, default=0)
+    is_manager_row = Column(Integer, nullable=False, default=0)
+    included_in_aggregates = Column(Integer, nullable=False, default=1)
+    skip_reason = Column(String(32), nullable=True)
+
+
+class ScheduleRawCell(Base):
+    """Optional raw grid archive for schedule replay (sheet, row, col, value)."""
+
+    __tablename__ = "schedule_raw_cells"
+    __table_args__ = (
+        UniqueConstraint(
+            "week_start",
+            "sheet_name",
+            "row_idx",
+            "col_idx",
+            name="uq_schedule_raw_cell",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sheet_name = Column(String(128), nullable=False)
+    row_idx = Column(Integer, nullable=False)
+    col_idx = Column(Integer, nullable=False)
+    value_text = Column(String(512), nullable=False, default="")
+
+
+class WeeklyOpsViewDay(Base):
+    """OPS View staffed unit-days per calendar day and base."""
+
+    __tablename__ = "weekly_ops_view_days"
+
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    day_date = Column(String(10), primary_key=True)
+    base_name = Column(String(64), primary_key=True)
+    rw_count = Column(Integer, nullable=False, default=0)
+    gr_count = Column(Integer, nullable=False, default=0)
+
+
+class WeeklyOpsViewAssignment(Base):
+    """OPS View name-level cell: one staffed or open slot per unit/role/day."""
+
+    __tablename__ = "weekly_ops_view_assignments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    day_date = Column(String(10), nullable=False, index=True)
+    unit_code = Column(String(32), nullable=False)
+    role = Column(String(16), nullable=False)
+    excel_row = Column(Integer, nullable=False, default=0)
+    person_display = Column(String(256), nullable=False, default="")
+    raw_value = Column(String(128), nullable=False, default="")
+    is_staffed = Column(Integer, nullable=False, default=0)
+
+
+class UnitCodeMapping(Base):
+    """Persisted raw unit cell text -> replacement (dashboard Apply, bulk backfill)."""
+
+    __tablename__ = "unit_code_mappings"
+    __table_args__ = (UniqueConstraint("raw_code", name="uq_unit_code_mapping_raw"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    raw_code = Column(String(64), nullable=False)
+    maps_to = Column(String(64), nullable=False)
+    source = Column(String(32), nullable=False, default="dashboard")
+    created_at = Column(String(32), nullable=False)
+    updated_at = Column(String(32), nullable=False)
+
+
+class ScheduleParseIssue(Base):
+    """Parser issues (unknown units, missing sheets) retained per import."""
+
+    __tablename__ = "schedule_parse_issues"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sheet = Column(String(128), nullable=False, default="")
+    cell = Column(String(32), nullable=False, default="")
+    raw_value = Column(String(128), nullable=False, default="")
+    issue_type = Column(String(32), nullable=False, default="")
+    message = Column(Text, nullable=False, default="")
+
+
 class WeeklyManagerShift(Base):
-    """One staffed line shift worked by a manager (from schedule import)."""
+    """Manager schedule events from import: line shifts and AOC admin days."""
 
     __tablename__ = "weekly_manager_shifts"
 
@@ -69,6 +265,8 @@ class WeeklyManagerShift(Base):
     person_display = Column(String(256), nullable=False, default="")
     role = Column(String(16), nullable=False)
     shift_date = Column(String(10), nullable=False)
+    # line_shift | aoc
+    event_type = Column(String(16), nullable=False, default="line_shift")
     base_name = Column(String(64), nullable=False)
     service_type = Column(String(8), nullable=False)
     day_night = Column(String(1), nullable=False)
@@ -158,6 +356,29 @@ class WeeklyBaseCoverage(Base):
 
     def __repr__(self) -> str:
         return f"WeeklyBaseCoverage(week_start={self.week_start!r}, base={self.base_name!r}, rw={self.rw_staffed_unit_days}, gr={self.gr_staffed_unit_days})"
+
+
+class WeeklyDailyDetail(Base):
+    """Per-day staffing summary for weekly PDF/HTML daily detail table."""
+
+    __tablename__ = "weekly_daily_detail"
+
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    day_date = Column(String(10), primary_key=True)  # YYYY-MM-DD (Sunday–Saturday)
+    filled = Column(Integer, nullable=False, default=0)
+    rw = Column(Integer, nullable=False, default=0)
+    gr = Column(Integer, nullable=False, default=0)
+    exceptions = Column(Integer, nullable=False, default=0)
+
+    def __repr__(self) -> str:
+        return (
+            f"WeeklyDailyDetail(week={self.week_start!r}, day={self.day_date!r}, "
+            f"filled={self.filled}, rw={self.rw}, gr={self.gr}, exc={self.exceptions})"
+        )
 
 
 class WeeklyLeaveDetail(Base):

@@ -8,12 +8,20 @@ from .manager_shifts import (
     manager_shifts_export_csv,
     manager_shifts_export_xlsx,
 )
+from .person_ops import person_ops_export_csv, person_ops_report
 from .monthly_report import monthly_report
+from .quarterly_staffing_report import quarterly_staffing_report
 from .reports import reports_index
+from .weekly_staffing_report import (
+    weekly_report_download_html,
+    weekly_report_download_pdf,
+    weekly_staffing_report,
+)
 from .settings_views import (
     kpi_thresholds_settings,
     manager_roster_settings,
     settings_index,
+    staff_roster_settings,
 )
 from .staffing_dashboard import (
     staffing_dashboard,
@@ -37,11 +45,18 @@ __all__ = [
     "import_schedule",
     "kpi_thresholds_settings",
     "manager_roster_settings",
+    "staff_roster_settings",
     "manager_shifts",
     "manager_shifts_export_csv",
     "manager_shifts_export_xlsx",
     "monthly_report",
+    "person_ops_export_csv",
+    "person_ops_report",
+    "quarterly_staffing_report",
     "reports_index",
+    "weekly_report_download_html",
+    "weekly_report_download_pdf",
+    "weekly_staffing_report",
     "restore_db",
     "settings_index",
     "staffing_dashboard",

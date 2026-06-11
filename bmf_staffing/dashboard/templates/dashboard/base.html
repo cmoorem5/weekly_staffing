@@ -231,7 +231,7 @@
               </ul>
             </li>
             <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle{% if '/reports/' in request.path or '/staffing-dashboard/' in request.path or '/manager-shifts/' in request.path or '/report/monthly/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <a class="nav-link dropdown-toggle{% if '/reports/' in request.path or '/staffing-dashboard/' in request.path or '/manager-shifts/' in request.path or '/ops/person/' in request.path or '/report/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                 Reports
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
@@ -239,6 +239,9 @@
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a></li>
                 <li><a class="dropdown-item" href="{% url 'manager_shifts' %}">Manager shifts</a></li>
+                <li><a class="dropdown-item" href="{% url 'person_ops_report' %}">Staff ops report</a></li>
+                <li><a class="dropdown-item" href="{% url 'weekly_staffing_report' %}">Weekly staffing report</a></li>
+                <li><a class="dropdown-item" href="{% url 'quarterly_staffing_report' %}">Quarterly staffing report</a></li>
                 <li><a class="dropdown-item" href="{% url 'monthly_report' %}">Monthly board report</a></li>
               </ul>
             </li>
@@ -250,6 +253,7 @@
                 <li><a class="dropdown-item fw-semibold" href="{% url 'settings_index' %}">All settings</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'manager_roster_settings' %}">Manager roster</a></li>
+                <li><a class="dropdown-item" href="{% url 'staff_roster_settings' %}">Staff roster</a></li>
                 <li><a class="dropdown-item" href="{% url 'kpi_thresholds_settings' %}">KPI thresholds</a></li>
                 <li><a class="dropdown-item" href="{% url 'base_totals' %}">Base totals (RW / GR)</a></li>
                 <li><hr class="dropdown-divider"></li>

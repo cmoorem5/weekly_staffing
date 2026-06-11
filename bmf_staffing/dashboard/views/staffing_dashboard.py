@@ -420,6 +420,11 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             )
             .filter(WeeklyManagerShift.shift_date >= date_start.isoformat())
             .filter(WeeklyManagerShift.shift_date <= date_end.isoformat())
+            .filter(
+                (WeeklyManagerShift.event_type == "line_shift")
+                | (WeeklyManagerShift.event_type.is_(None))
+                | (WeeklyManagerShift.event_type == "")
+            )
             .group_by(WeeklyManagerShift.shift_date, WeeklyManagerShift.base_name)
             .all()
         )

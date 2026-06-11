@@ -1,15 +1,16 @@
 {% extends "dashboard/base.html" %}
 {% load static %}
-{% block title %}Manager shifts{% endblock %}
+{% block title %}Manager report{% endblock %}
 {% block content %}
-<h1 class="bmf-page-title">Manager line shifts</h1>
+<h1 class="bmf-page-title">Manager report</h1>
 <p class="bmf-page-subtitle">
-  Staffed unit assignments for managers on the roster (last names in
+  Line shifts and <strong>AOC</strong> days for managers on the roster (last names in
   <a href="{% url 'manager_roster_settings' %}">Settings → Manager roster</a>).
   This list updates when you <strong>Apply</strong> a schedule import; manual week edits do not change it.
   Names are grouped by roster last name (e.g. <code>m, Ender</code> and <code>Ender</code> count together).
 </p>
 <p class="small text-muted mb-0">
+  <strong>AOC</strong> cells on manager rows in the schedule Excel are tracked here only — they are excluded from CEO clinical totals.
   <strong>OT note:</strong> Overtime flags on manager line shifts are informational only. Board <strong>OT %</strong> (backfill rate) counts RN/Medic/EMT OT on filled crew shifts from the weekly staffing import — not manager line assignments.
 </p>
 
@@ -84,7 +85,7 @@
   {% endif %}
 </p>
 
-{% if cumulative_rows %}
+{% if cumulative_rows or aoc_summary_rows %}
 <p class="small mt-4 mb-2" style="max-width: 56rem;">
   <strong>Minimum expectation:</strong> {{ manager_min_fy }} manager line-shifts per person per fiscal year,
   equivalent to {{ manager_min_per_pp }} per biweekly pay period ({{ manager_pp_per_fy }} periods in the current FY).
@@ -132,6 +133,7 @@
         <tr>
           <th scope="col">Manager (last name)</th>
           <th scope="col" class="text-end">Shifts</th>
+          <th scope="col" class="text-end">AOC days</th>
           <th scope="col" class="text-end">Min (prorated)</th>
           <th scope="col" class="text-end">Δ</th>
           <th scope="col">Status</th>
@@ -143,12 +145,13 @@
         {% for row in cumulative_rows %}
         <tr{% if not row.met %} style="background: #fff8e6;"{% endif %}>
           <td>{{ row.name }}</td>
-          <td class="text-end">{{ row.count }}</td>
-          <td class="text-end">{{ row.target }}</td>
-          <td class="text-end">{% if row.delta > 0 %}+{% endif %}{{ row.delta }}</td>
-          <td>{{ row.status_label }}</td>
-          <td class="text-end">{{ row.pct }}%</td>
-          <td class="text-end">{{ row.running }}</td>
+          <td class="text-end">{% if row.count %}{{ row.count }}{% else %}—{% endif %}</td>
+          <td class="text-end">{% if row.aoc_count %}{{ row.aoc_count }}{% else %}—{% endif %}</td>
+          <td class="text-end">{% if row.count %}{{ row.target }}{% else %}—{% endif %}</td>
+          <td class="text-end">{% if row.count %}{% if row.delta > 0 %}+{% endif %}{{ row.delta }}{% else %}—{% endif %}</td>
+          <td>{% if row.count %}{{ row.status_label }}{% else %}—{% endif %}</td>
+          <td class="text-end">{% if row.count %}{{ row.pct }}%{% else %}—{% endif %}</td>
+          <td class="text-end">{% if row.running is not None %}{{ row.running }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -156,6 +159,7 @@
         <tr style="font-weight: 600; background: var(--bmf-gray);">
           <td>Total (all managers)</td>
           <td class="text-end">{{ grand_total }}</td>
+          <td class="text-end">{{ aoc_grand_total }}</td>
           <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td>—</td>
@@ -215,11 +219,77 @@
 {% endif %}
 
 <p class="text-muted small mb-4">
-  <strong>{{ shift_count }}</strong> person-shift{{ shift_count|pluralize }} in this range (each detail row = one role on one unit for one day).
+  <strong>{{ shift_count }}</strong> person-shift{{ shift_count|pluralize }} and
+  <strong>{{ aoc_grand_total }}</strong> AOC day{{ aoc_grand_total|pluralize }} in this range.
+  Each line-shift detail row = one role on one unit for one day; each AOC row = one AOC cell on a manager schedule row.
   Running total orders managers by highest shift count first. Light highlight = below prorated minimum for the period.
 </p>
 {% else %}
-<p class="mt-4 text-muted">No manager line shifts in this range. Import schedules for weeks in the window, widen the dates, or use <strong>All data in database</strong> above.</p>
+<p class="mt-4 text-muted">No manager line shifts or AOC days in this range. Import schedules for weeks in the window, widen the dates, or use <strong>All data in database</strong> above.</p>
+{% endif %}
+
+{% if aoc_rows %}
+<div class="card bmf-card shadow-sm mb-4">
+  <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span>AOC detail <span class="text-muted fw-normal small">({{ aoc_detail_total }} row{{ aoc_detail_total|pluralize }})</span></span>
+    <button
+      class="btn btn-outline-secondary btn-sm"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#mgrAocDetailCollapse"
+      aria-expanded="false"
+      aria-controls="mgrAocDetailCollapse"
+    >
+      Show AOC detail
+    </button>
+  </div>
+  <div id="mgrAocDetailCollapse" class="collapse">
+    {% if aoc_detail_page_count > 1 %}
+    <div class="card-body py-2 border-bottom">
+      <nav aria-label="Manager AOC detail pages" class="d-flex flex-wrap align-items-center gap-2 small">
+        <span class="text-muted">Page {{ aoc_detail_page }} of {{ aoc_detail_page_count }}</span>
+        {% if aoc_detail_page > 1 %}
+          <a class="btn btn-outline-secondary btn-sm" href="?{{ filters_qs }}&amp;aoc_page={{ aoc_detail_page|add:'-1' }}">Previous</a>
+        {% endif %}
+        {% if aoc_detail_page < aoc_detail_page_count %}
+          <a class="btn btn-outline-secondary btn-sm" href="?{{ filters_qs }}&amp;aoc_page={{ aoc_detail_page|add:'1' }}">Next</a>
+        {% endif %}
+      </nav>
+    </div>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered bg-white align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Manager</th>
+            <th>Role</th>
+            <th>Source value</th>
+            <th>Week start</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in aoc_rows %}
+          <tr>
+            <td>{{ row.shift_date }}</td>
+            <td>
+              {{ row.person_display }}
+              {% if row.raw_person_display %}
+                <span class="text-muted small" title="Legacy label before roster normalization">({{ row.raw_person_display }})</span>
+              {% endif %}
+            </td>
+            <td>{{ row.role }}</td>
+            <td>{{ row.raw_value }}</td>
+            <td>{{ row.week_start }}</td>
+            <td class="small text-muted">{{ row.source_tab }} {{ row.source_cell }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% if shifts %}

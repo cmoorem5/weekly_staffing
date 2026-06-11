@@ -239,6 +239,7 @@ def week_edit(request, week_start):
         formset = BaseCoverageFormSet(initial=coverage_initial, prefix="cov")
         leave_grid_rows = _build_leave_grid_rows(leave_breakdown)
     coverage_forms = list(zip(BASES, formset))
+    imported = request.GET.get("imported") == "1"
     return render(
         request,
         "dashboard/week_edit.html",
@@ -249,6 +250,7 @@ def week_edit(request, week_start):
             "bases": BASES,
             "coverage_forms": coverage_forms,
             "is_add": False,
+            "imported": imported,
             "leave_types_order": EXCEPTION_GRID_COLS,
             "leave_grid_rows": leave_grid_rows,
         },

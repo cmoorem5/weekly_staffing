@@ -176,3 +176,43 @@ class ManagerRosterAddForm(forms.Form):
         if not name:
             raise forms.ValidationError("Enter a last name.")
         return name.title()
+
+
+STAFF_ROSTER_ROLE_CHOICES = (
+    ("RN", "RN"),
+    ("MEDIC", "Medic"),
+    ("EMT", "EMT"),
+)
+
+
+class StaffRosterAddForm(forms.Form):
+    last_name = forms.CharField(
+        max_length=128,
+        label="Last name",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "e.g. Smith", "autocomplete": "off"}
+        ),
+    )
+    first_name = forms.CharField(
+        max_length=128,
+        required=False,
+        label="First name (optional)",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "e.g. Jane", "autocomplete": "off"}
+        ),
+    )
+    role = forms.ChoiceField(
+        choices=STAFF_ROSTER_ROLE_CHOICES,
+        label="Role",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def clean_last_name(self):
+        name = (self.cleaned_data.get("last_name") or "").strip()
+        if not name:
+            raise forms.ValidationError("Enter a last name.")
+        return name.title()
+
+    def clean_first_name(self):
+        name = (self.cleaned_data.get("first_name") or "").strip()
+        return name.title() if name else ""

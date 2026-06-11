@@ -89,4 +89,5 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Staffing tool: Excel output (paths under Weekly_staffing/)
 STAFFING_OUTPUT_DIR = os.path.join(WEEKLY_STAFFING_ROOT, "output")
 # Schedule uploads: delete files older than this many hours (see views._cleanup).
-STAFFING_UPLOAD_RETENTION_HOURS = 24
+# Keep uploaded schedule workbooks for one week (re-import / daily detail backfill).
+STAFFING_UPLOAD_RETENTION_HOURS = 168

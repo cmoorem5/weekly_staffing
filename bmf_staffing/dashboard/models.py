@@ -21,3 +21,28 @@ class ManagerRosterLastName(models.Model):
 
     def __str__(self) -> str:
         return self.last_name
+
+
+class StaffRosterEntry(models.Model):
+    """RN / Medic / EMT roster for schedule import and staff ops reports."""
+
+    id = models.AutoField(primary_key=True)
+    last_name = models.CharField(max_length=128)
+    first_name = models.CharField(max_length=128, blank=True, default="")
+    role = models.CharField(max_length=16)
+    active = models.BooleanField(default=True)
+    created_at = models.CharField(max_length=32, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "staff_roster_entry"
+        verbose_name = "Staff roster entry"
+        verbose_name_plural = "Staff roster entries"
+        unique_together = (("role", "last_name", "first_name"),)
+
+    def __str__(self) -> str:
+        first = (self.first_name or "").strip()
+        if first:
+            return f"{self.last_name}, {first} ({self.role})"
+        return f"{self.last_name} ({self.role})"

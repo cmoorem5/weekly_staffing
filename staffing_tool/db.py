@@ -133,6 +133,59 @@ def migrate_add_unpartnered_columns(engine: Engine) -> None:
     migrate_weekly_staffing_columns(engine)
 
 
+def migrate_manager_shift_event_type(engine: Engine) -> None:
+    """Add event_type to weekly_manager_shifts (line_shift | aoc)."""
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='weekly_manager_shifts'"
+            )
+        )
+        if r.fetchone() is None:
+            return
+        columns = _pragma_column_names(conn, "weekly_manager_shifts")
+        if "event_type" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE weekly_manager_shifts ADD COLUMN event_type "
+                    "TEXT NOT NULL DEFAULT 'line_shift'"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE weekly_manager_shifts SET event_type = 'line_shift' "
+                    "WHERE event_type IS NULL OR event_type = ''"
+                )
+            )
+        conn.commit()
+
+
+def migrate_schedule_persistence_tables(engine: Engine) -> None:
+    """Add columns on weekly_person_shifts for full import detail."""
+    optional_int = (
+        ("schedule_import_id", "INTEGER"),
+        ("excel_row", "INTEGER NOT NULL DEFAULT 0"),
+        ("excel_col", "INTEGER NOT NULL DEFAULT 0"),
+        ("is_manager_row", "INTEGER NOT NULL DEFAULT 0"),
+        ("included_in_aggregates", "INTEGER NOT NULL DEFAULT 1"),
+    )
+    with engine.connect() as conn:
+        columns = _pragma_column_names(conn, "weekly_person_shifts")
+        for col, sql_type in optional_int:
+            if col not in columns:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE weekly_person_shifts ADD COLUMN {col} {sql_type}"
+                    )
+                )
+        if "skip_reason" not in columns:
+            conn.execute(
+                text("ALTER TABLE weekly_person_shifts ADD COLUMN skip_reason TEXT")
+            )
+        conn.commit()
+
+
 def migrate_add_base_coverage_day_night(engine: Engine) -> None:
     """Add RW/GR day-night split columns to weekly_base_coverage if missing."""
     optional = (
@@ -349,6 +402,8 @@ def init_db(db_path: str | None = None) -> None:
     migrate_weekly_staffing_columns(engine)
     migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
+    migrate_schedule_persistence_tables(engine)
+    migrate_manager_shift_event_type(engine)
     SessionLocal = _sessionmaker_for_path(_resolve_db_path(db_path))
     with SessionLocal() as session:
         seed_base_config(session)
