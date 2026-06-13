@@ -9,7 +9,6 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from openpyxl import Workbook
-
 from staffing_tool.db import (
     _get_engine_cached,
     _sessionmaker_for_path,

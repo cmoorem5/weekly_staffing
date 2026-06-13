@@ -13,7 +13,10 @@ from staffing_tool.person_names import (
     person_displays_for_role,
     rn_medic_person_displays,
 )
-from staffing_tool.schedule_import import parse_schedule_workbook, weekly_person_shift_mappings
+from staffing_tool.schedule_import import (
+    parse_schedule_workbook,
+    weekly_person_shift_mappings,
+)
 
 
 class ParseNameCellTests(unittest.TestCase):

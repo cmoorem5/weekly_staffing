@@ -2,7 +2,6 @@
 
 from staffing_tool.manager_names import canonical_manager_name
 
-
 ROSTER = frozenset(
     {
         "AHLSTEDT",

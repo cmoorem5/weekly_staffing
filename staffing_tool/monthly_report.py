@@ -60,7 +60,9 @@ FILL_BY_BASE_SYSTEM_TOTAL = PatternFill(
 )
 
 
-def _style_by_base_system_total_cell(cell, *, value, number_format: str | None = None) -> None:
+def _style_by_base_system_total_cell(
+    cell, *, value, number_format: str | None = None
+) -> None:
     cell.value = value
     cell.font = BOLD
     cell.fill = FILL_BY_BASE_SYSTEM_TOTAL
@@ -196,7 +198,6 @@ def export_monthly_report(
         cov = [c for c in cov_rows if _week_start_key(c) == wk]
         weekly_metrics.append(compute_week_metrics(w, cov, bases_cfg))
 
-    n_m = len(weekly_metrics)
     rollups = compute_period_rollups(weekly_metrics)
     avg_staffing = rollups.avg_staffing_rate if rollups else 0.0
     avg_ot_dep = rollups.avg_ot_dependency if rollups else 0.0
@@ -481,7 +482,9 @@ def export_monthly_report(
         if cfg_b is not None:
             sys_rw_cap += _as_int(getattr(cfg_b, "rw_total_unit_days", 0)) * n_weeks
     sys_gr_ops_cap = (
-        SYSTEM_GR_MAX_SHIFTS_PER_WEEK * n_weeks if n_weeks and SYSTEM_GR_MAX_SHIFTS_PER_WEEK else 0
+        SYSTEM_GR_MAX_SHIFTS_PER_WEEK * n_weeks
+        if n_weeks and SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+        else 0
     )
     sys_rw_pct = (sys_rw_sum / sys_rw_cap) if sys_rw_cap else None
     sys_gr_pct = (sys_gr_sum / sys_gr_ops_cap) if sys_gr_ops_cap else None

@@ -19,9 +19,6 @@ django.setup()
 
 from django.test import Client
 from django.urls import reverse
-
-from dashboard.views import helpers as view_helpers
-from dashboard.views import settings_views
 from staffing_tool.db import (
     _get_engine_cached,
     _sessionmaker_for_path,
@@ -30,6 +27,9 @@ from staffing_tool.db import (
     session_scope,
 )
 from staffing_tool.models import StaffRosterEntry as SaStaffRosterEntry
+
+from dashboard.views import helpers as view_helpers
+from dashboard.views import settings_views
 
 
 class StaffRosterSettingsViewTests(unittest.TestCase):

@@ -1,7 +1,8 @@
-# Staffing tool (CLI) + Django dashboard. Python 3.11+
+# Staffing tool (CLI) + Django dashboard. Python 3.12+
+# Pins reflect the versions the test suite is verified against.
 SQLAlchemy==2.0.46
 openpyxl==3.1.5
-Pillow==11.3.0
-Django==4.2.23
-reportlab>=4.0
-matplotlib>=3.7
+Pillow==12.1.1
+Django==6.0.2
+reportlab==4.5.1
+matplotlib==3.10.9

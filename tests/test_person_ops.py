@@ -13,15 +13,15 @@ from staffing_tool.db import (
     session_scope,
 )
 from staffing_tool.models import StaffRosterEntry, WeeklyPersonShift, WeeklyStaffing
+from staffing_tool.person_names import person_sort_key
 from staffing_tool.person_ops import (
     list_distinct_persons,
     list_staff_roster_persons,
     load_person_ops_detail,
     load_person_ops_summary,
 )
-from staffing_tool.staff_roster import staff_roster_index_from_session
-from staffing_tool.person_names import person_sort_key
 from staffing_tool.schedule_import import ShiftRecord, weekly_person_shift_mappings
+from staffing_tool.staff_roster import staff_roster_index_from_session
 
 
 def _staffed(

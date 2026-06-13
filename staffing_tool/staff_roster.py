@@ -14,7 +14,12 @@ from typing import Any
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 
-from .models import STAFF_ROSTER_ROLES, ScheduleImport, StaffRosterEntry, WeeklyPersonShift
+from .models import (
+    STAFF_ROSTER_ROLES,
+    ScheduleImport,
+    StaffRosterEntry,
+    WeeklyPersonShift,
+)
 from .person_names import (
     is_likely_person_name,
     is_plausible_person_display,

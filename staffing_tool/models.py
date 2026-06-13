@@ -2,7 +2,15 @@
 SQLAlchemy ORM models for staffing.db (system of record).
 """
 
-from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()

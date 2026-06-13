@@ -8,15 +8,10 @@ from .manager_shifts import (
     manager_shifts_export_csv,
     manager_shifts_export_xlsx,
 )
-from .person_ops import person_ops_export_csv, person_ops_report
 from .monthly_report import monthly_report
+from .person_ops import person_ops_export_csv, person_ops_report
 from .quarterly_staffing_report import quarterly_staffing_report
 from .reports import reports_index
-from .weekly_staffing_report import (
-    weekly_report_download_html,
-    weekly_report_download_pdf,
-    weekly_staffing_report,
-)
 from .settings_views import (
     kpi_thresholds_settings,
     manager_roster_settings,
@@ -27,6 +22,11 @@ from .staffing_dashboard import (
     staffing_dashboard,
     staffing_dashboard_export_csv,
     staffing_dashboard_export_xlsx,
+)
+from .weekly_staffing_report import (
+    weekly_report_download_html,
+    weekly_report_download_pdf,
+    weekly_staffing_report,
 )
 from .weeks import (
     base_totals,

@@ -41,7 +41,9 @@ PARSER_VERSION = "2"
 Role = str  # "RN", "MEDIC", "EMT", "PILOT"
 ServiceType = str  # "RW" or "GR"
 DayNight = str  # "D" or "N"
-SkipReason = str  # training, open, admin, ignored_unit, schedule_row, manager_row, retired_unit
+SkipReason = (
+    str  # training, open, admin, ignored_unit, schedule_row, manager_row, retired_unit
+)
 
 # Max non-empty cells archived per week (SQLite-friendly).
 RAW_CELL_ARCHIVE_LIMIT = 5000
@@ -1027,7 +1029,8 @@ def weekly_person_shift_mappings(
 
 
 def weekly_manager_shift_mappings(
-    week_start: str, records: Iterable[ShiftRecord],
+    week_start: str,
+    records: Iterable[ShiftRecord],
 ) -> list[dict[str, object]]:
     """
     Rows for ``WeeklyManagerShift`` bulk insert: staffed unit cells and AOC
@@ -1611,9 +1614,7 @@ def _parse_ops_view_detail_worksheet(
     day_base: dict[tuple[date, str], list[int]] = {
         (d, base): [0, 0]
         for _, d in col_dates
-        for base in {
-            info[0] for info in UNIT_MAP.values()
-        }
+        for base in {info[0] for info in UNIT_MAP.values()}
     }
     assignments: list[OpsViewAssignment] = []
 
@@ -1720,6 +1721,14 @@ def collect_schedule_raw_cells(
             if not sn:
                 continue
             ws = wb[sn]
+            # Header row (and therefore the set of columns belonging to this week)
+            # is constant per sheet, so resolve it once instead of per cell.
+            _hdr_row, header_dates = _best_header_row_in_ws(
+                ws,
+                week_start_date=week_start_date,
+                week_end_date=week_end_date,
+            )
+            week_cols = {c for c, _ in header_dates}
             for row_idx in range(row_min, row_max + 1):
                 for col_idx in range(1, col_max + 1):
                     val = ws.cell(row=row_idx, column=col_idx).value
@@ -1728,15 +1737,8 @@ def collect_schedule_raw_cells(
                     text = str(val).strip()
                     if not text:
                         continue
-                    if col_idx >= 3:
-                        _hdr_row, header_dates = _best_header_row_in_ws(
-                            ws,
-                            week_start_date=week_start_date,
-                            week_end_date=week_end_date,
-                        )
-                        week_cols = {c for c, _ in header_dates}
-                        if week_cols and col_idx not in week_cols:
-                            continue
+                    if col_idx >= 3 and week_cols and col_idx not in week_cols:
+                        continue
                     cells.append(
                         {
                             "week_start": week_start,

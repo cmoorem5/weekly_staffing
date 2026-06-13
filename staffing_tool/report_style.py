@@ -6,21 +6,23 @@ Polish reference: output/BMF FY27 Clinical Ops Expansion.pdf
 
 import os
 
-from staffing_tool.paths import FONT_DIR as _FONT_DIR, OUTPUT_DIR as _OUTPUT_DIR
-
 import matplotlib
+
+from staffing_tool.paths import FONT_DIR as _FONT_DIR
+from staffing_tool.paths import OUTPUT_DIR as _OUTPUT_DIR
+
 matplotlib.use('Agg')
-import matplotlib.font_manager as fm
-import matplotlib.pyplot as plt
 from io import BytesIO
 
+import matplotlib.font_manager as fm
+import matplotlib.pyplot as plt
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.lib import colors
-from reportlab.platypus import Table, TableStyle, Image
-from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Image, Table, TableStyle
 
 FONT_DIR = str(_FONT_DIR)
 OUTPUT_DIR = str(_OUTPUT_DIR)

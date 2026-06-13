@@ -19,7 +19,6 @@ from staffing_tool.fiscal_year import (
     fy_week1_sunday_containing,
     pay_periods_for_fy,
 )
-from staffing_tool.time_buckets import bucket_label, buckets_for_range
 from staffing_tool.leave_grid import EXCEPTION_COL_BREAKDOWN_KEYS
 from staffing_tool.metrics import compute_period_rollups, compute_week_metrics
 from staffing_tool.models import (
@@ -29,6 +28,7 @@ from staffing_tool.models import (
     WeeklyManagerShift,
     WeeklyStaffing,
 )
+from staffing_tool.time_buckets import bucket_label, buckets_for_range
 
 from .dashboard_filters import (
     fy_choice_rows,

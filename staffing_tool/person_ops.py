@@ -8,7 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import distinct, func, or_
+from sqlalchemy import distinct, or_
 
 from .db import session_scope
 from .models import StaffRosterEntry, WeeklyPersonShift

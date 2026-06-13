@@ -24,7 +24,18 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in (
     "yes",
 )
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+# Comma-separated DJANGO_ALLOWED_HOSTS overrides the localhost-only default.
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if h.strip()
+]
+
+# Fail fast in production if the placeholder secret was never replaced.
+if not DEBUG and SECRET_KEY == "dev-key-change-in-production":
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY must be set to a unique value when DJANGO_DEBUG is off."
+    )
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -85,6 +96,24 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "/static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Hardening that only applies once DEBUG is off (i.e. a real deployment).
+# Left relaxed in local/dev so the loopback dashboard keeps working over HTTP.
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    X_FRAME_OPTIONS = "DENY"
+    # Honor X-Forwarded-Proto when running behind a TLS-terminating proxy.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SSL_REDIRECT", "1").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 # Staffing tool: Excel output (paths under Weekly_staffing/)
 STAFFING_OUTPUT_DIR = os.path.join(WEEKLY_STAFFING_ROOT, "output")

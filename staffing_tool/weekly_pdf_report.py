@@ -20,13 +20,13 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle
 
 from staffing_tool import report_style as style
-
 from staffing_tool.db import session_scope
 from staffing_tool.leave_grid import (
     EXCEPTION_COL_BREAKDOWN_KEYS,
     EXCEPTION_GRID_COLS,
     EXCEPTION_GRID_ROLES,
 )
+from staffing_tool.manager_roster import manager_last_names_upper_from_session
 from staffing_tool.metrics import (
     REQUIRED_DAY,
     REQUIRED_NIGHT,
@@ -34,7 +34,6 @@ from staffing_tool.metrics import (
     TOTAL_PERSON_SHIFTS,
     compute_week_metrics,
 )
-from staffing_tool.manager_roster import manager_last_names_upper_from_session
 from staffing_tool.models import (
     BaseConfig,
     WeeklyBaseCoverage,

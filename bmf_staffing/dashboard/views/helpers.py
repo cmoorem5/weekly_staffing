@@ -11,8 +11,11 @@ from staffing_tool.manager_roster import (
     default_manager_last_names_upper,
     manager_last_names_upper_from_session,
 )
-from staffing_tool.staff_roster import StaffRosterMatchIndex, staff_roster_index_from_session
 from staffing_tool.schedule_import import AggregatedWeek
+from staffing_tool.staff_roster import (
+    StaffRosterMatchIndex,
+    staff_roster_index_from_session,
+)
 
 BASES = ["Bedford", "Lawrence", "Mansfield", "Manchester", "Plymouth"]
 
@@ -40,6 +43,7 @@ def _agg_leave_total(agg: AggregatedWeek) -> int:
         + agg.leave_jury
         + getattr(agg, "leave_brev", 0)
     )
+
 
 DB_PATH = getattr(settings, "STAFFING_DB_PATH", None)
 OUTPUT_DIR = getattr(settings, "STAFFING_OUTPUT_DIR", None)
@@ -69,6 +73,30 @@ _SCHEDULE_UPLOAD_PREFIX = "schedule_upload_"
 def _schedule_upload_dir() -> str:
     root_dir = os.path.dirname(DB_PATH) if DB_PATH else os.getcwd()
     return os.path.join(root_dir, "uploads")
+
+
+def _is_uploaded_schedule_path(path: str) -> bool:
+    """
+    True only if ``path`` is an existing schedule upload under the uploads dir.
+
+    Guards the apply/preview flow against path traversal: the upload path is
+    posted back as a hidden form field, so a crafted request could otherwise
+    point the importer at an arbitrary ``.xlsx`` on the server. We require the
+    resolved path to live inside ``uploads/`` and match the upload naming.
+    """
+    if not path:
+        return False
+    upload_dir = Path(_schedule_upload_dir()).resolve()
+    try:
+        resolved = Path(path).resolve()
+        resolved.relative_to(upload_dir)
+    except (OSError, ValueError):
+        return False
+    return (
+        resolved.is_file()
+        and resolved.name.startswith(_SCHEDULE_UPLOAD_PREFIX)
+        and resolved.suffix.lower() == ".xlsx"
+    )
 
 
 def _cleanup_old_schedule_uploads(upload_dir: str) -> None:
@@ -155,9 +183,7 @@ def staffing_db_health(db_path: str | None = None) -> dict[str, object]:
     try:
         with session_scope(path) as session:
             health["week_count"] = session.query(WeeklyStaffing).count()
-            health["manager_shift_count"] = session.query(
-                WeeklyManagerShift
-            ).count()
+            health["manager_shift_count"] = session.query(WeeklyManagerShift).count()
             from staffing_tool.data_quality import audit_kpi_data_quality
 
             health["data_quality"] = audit_kpi_data_quality(session)
@@ -231,4 +257,3 @@ def _last_sunday():
     days_back = (today.weekday() + 1) % 7
     sun = today - timedelta(days=days_back)
     return sun.strftime("%Y-%m-%d")
-

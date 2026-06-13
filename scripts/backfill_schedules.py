@@ -27,8 +27,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from staffing_tool.db import ensure_db_ready, init_db, session_scope
-from staffing_tool.paths import PROJECT_ROOT
 from staffing_tool.models import ScheduleImport, WeeklyStaffing
+from staffing_tool.paths import PROJECT_ROOT
 from staffing_tool.schedule_apply import (
     ScheduleApplyResult,
     apply_schedule_workbook,

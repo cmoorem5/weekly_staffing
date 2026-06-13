@@ -4,7 +4,11 @@ from collections import defaultdict
 
 from django.shortcuts import render
 from staffing_tool.db import session_scope
-from staffing_tool.metrics import PeriodRollups, compute_period_rollups, compute_week_metrics
+from staffing_tool.metrics import (
+    PeriodRollups,
+    compute_period_rollups,
+    compute_week_metrics,
+)
 from staffing_tool.models import (
     BaseConfig,
     KpiThreshold,

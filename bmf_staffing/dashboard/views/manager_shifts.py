@@ -23,7 +23,11 @@ from staffing_tool.fiscal_year import (
 )
 from staffing_tool.manager_names import canonical_manager_name
 from staffing_tool.models import WeeklyManagerShift
-from staffing_tool.time_buckets import bucket_label, bucket_label_short, buckets_for_range
+from staffing_tool.time_buckets import (
+    bucket_label,
+    bucket_label_short,
+    buckets_for_range,
+)
 
 from .dashboard_filters import (
     fy_choice_rows,

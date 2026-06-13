@@ -13,9 +13,9 @@ from staffing_tool.fiscal_year import fy_end_date, fy_label_year
 from staffing_tool.models import WeeklyPersonShift
 from staffing_tool.person_names import person_sort_key
 from staffing_tool.person_ops import (
+    list_staff_roster_persons,
     load_person_ops_detail,
     load_person_ops_summary,
-    list_staff_roster_persons,
 )
 
 from .dashboard_filters import parse_date_param, parse_fy_week1_from_request

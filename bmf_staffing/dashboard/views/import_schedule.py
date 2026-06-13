@@ -8,21 +8,25 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from staffing_tool.db import session_scope
 from staffing_tool.schedule_apply import apply_schedule_workbook
-from staffing_tool.unit_mappings import save_unit_mappings
 from staffing_tool.schedule_import import (
     detect_schedule_week_starts,
     parse_schedule_workbook,
 )
+from staffing_tool.unit_mappings import save_unit_mappings
 
 from .helpers import (
     _SCHEDULE_UPLOAD_PREFIX,
     DB_PATH,
     _cleanup_old_schedule_uploads,
     _ensure_db,
+    _is_uploaded_schedule_path,
     _last_sunday,
     _manager_last_names_upper_for_parse,
     _schedule_upload_dir,
 )
+
+# Reject oversized uploads early (schedule workbooks are well under this).
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 def _build_import_preview_context(
@@ -63,6 +67,8 @@ def _build_import_preview_context(
         "issues": issues,
         "unknown_units": unknown_units,
     }
+
+
 def import_schedule(request):
     """Upload a schedule workbook, preview parsed results, and optionally apply to create/update a week."""
     _ensure_db()
@@ -76,7 +82,7 @@ def import_schedule(request):
             "upload_path"
         ):
             upload_path = request.POST.get("upload_path", "")
-            if not upload_path or not os.path.isfile(upload_path):
+            if not _is_uploaded_schedule_path(upload_path):
                 messages.error(
                     request,
                     "Uploaded file not found on server; please upload again.",
@@ -95,7 +101,7 @@ def import_schedule(request):
         # Step 2: Apply existing uploaded file to create/update week.
         if request.POST.get("action") == "apply" and request.POST.get("upload_path"):
             upload_path = request.POST.get("upload_path")
-            if not os.path.isfile(upload_path):
+            if not _is_uploaded_schedule_path(upload_path):
                 messages.error(
                     request, "Uploaded file not found on server; please upload again."
                 )
@@ -153,9 +159,7 @@ def import_schedule(request):
             success_msg = f"Week {week_start} imported from schedule."
             if roster_added:
                 noun = "staff member" if roster_added == 1 else "staff members"
-                success_msg += (
-                    f" {roster_added} new {noun} added to roster."
-                )
+                success_msg += f" {roster_added} new {noun} added to roster."
             success_msg += " Please review and export."
             messages.success(request, success_msg)
             url = reverse("week_edit", kwargs={"week_start": week_start})
@@ -171,6 +175,29 @@ def import_schedule(request):
                 {
                     "week_start": week_start,
                 },
+            )
+
+        if not (file.name or "").lower().endswith((".xlsx", ".xlsm")):
+            messages.error(
+                request,
+                "Please upload an Excel schedule (.xlsx or .xlsm).",
+            )
+            return render(
+                request,
+                "dashboard/import_schedule.html",
+                {"week_start": week_start},
+            )
+        if file.size and file.size > _MAX_UPLOAD_BYTES:
+            limit_mb = _MAX_UPLOAD_BYTES // (1024 * 1024)
+            messages.error(
+                request,
+                f"That file is too large (limit {limit_mb} MB). "
+                "Please upload the schedule workbook only.",
+            )
+            return render(
+                request,
+                "dashboard/import_schedule.html",
+                {"week_start": week_start},
             )
 
         upload_dir = _schedule_upload_dir()

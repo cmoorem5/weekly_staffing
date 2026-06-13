@@ -4,8 +4,8 @@ from django.contrib import messages
 from django.db import IntegrityError
 from django.shortcuts import redirect, render
 from staffing_tool.db import session_scope
-from staffing_tool.models import KpiThreshold, StaffRosterEntry as SaStaffRosterEntry
-
+from staffing_tool.models import KpiThreshold
+from staffing_tool.models import StaffRosterEntry as SaStaffRosterEntry
 from staffing_tool.staff_roster import (
     add_roster_entries,
     canonical_display,
@@ -15,13 +15,19 @@ from staffing_tool.staff_roster import (
 )
 
 from ..forms import (
+    PERCENT_KPI_METRICS,
     KpiThresholdFormSet,
     ManagerRosterAddForm,
-    PERCENT_KPI_METRICS,
     StaffRosterAddForm,
 )
 from ..models import ManagerRosterLastName, StaffRosterEntry
-from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db, _utc_now_iso, staffing_db_health
+from .helpers import (
+    DB_PATH,
+    FY_AND_PAY_PERIOD_POLICY_NOTE,
+    _ensure_db,
+    _utc_now_iso,
+    staffing_db_health,
+)
 
 
 def _threshold_to_form_initial(row: KpiThreshold) -> dict[str, object]:

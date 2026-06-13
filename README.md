@@ -2,7 +2,7 @@
 
 Board-level staffing KPI tooling: a **`staffing_tool`** Python package (CLI + Excel reports) and an optional **Django dashboard** under **`bmf_staffing/`**. Data is stored in a local SQLite file **`staffing.db`** next to this README.
 
-**Python:** 3.11+
+**Python:** 3.12+ (Django 6.0)
 
 ## Repository layout
 
@@ -31,6 +31,20 @@ For development (lint/format):
 ```bash
 pip install -r requirements-dev.txt
 ```
+
+## Configuration (environment variables)
+
+The dashboard runs as a localhost tool out of the box. For any networked
+deployment, set these before starting Django:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `DJANGO_SECRET_KEY` | dev placeholder | **Required** when `DJANGO_DEBUG` is off; startup fails otherwise. Use a long random value. |
+| `DJANGO_DEBUG` | `true` | Set to `0`/`false` in production. Turning this off automatically enables secure cookies, HSTS, content-type nosniff, `X-Frame-Options: DENY`, and HTTPS redirect. |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated hostnames. |
+| `DJANGO_SSL_REDIRECT` | `1` | Set to `0` if TLS is terminated elsewhere and you don't want Django to force redirects. |
+
+Validate a production configuration with `python manage.py check --deploy`.
 
 ## Command line
 

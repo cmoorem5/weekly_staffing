@@ -14,7 +14,12 @@ from .dashboard_filters import (
     last_closed_pay_period_end_for_fy,
     serialize_filters_query_from_parts,
 )
-from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db, staffing_db_snapshot
+from .helpers import (
+    DB_PATH,
+    FY_AND_PAY_PERIOD_POLICY_NOTE,
+    _ensure_db,
+    staffing_db_snapshot,
+)
 
 
 def _report_card_qs(**parts: str) -> str:

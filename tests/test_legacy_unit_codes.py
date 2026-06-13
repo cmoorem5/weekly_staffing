@@ -4,7 +4,6 @@ import unittest
 from datetime import date
 
 from openpyxl import Workbook
-
 from staffing_tool.schedule_import import (
     LEGACY_UNIT_ALIASES,
     RETIRED_UNIT_CODES,

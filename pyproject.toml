@@ -1,11 +1,11 @@
 [project]
 name = "weekly-staffing"
 version = "0.0.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 description = "BMF weekly staffing KPI tool (staffing_tool) and Django dashboard"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 src = ["staffing_tool", "bmf_staffing"]
 
@@ -23,6 +23,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/migrations/**" = ["ALL"]
+# Scripts and tests insert the repo root onto sys.path before importing the
+# package, so module-level imports legitimately follow that setup code.
+"scripts/**" = ["E402"]
+"tests/**" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

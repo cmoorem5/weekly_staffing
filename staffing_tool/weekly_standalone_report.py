@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from staffing_tool.paths import OUTPUT_DIR
 from staffing_tool.weekly_pdf_report import (
