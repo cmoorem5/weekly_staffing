@@ -40,7 +40,9 @@ class QuarterlyPdfReportTests(unittest.TestCase):
 
     def test_list_and_load_quarter(self):
         quarters = list_fiscal_quarters(self.db_path)
-        self.assertTrue(any(q["fy_label_year"] == 2026 and q["quarter"] == 2 for q in quarters))
+        self.assertTrue(
+            any(q["fy_label_year"] == 2026 and q["quarter"] == 2 for q in quarters)
+        )
         ctx = load_quarter_report_data(self.db_path, 2026, 2)
         self.assertEqual(ctx.period, "FY2026 Q2")
         self.assertEqual(ctx.weeks_count, 1)

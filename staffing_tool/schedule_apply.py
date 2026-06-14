@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from .db import DEFAULT_BASES
@@ -194,12 +195,22 @@ def apply_schedule_workbook(
     if mgr_names is None:
         mgr_names = manager_last_names_upper_for_parse(session)
 
+    # Load the workbook once and reuse it for every parse pass (records, OPS
+    # View daily, OPS detail, raw-cell archive) instead of re-reading the file
+    # 3-4 times. ``data_only`` workbooks release the file handle during load,
+    # so the object is cheap to hold and is GC'd on the early error returns.
+    try:
+        wb = load_workbook(upload_path, data_only=True)
+    except Exception as exc:
+        return None, f"Error reading workbook: {exc}"
+
     try:
         records, issues, ops_coverage = parse_schedule_workbook(
             upload_path,
             week_start=week_start,
             unit_overrides=unit_overrides,
             manager_last_names_upper=mgr_names,
+            wb=wb,
         )
     except Exception as exc:
         return None, f"Error parsing workbook: {exc}"
@@ -211,7 +222,7 @@ def apply_schedule_workbook(
         return None, "No usable shifts found in schedule file."
 
     ops_daily = (
-        parse_ops_view_daily(upload_path, week_start)
+        parse_ops_view_daily(upload_path, week_start, wb=wb)
         if ops_coverage is not None
         else None
     )
@@ -230,7 +241,11 @@ def apply_schedule_workbook(
         and _ops_coverage_total(ops_coverage) == 0
     ):
         dates = sorted({r.date for r in records})
-        span = f"{dates[0].isoformat()} through {dates[-1].isoformat()}" if dates else "(none)"
+        span = (
+            f"{dates[0].isoformat()} through {dates[-1].isoformat()}"
+            if dates
+            else "(none)"
+        )
         return (
             None,
             "Import produced no crew shifts, schedule exceptions, or OPS View "
@@ -357,6 +372,7 @@ def apply_schedule_workbook(
         source_filename=filename,
         records=records,
         issues=issues,
+        workbook=wb,
     )
 
     for base_name in BASES:
@@ -400,6 +416,8 @@ def apply_schedule_workbook(
         restore_weekly_staffing_manual_fields(row, preserved_manual)
         row.updated_at = now
         session.flush()
+
+    wb.close()
 
     return (
         ScheduleApplyResult(

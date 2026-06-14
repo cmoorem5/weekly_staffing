@@ -186,9 +186,7 @@ class PersistScheduleImportDetailTests(unittest.TestCase):
 
         events = get_week_person_events(week, self.db_path)
         self.assertEqual(len(events), 2)
-        skipped = get_week_person_events(
-            week, self.db_path, event_type="skipped"
-        )
+        skipped = get_week_person_events(week, self.db_path, event_type="skipped")
         self.assertEqual(len(skipped), 1)
         self.assertEqual(skipped[0].skip_reason, "open")
 
@@ -251,13 +249,9 @@ class SampleWorkbookPersistenceTests(unittest.TestCase):
         self.assertGreater(imp.record_count, 0)
         self.assertGreater(imp.person_event_count, 0)
 
-        staffed = get_week_person_events(
-            week, self.db_path, event_type="staffed"
-        )
+        staffed = get_week_person_events(week, self.db_path, event_type="staffed")
         leave = get_week_person_events(week, self.db_path, event_type="leave")
-        skipped = get_week_person_events(
-            week, self.db_path, event_type="skipped"
-        )
+        skipped = get_week_person_events(week, self.db_path, event_type="skipped")
         self.assertGreater(len(staffed), 0)
         self.assertGreater(len(leave) + len(skipped), 0)
 

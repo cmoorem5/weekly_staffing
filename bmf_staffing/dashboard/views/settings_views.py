@@ -64,11 +64,7 @@ def _save_threshold_from_form(form, session) -> None:
             return None
         return float(val) / scale
 
-    row = (
-        session.query(KpiThreshold)
-        .filter(KpiThreshold.metric_name == metric)
-        .first()
-    )
+    row = session.query(KpiThreshold).filter(KpiThreshold.metric_name == metric).first()
     if not row:
         row = KpiThreshold(metric_name=metric)
         session.add(row)
@@ -192,9 +188,7 @@ def manager_roster_settings(request):
                     messages.error(request, "Name not found.")
             return redirect("manager_roster_settings")
 
-    roster = list(
-        ManagerRosterLastName.objects.using("staffing").order_by("last_name")
-    )
+    roster = list(ManagerRosterLastName.objects.using("staffing").order_by("last_name"))
     return render(
         request,
         "dashboard/manager_roster.html",
@@ -214,9 +208,7 @@ def _staff_roster_import_context(week_start: str | None) -> dict[str, object]:
     with session_scope(DB_PATH) as session:
         weeks = list_roster_import_weeks(session)
         selected = week_start or (weeks[0] if weeks else "")
-        suggestions = (
-            suggest_roster_imports(session, selected) if selected else []
-        )
+        suggestions = suggest_roster_imports(session, selected) if selected else []
     by_role: dict[str, list[dict[str, object]]] = {
         "RN": [],
         "MEDIC": [],
@@ -253,9 +245,7 @@ def staff_roster_settings(request):
             if import_all and DB_PATH and import_week:
                 with session_scope(DB_PATH) as session:
                     for item in suggest_roster_imports(session, import_week):
-                        entries.append(
-                            (item.role, item.last_name, item.first_name)
-                        )
+                        entries.append((item.role, item.last_name, item.first_name))
             else:
                 for key in request.POST.getlist("import_key"):
                     parsed = parse_roster_import_form_key(key)
@@ -291,7 +281,9 @@ def staff_roster_settings(request):
                         f"Skipped {skipped} duplicate name{'s' if skipped != 1 else ''}.",
                     )
             return redirect(
-                f"{request.path}?import_week={import_week}" if import_week else request.path
+                f"{request.path}?import_week={import_week}"
+                if import_week
+                else request.path
             )
         if action == "add":
             add_form = StaffRosterAddForm(request.POST)
@@ -425,11 +417,7 @@ def kpi_thresholds_settings(request):
                 messages.error(request, str(exc))
     else:
         with session_scope(DB_PATH) as session:
-            rows = (
-                session.query(KpiThreshold)
-                .order_by(KpiThreshold.metric_name)
-                .all()
-            )
+            rows = session.query(KpiThreshold).order_by(KpiThreshold.metric_name).all()
         initial = [_threshold_to_form_initial(r) for r in rows]
         formset = KpiThresholdFormSet(initial=initial)
 

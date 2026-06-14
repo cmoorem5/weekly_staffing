@@ -116,9 +116,7 @@ def home(request):
         for label, internal, pooled_attr in HOME_OVERVIEW_METRICS:
             if rollups is None:
                 continue
-            avg_val, pooled_val = _metric_avg_and_pooled(
-                rollups, internal, pooled_attr
-            )
+            avg_val, pooled_val = _metric_avg_and_pooled(rollups, internal, pooled_attr)
             th = thresholds.get(internal)
             if th:
                 rag = evaluate_rag(pooled_val, th)

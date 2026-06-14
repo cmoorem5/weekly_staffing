@@ -72,9 +72,7 @@ def _build_person_ops_context(request) -> dict[str, object]:
     if role_filter not in {"", "RN", "MEDIC", "EMT"}:
         role_filter = ""
 
-    roster_pairs = list_staff_roster_persons(
-        DB_PATH, role=role_filter or None
-    )
+    roster_pairs = list_staff_roster_persons(DB_PATH, role=role_filter or None)
     person_options = [name for name, _role in roster_pairs]
     person_option_groups: list[dict[str, object]] = []
     by_letter: dict[str, list[str]] = {}
@@ -82,9 +80,7 @@ def _build_person_ops_context(request) -> dict[str, object]:
         letter = name[0].upper() if name else "#"
         by_letter.setdefault(letter, []).append(name)
     for letter in sorted(by_letter.keys()):
-        person_option_groups.append(
-            {"letter": letter, "names": by_letter[letter]}
-        )
+        person_option_groups.append({"letter": letter, "names": by_letter[letter]})
     selected_person = (request.GET.get("person") or "").strip()
     if selected_person and selected_person not in person_options:
         person_options = sorted(
@@ -145,12 +141,10 @@ def _build_person_ops_context(request) -> dict[str, object]:
 
     db_min = db_max = None
     with session_scope(DB_PATH) as session:
-        db_min, db_max = (
-            session.query(
-                func.min(WeeklyPersonShift.shift_date),
-                func.max(WeeklyPersonShift.shift_date),
-            ).one()
-        )
+        db_min, db_max = session.query(
+            func.min(WeeklyPersonShift.shift_date),
+            func.max(WeeklyPersonShift.shift_date),
+        ).one()
 
     filters_qs = _serialize_person_ops_query(
         person=selected_person,
@@ -218,9 +212,7 @@ def person_ops_export_csv(request):
         writer.writerow(["Staffed shifts", summary.staffed_count])
         writer.writerow(["RW staffed", summary.rw_count])
         writer.writerow(["GR staffed", summary.gr_count])
-        writer.writerow(
-            ["RW %", summary.rw_pct if summary.rw_pct is not None else "—"]
-        )
+        writer.writerow(["RW %", summary.rw_pct if summary.rw_pct is not None else "—"])
         writer.writerow(["OT shifts", summary.ot_count])
         writer.writerow(["Leave / exception total", summary.leave_total])
         for lt, n in (summary.leave_counts or {}).items():

@@ -198,7 +198,9 @@ class RosterImportSuggestion:
         return f"{self.role}|{self.last_name}|{self.first_name}"
 
 
-def _roster_name_key(role: str, last_name: str, first_name: str) -> tuple[str, str, str]:
+def _roster_name_key(
+    role: str, last_name: str, first_name: str
+) -> tuple[str, str, str]:
     return (
         (role or "").strip().upper(),
         (last_name or "").strip().upper(),

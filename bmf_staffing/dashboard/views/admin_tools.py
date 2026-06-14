@@ -102,11 +102,15 @@ def restore_db(request):
             return render(
                 request,
                 "dashboard/restore_db.html",
-                {"src_path": str(src), "archive_dir": str(archive_dir), "backups": backups},
+                {
+                    "src_path": str(src),
+                    "archive_dir": str(archive_dir),
+                    "backups": backups,
+                },
             )
         if confirm != "RESTORE":
             messages.error(
-                request, 'Type RESTORE to confirm overwriting the current database.'
+                request, "Type RESTORE to confirm overwriting the current database."
             )
             return render(
                 request,

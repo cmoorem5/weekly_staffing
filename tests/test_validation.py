@@ -52,22 +52,12 @@ class ValidationThresholdTests(unittest.TestCase):
 
     def test_notes_required_uses_thresholds(self):
         thresholds = {
-            "Staffing Rate": _threshold(
-                metric_name="Staffing Rate", yellow_min=0.88
-            ),
-            "OT Dependency": _threshold(
-                metric_name="OT Dependency", yellow_max=0.15
-            ),
+            "Staffing Rate": _threshold(metric_name="Staffing Rate", yellow_min=0.88),
+            "OT Dependency": _threshold(metric_name="OT Dependency", yellow_max=0.15),
         }
-        self.assertTrue(
-            notes_required(0.87, 0.05, 70, thresholds=thresholds)
-        )
-        self.assertTrue(
-            notes_required(0.95, 0.16, 70, thresholds=thresholds)
-        )
-        self.assertFalse(
-            notes_required(0.95, 0.10, 70, thresholds=thresholds)
-        )
+        self.assertTrue(notes_required(0.87, 0.05, 70, thresholds=thresholds))
+        self.assertTrue(notes_required(0.95, 0.16, 70, thresholds=thresholds))
+        self.assertFalse(notes_required(0.95, 0.10, 70, thresholds=thresholds))
 
     def test_notes_required_message_includes_percentages(self):
         msg = notes_required_message(None)

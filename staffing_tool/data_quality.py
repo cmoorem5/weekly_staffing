@@ -34,16 +34,10 @@ def audit_kpi_data_quality(session: Session) -> dict[str, object]:
 
     for ws in weeks:
         week = ws.week_start
-        cov = (
-            session.query(WeeklyBaseCoverage)
-            .filter_by(week_start=week)
-            .all()
-        )
+        cov = session.query(WeeklyBaseCoverage).filter_by(week_start=week).all()
         metrics = compute_week_metrics(ws, cov, configs)
 
-        details = (
-            session.query(WeeklyLeaveDetail).filter_by(week_start=week).all()
-        )
+        details = session.query(WeeklyLeaveDetail).filter_by(week_start=week).all()
         if details:
             bd = {(d.role, d.leave_type): d.count for d in details}
             grid_total, _ = _leave_totals_from_breakdown(bd)
@@ -55,9 +49,7 @@ def audit_kpi_data_quality(session: Session) -> dict[str, object]:
         ot_dn = _ot_day_night_total(ws)
         ot_legacy = int(ws.ot_rn or 0) + int(ws.ot_medic or 0) + int(ws.ot_emt or 0)
         if ot_dn > 0 and ot_legacy > 0 and ot_dn != ot_legacy:
-            ot_mismatches.append(
-                f"{week}: day/night={ot_dn} legacy={ot_legacy}"
-            )
+            ot_mismatches.append(f"{week}: day/night={ot_dn} legacy={ot_legacy}")
         elif ot_dn > 0 and ot_dn != metrics.ot_shifts:
             ot_mismatches.append(
                 f"{week}: day/night={ot_dn} metric={metrics.ot_shifts}"
@@ -66,9 +58,7 @@ def audit_kpi_data_quality(session: Session) -> dict[str, object]:
         if (ws.leave_pfml or 0) > 0:
             legacy_pfml.append(week)
 
-    issue_count = (
-        len(leave_mismatches) + len(ot_mismatches) + len(legacy_pfml)
-    )
+    issue_count = len(leave_mismatches) + len(ot_mismatches) + len(legacy_pfml)
     return {
         "weeks_checked": len(weeks),
         "leave_mismatch_count": len(leave_mismatches),

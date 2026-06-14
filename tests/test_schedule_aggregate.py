@@ -57,8 +57,12 @@ class AggregateWeekFromRecordsTests(unittest.TestCase):
         self.assertEqual(agg.filled_day, 1)
         self.assertEqual(agg.ot_rn_day, 1)
         self.assertEqual(
-            agg.ot_rn_day + agg.ot_medic_day + agg.ot_emt_day + agg.ot_rn_night
-            + agg.ot_medic_night + agg.ot_emt_night,
+            agg.ot_rn_day
+            + agg.ot_medic_day
+            + agg.ot_emt_day
+            + agg.ot_rn_night
+            + agg.ot_medic_night
+            + agg.ot_emt_night,
             1,
         )
 

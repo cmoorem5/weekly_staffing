@@ -18,6 +18,8 @@ def _default_previous_calendar_month():
     last_prev = first_this - timedelta(days=1)
     first_prev = last_prev.replace(day=1)
     return first_prev.isoformat(), last_prev.isoformat()
+
+
 def monthly_report(request):
     """Pick a date range and download a BMF-styled monthly Excel aggregate."""
     _ensure_db()

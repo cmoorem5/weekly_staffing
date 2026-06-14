@@ -135,7 +135,9 @@ def _feb_last(calendar_year: int) -> date:
     return date(calendar_year, 3, 1) - timedelta(days=1)
 
 
-def fiscal_quarter_windows_for_fy(fy_week1_sunday: date) -> list[tuple[int, date, date]]:
+def fiscal_quarter_windows_for_fy(
+    fy_week1_sunday: date,
+) -> list[tuple[int, date, date]]:
     """
     Ordered (quarter 1..4, start, end) inclusive, clipped to
     ``fy_week1_sunday`` .. ``fy_end_date``.

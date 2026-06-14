@@ -14,6 +14,7 @@ def _pdf_exports():
         export_quarterly_staffing_pdf,
         list_fiscal_quarters,
     )
+
     return export_quarterly_staffing_pdf, list_fiscal_quarters
 
 
@@ -52,7 +53,9 @@ def quarterly_staffing_report(request):
             for q in quarters
         )
         if not valid:
-            messages.error(request, f"FY{fy_label_year} Q{quarter} has no data in the database.")
+            messages.error(
+                request, f"FY{fy_label_year} Q{quarter} has no data in the database."
+            )
             return redirect("quarterly_staffing_report")
 
         output_dir = _resolve_output_dir()

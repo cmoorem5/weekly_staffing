@@ -179,8 +179,7 @@ def _get_week_form_initial(week_start, session):
         "leave_brev": getattr(row, "leave_brev", 0),
         "medic_unpartnered": getattr(row, "medic_unpartnered", 0) or 0,
         "rn_unpartnered_staff": getattr(row, "rn_unpartnered_staff", 0) or 0,
-        "unpartnered_note_medic": getattr(row, "unpartnered_note_medic", None)
-        or "",
+        "unpartnered_note_medic": getattr(row, "unpartnered_note_medic", None) or "",
         "unpartnered_note_rn": getattr(row, "unpartnered_note_rn", None) or "",
         "notes": row.notes or "",
     }
@@ -477,9 +476,7 @@ def _save_week_and_coverage(request, data, formset, week_start):
             row.leave_brev = _int(data.get("leave_brev"))
             row.medic_unpartnered = _int(data.get("medic_unpartnered"))
             row.rn_unpartnered_staff = _int(data.get("rn_unpartnered_staff"))
-            row.unpartnered_note_medic = _short_note(
-                data.get("unpartnered_note_medic")
-            )
+            row.unpartnered_note_medic = _short_note(data.get("unpartnered_note_medic"))
             row.unpartnered_note_rn = _short_note(data.get("unpartnered_note_rn"))
             row.overnights_below = 0
             row.pilot_vacancies = 0
@@ -510,9 +507,7 @@ def _save_week_and_coverage(request, data, formset, week_start):
                 leave_brev=_int(data.get("leave_brev")),
                 medic_unpartnered=_int(data.get("medic_unpartnered")),
                 rn_unpartnered_staff=_int(data.get("rn_unpartnered_staff")),
-                unpartnered_note_medic=_short_note(
-                    data.get("unpartnered_note_medic")
-                ),
+                unpartnered_note_medic=_short_note(data.get("unpartnered_note_medic")),
                 unpartnered_note_rn=_short_note(data.get("unpartnered_note_rn")),
                 overnights_below=0,
                 pilot_vacancies=0,
@@ -603,7 +598,9 @@ def export_excel(request, week_start):
     try:
         raw_name = request.session.get("schedule_upload_original_name")
         source_filename = (
-            raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else "(web export)"
+            raw_name.strip()
+            if isinstance(raw_name, str) and raw_name.strip()
+            else "(web export)"
         )
         with session_scope(DB_PATH) as session:
             n_base = (

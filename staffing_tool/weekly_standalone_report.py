@@ -41,7 +41,10 @@ def main(argv: list[str] | None = None) -> None:
     if not week:
         weeks = list_week_starts(args.db)
         if not weeks:
-            print("No weeks in database. Import a schedule or add a week first.", file=sys.stderr)
+            print(
+                "No weeks in database. Import a schedule or add a week first.",
+                file=sys.stderr,
+            )
             sys.exit(1)
         week = weeks[0]
 

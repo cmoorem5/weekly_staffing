@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from openpyxl.workbook import Workbook
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -65,6 +66,7 @@ def persist_schedule_import_detail(
     staff_roster_index: StaffRosterMatchIndex | None = None,
     sync_roster: bool = True,
     archive_raw_cells: bool = True,
+    workbook: Workbook | None = None,
 ) -> tuple[ScheduleImport, int]:
     """
     Replace per-week import detail: audit row, person events, OPS View, issues,
@@ -90,11 +92,13 @@ def persist_schedule_import_detail(
     raw_cells: list[dict[str, object]] = []
     if archive_raw_cells:
         try:
-            raw_cells = collect_schedule_raw_cells(upload_path, week_start)
+            raw_cells = collect_schedule_raw_cells(upload_path, week_start, wb=workbook)
         except Exception:
             raw_cells = []
     try:
-        ops_days, ops_assignments = parse_ops_view_detail(upload_path, week_start)
+        ops_days, ops_assignments = parse_ops_view_detail(
+            upload_path, week_start, wb=workbook
+        )
     except Exception:
         ops_days, ops_assignments = [], []
 

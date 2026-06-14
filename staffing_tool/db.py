@@ -79,9 +79,7 @@ def migrate_unpartnered_note_columns(engine: Engine) -> None:
         columns = _pragma_column_names(conn, "weekly_staffing")
         for col in ("unpartnered_note_medic", "unpartnered_note_rn"):
             if col not in columns:
-                conn.execute(
-                    text(f"ALTER TABLE weekly_staffing ADD COLUMN {col} TEXT")
-                )
+                conn.execute(text(f"ALTER TABLE weekly_staffing ADD COLUMN {col} TEXT"))
         conn.commit()
 
 
@@ -195,8 +193,7 @@ def migrate_add_base_coverage_day_night(engine: Engine) -> None:
         "gr_staffed_night",
     )
     alter_sql = (
-        "ALTER TABLE weekly_base_coverage ADD COLUMN {col} "
-        "INTEGER NOT NULL DEFAULT 0"
+        "ALTER TABLE weekly_base_coverage ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"
     )
     with engine.connect() as conn:
         columns = _pragma_column_names(conn, "weekly_base_coverage")
@@ -358,9 +355,7 @@ def seed_base_config(session: Session) -> None:
 
 def seed_kpi_thresholds(session: Session) -> None:
     """Insert default kpi_thresholds if not present."""
-    existing = {
-        r.metric_name for r in session.query(KpiThreshold.metric_name).all()
-    }
+    existing = {r.metric_name for r in session.query(KpiThreshold.metric_name).all()}
     for row in DEFAULT_THRESHOLDS:
         name, g_min, g_max, y_min, y_max, r_min, r_max, higher = row
         if name not in existing:

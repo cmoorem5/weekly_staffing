@@ -52,8 +52,12 @@ BMF_RED = "C12126"
 FONT_NAME = "Barlow"
 
 # §2.2 severity gradient (fills)
-FILL_GREEN_SOFT = PatternFill(start_color="EAF5E9", end_color="EAF5E9", fill_type="solid")
-FILL_GREEN_FULL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+FILL_GREEN_SOFT = PatternFill(
+    start_color="EAF5E9", end_color="EAF5E9", fill_type="solid"
+)
+FILL_GREEN_FULL = PatternFill(
+    start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"
+)
 FILL_YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
 FILL_RED_SOFT = PatternFill(start_color="F4CCCC", end_color="F4CCCC", fill_type="solid")
 FILL_RED_FULL = PatternFill(start_color=BMF_RED, end_color=BMF_RED, fill_type="solid")
@@ -95,7 +99,9 @@ THIN_BORDER = Border(
 )
 
 FILL_BAND_ALT = PatternFill(start_color="F7F7F7", end_color="F7F7F7", fill_type="solid")
-FILL_BAND_TOTAL = PatternFill(start_color=BMF_GRAY, end_color=BMF_GRAY, fill_type="solid")
+FILL_BAND_TOTAL = PatternFill(
+    start_color=BMF_GRAY, end_color=BMF_GRAY, fill_type="solid"
+)
 SIDE_SEP = Side(style="thin", color=BMF_MEDIUM_GRAY)
 
 # §1.2 — which base/unit/shift cells exist (False → render "N/A")
@@ -254,14 +260,12 @@ def _project_root() -> str:
 def _generator_version_string() -> str:
     try:
         root = _project_root()
-        return (
-            subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"],
-                cwd=root,
-                stderr=subprocess.DEVNULL,
-                text=True,
-            ).strip()
-        )
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
 
@@ -556,9 +560,7 @@ def _generate_narrative(
     if overall == "Green":
         takeaways.append("Overall staffing rate is on target.")
     elif overall == "Yellow":
-        takeaways.append(
-            "Overall staffing rate is below target; status is Monitor."
-        )
+        takeaways.append("Overall staffing rate is below target; status is Monitor.")
     else:
         takeaways.append(
             "Overall staffing rate is below acceptable level; status is Action needed."
@@ -866,9 +868,7 @@ def _write_pct_cell(
     cell.number_format = "0.0%"
     cell.border = THIN_BORDER
     cell.alignment = ALIGN_CENTER
-    fill, font = _fill_and_font_for_status(
-        rag, notable=notable, value=value, thr=thr
-    )
+    fill, font = _fill_and_font_for_status(rag, notable=notable, value=value, thr=thr)
     cell.fill = fill
     cell.font = font
 
@@ -1071,13 +1071,9 @@ def _write_weekly_detail(
         else 0.0
     )
     sr_rag = _rag_for_metric("Staffing Rate", this_metrics.staffing_rate, thresholds)
-    sr_notable = _kpi_notable(
-        "Staffing Rate", this_metrics.staffing_rate, this_metrics
-    )
+    sr_notable = _kpi_notable("Staffing Rate", this_metrics.staffing_rate, this_metrics)
     exc_rag = _rag_for_metric("Shift Exception %", display_leave_exp, thresholds)
-    exc_notable = _kpi_notable(
-        "Shift Exception %", display_leave_exp, this_metrics
-    )
+    exc_notable = _kpi_notable("Shift Exception %", display_leave_exp, this_metrics)
     ot_rag = _rag_for_metric("OT Dependency", ot_dep, thresholds)
     ot_notable = _kpi_notable("OT Dependency", ot_dep, this_metrics)
 
@@ -1662,9 +1658,7 @@ def export_board_pack(
         avg_4w = _averages(last_4) if last_4 else None
         avg_12w = _averages(trend_metrics) if trend_metrics else None
         rollups_4w = compute_period_rollups(last_4) if last_4 else None
-        rollups_12w = (
-            compute_period_rollups(trend_metrics) if trend_metrics else None
-        )
+        rollups_12w = compute_period_rollups(trend_metrics) if trend_metrics else None
 
         rag_statuses = {}
         for name in [

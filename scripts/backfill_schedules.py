@@ -38,9 +38,7 @@ from staffing_tool.schedule_apply import (
 from staffing_tool.schedule_import import detect_schedule_week_starts
 from staffing_tool.unit_mappings import resolve_unit_overrides
 
-_FILENAME_WEEK_RE = re.compile(
-    r"(?P<y>20\d{2})[-_]?(?P<m>\d{2})[-_]?(?P<d>\d{2})"
-)
+_FILENAME_WEEK_RE = re.compile(r"(?P<y>20\d{2})[-_]?(?P<m>\d{2})[-_]?(?P<d>\d{2})")
 
 
 @dataclass(frozen=True)

@@ -53,8 +53,7 @@ def _ensure_sunday(week_start: str) -> None:
 def _cmd_init_db(args: argparse.Namespace, db_path: str) -> None:
     init_db(db_path)
     print(
-        "Database initialized: tables created, base_config and "
-        "kpi_thresholds seeded."
+        "Database initialized: tables created, base_config and kpi_thresholds seeded."
     )
 
 
@@ -102,10 +101,7 @@ def _cmd_show_base_totals(args: argparse.Namespace, db_path: str) -> None:
         return
     print("Base totals (RW / GR unit-days per week):")
     for r in rows:
-        print(
-            f"  {r.base_name}: RW={r.rw_total_unit_days}, "
-            f"GR={r.gr_total_unit_days}"
-        )
+        print(f"  {r.base_name}: RW={r.rw_total_unit_days}, GR={r.gr_total_unit_days}")
 
 
 def _cmd_set_threshold(args: argparse.Namespace, db_path: str) -> None:
@@ -142,11 +138,7 @@ def _cmd_set_threshold(args: argparse.Namespace, db_path: str) -> None:
 
 def _cmd_show_thresholds(args: argparse.Namespace, db_path: str) -> None:
     with session_scope(db_path) as session:
-        rows = (
-            session.query(KpiThreshold)
-            .order_by(KpiThreshold.metric_name)
-            .all()
-        )
+        rows = session.query(KpiThreshold).order_by(KpiThreshold.metric_name).all()
     if not rows:
         print("No thresholds. Run init-db first.")
         return
@@ -213,15 +205,9 @@ def _cmd_upsert_week(args: argparse.Namespace, db_path: str) -> None:
                 row.leave_jury = args.leave_jury
             if hasattr(args, "leave_brev") and args.leave_brev is not None:
                 row.leave_brev = args.leave_brev
-            if (
-                hasattr(args, "overnights_below")
-                and args.overnights_below is not None
-            ):
+            if hasattr(args, "overnights_below") and args.overnights_below is not None:
                 row.overnights_below = args.overnights_below
-            if (
-                hasattr(args, "pilot_vacancies")
-                and args.pilot_vacancies is not None
-            ):
+            if hasattr(args, "pilot_vacancies") and args.pilot_vacancies is not None:
                 row.pilot_vacancies = args.pilot_vacancies
             if hasattr(args, "notes") and args.notes is not None:
                 row.notes = args.notes
@@ -233,9 +219,7 @@ def _cmd_upsert_week(args: argparse.Namespace, db_path: str) -> None:
             filled_day = getattr(args, "filled_day", None)
             filled_night = getattr(args, "filled_night", None)
             if filled_day is None or filled_night is None:
-                raise ValueError(
-                    "New week requires --filled-day and --filled-night"
-                )
+                raise ValueError("New week requires --filled-day and --filled-night")
             total_ot = getattr(args, "ot_shifts", None) or 0
             ot_rn = getattr(args, "ot_rn", None) or 0
             ot_medic = getattr(args, "ot_medic", None) or 0
@@ -295,7 +279,9 @@ def _cmd_upsert_week(args: argparse.Namespace, db_path: str) -> None:
             thresholds=thresholds,
         ):
             if not (row.notes and row.notes.strip()):
-                raise ValueError(notes_required_message(thresholds) + " Please add --notes.")
+                raise ValueError(
+                    notes_required_message(thresholds) + " Please add --notes."
+                )
 
     print(f"Week {week_start} upserted.")
 
@@ -308,11 +294,7 @@ def _cmd_upsert_base_coverage(args: argparse.Namespace, db_path: str) -> None:
     _ensure_sunday(week_start)
 
     with session_scope(db_path) as session:
-        cfg = (
-            session.query(BaseConfig)
-            .filter(BaseConfig.base_name == base)
-            .first()
-        )
+        cfg = session.query(BaseConfig).filter(BaseConfig.base_name == base).first()
         if not cfg:
             raise ValueError(f"Base {base!r} not found.")
         if cfg.rw_total_unit_days == 0 and rw_staffed > 0:
@@ -349,14 +331,8 @@ def _cmd_upsert_base_coverage(args: argparse.Namespace, db_path: str) -> None:
         session.flush()
 
         # Warn if staffed > total (require notes at week level)
-        rw_over = (
-            cfg.rw_total_unit_days
-            and rw_staffed > cfg.rw_total_unit_days
-        )
-        gr_over = (
-            cfg.gr_total_unit_days
-            and gr_staffed > cfg.gr_total_unit_days
-        )
+        rw_over = cfg.rw_total_unit_days and rw_staffed > cfg.rw_total_unit_days
+        gr_over = cfg.gr_total_unit_days and gr_staffed > cfg.gr_total_unit_days
         if rw_over or gr_over:
             week_row = (
                 session.query(WeeklyStaffing)
@@ -399,9 +375,7 @@ def _cmd_delete_week(args: argparse.Namespace, db_path: str) -> None:
             WeeklyBaseCoverage.week_start == week_start
         ).delete(synchronize_session=False)
         session.delete(row)
-    print(
-        f"Deleted week {week_start} (staffing, base coverage, and detail rows)."
-    )
+    print(f"Deleted week {week_start} (staffing, base coverage, and detail rows).")
 
 
 def _cmd_list_weeks(args: argparse.Namespace, db_path: str) -> None:
@@ -469,9 +443,7 @@ def _cmd_export_latest(args: argparse.Namespace, db_path: str) -> None:
             .first()
         )
     if not row:
-        raise ValueError(
-            "No weeks in database. Add data with upsert-week first."
-        )
+        raise ValueError("No weeks in database. Add data with upsert-week first.")
     week_start = row[0]
     output_dir = getattr(args, "output_dir", None) or "output"
     path = export_week_excel(db_path, week_start, output_dir=output_dir)
@@ -489,8 +461,7 @@ def _cmd_export_board_pack(args: argparse.Namespace, db_path: str) -> None:
             )
             if not row:
                 raise ValueError(
-                    "No weeks in database. Specify --week-start or add "
-                    "data first."
+                    "No weeks in database. Specify --week-start or add data first."
                 )
             week_start = row[0]
     _ensure_sunday(week_start)
@@ -556,12 +527,8 @@ def main() -> None:
     p.add_argument("--week-start", required=True, dest="week_start")
     p.add_argument("--day-target", type=int, dest="day_target", default=None)
     p.add_argument("--night-min", type=int, dest="night_min", default=None)
-    p.add_argument(
-        "--filled-day", type=int, dest="filled_day", default=None
-    )
-    p.add_argument(
-        "--filled-night", type=int, dest="filled_night", default=None
-    )
+    p.add_argument("--filled-day", type=int, dest="filled_day", default=None)
+    p.add_argument("--filled-night", type=int, dest="filled_night", default=None)
     # OT can be entered either as a total or by role.
     p.add_argument(
         "--ot-shifts",

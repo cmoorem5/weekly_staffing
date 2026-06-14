@@ -16,6 +16,7 @@ def _pdf_exports():
         export_weekly_staffing_pdf,
         list_week_starts,
     )
+
     return export_weekly_staffing_html, export_weekly_staffing_pdf, list_week_starts
 
 

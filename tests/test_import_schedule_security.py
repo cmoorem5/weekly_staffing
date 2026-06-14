@@ -32,18 +32,17 @@ class UploadedSchedulePathGuardTests(unittest.TestCase):
             valid = Path(tmp) / "schedule_upload_20260101T000000Z.xlsx"
             valid.write_bytes(b"not really excel but exists")
             with self._with_upload_dir(tmp):
-                self.assertTrue(
-                    view_helpers._is_uploaded_schedule_path(str(valid))
-                )
+                self.assertTrue(view_helpers._is_uploaded_schedule_path(str(valid)))
 
     def test_rejects_path_outside_uploads_dir(self):
-        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            tempfile.TemporaryDirectory() as other,
+        ):
             outside = Path(other) / "schedule_upload_20260101T000000Z.xlsx"
             outside.write_bytes(b"x")
             with self._with_upload_dir(tmp):
-                self.assertFalse(
-                    view_helpers._is_uploaded_schedule_path(str(outside))
-                )
+                self.assertFalse(view_helpers._is_uploaded_schedule_path(str(outside)))
 
     def test_rejects_traversal_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -52,9 +51,7 @@ class UploadedSchedulePathGuardTests(unittest.TestCase):
                 parent_secret.write_bytes(b"x")
                 traversal = os.path.join(tmp, "..", "secret.xlsx")
                 with self._with_upload_dir(tmp):
-                    self.assertFalse(
-                        view_helpers._is_uploaded_schedule_path(traversal)
-                    )
+                    self.assertFalse(view_helpers._is_uploaded_schedule_path(traversal))
             finally:
                 if parent_secret.exists():
                     parent_secret.unlink()
@@ -77,9 +74,7 @@ class UploadedSchedulePathGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             missing = Path(tmp) / "schedule_upload_20260101T000000Z.xlsx"
             with self._with_upload_dir(tmp):
-                self.assertFalse(
-                    view_helpers._is_uploaded_schedule_path(str(missing))
-                )
+                self.assertFalse(view_helpers._is_uploaded_schedule_path(str(missing)))
 
     def test_rejects_empty_path(self):
         with tempfile.TemporaryDirectory() as tmp:

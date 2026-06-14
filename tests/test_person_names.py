@@ -132,9 +132,7 @@ class ScheduleImportPersonTests(unittest.TestCase):
         if not path.is_file():
             self.skipTest("sample upload not present")
         week = "2026-05-31"
-        records, _issues, _ops = parse_schedule_workbook(
-            str(path), week_start=week
-        )
+        records, _issues, _ops = parse_schedule_workbook(str(path), week_start=week)
         person_rows = weekly_person_shift_mappings(week, records)
         names = {r["person_display"] for r in person_rows}
         self.assertIn("Cowart", names)
@@ -142,9 +140,7 @@ class ScheduleImportPersonTests(unittest.TestCase):
         self.assertIn("Krant, Dan", names)
         self.assertNotIn("1-Krant, Dan, Pimentel", names)
         paired = [
-            r
-            for r in person_rows
-            if r["source_cell"] == "K6" and r["role"] == "EMT"
+            r for r in person_rows if r["source_cell"] == "K6" and r["role"] == "EMT"
         ]
         paired_names = {r["person_display"] for r in paired}
         self.assertEqual(paired_names, {"Deptula, Thomas", "Feddersen"})

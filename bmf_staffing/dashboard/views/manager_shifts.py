@@ -56,6 +56,7 @@ def _manager_row_event_type(row: WeeklyManagerShift) -> str:
     et = (getattr(row, "event_type", None) or "").strip().lower()
     return et if et in {"line_shift", "aoc"} else "line_shift"
 
+
 # Distinct colors for stacked period chart (BMF palette + extras).
 MANAGER_CHART_COLORS = (
     "#2a4492",
@@ -121,9 +122,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
     fy_start = parse_fy_week1_from_request(request, today)
     fy_end = fy_end_date(fy_start)
     fy_label = fy_label_year(fy_start)
-    fy_choices = fy_choice_rows(
-        fy_label_year(fy_week1_sunday_containing(today))
-    )
+    fy_choices = fy_choice_rows(fy_label_year(fy_week1_sunday_containing(today)))
 
     granularity = (request.GET.get("granularity") or "pay_period").strip().lower()
     if granularity not in {"quarter", "month", "pay_period", "fy_total"}:
@@ -149,12 +148,10 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
     shift_rows: list[dict[str, object]] = []
     aoc_rows: list[dict[str, object]] = []
     with session_scope(DB_PATH) as session:
-        db_min, db_max = (
-            session.query(
-                func.min(WeeklyManagerShift.shift_date),
-                func.max(WeeklyManagerShift.shift_date),
-            ).one()
-        )
+        db_min, db_max = session.query(
+            func.min(WeeklyManagerShift.shift_date),
+            func.max(WeeklyManagerShift.shift_date),
+        ).one()
         shifts_raw = (
             session.query(WeeklyManagerShift)
             .filter(
@@ -250,8 +247,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         else buckets_for_range(chart_granularity, range_start_d, range_end_d)
     )
     bucket_labels_full = [
-        bucket_label(chart_granularity, bs, be, fy_week1=fy_start)
-        for bs, be in buckets
+        bucket_label(chart_granularity, bs, be, fy_week1=fy_start) for bs, be in buckets
     ]
     bucket_labels_short = [
         bucket_label_short(chart_granularity, bs, be, fy_week1=fy_start)
@@ -321,9 +317,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
     preset_links = {
         "fy_ytd": {
             "label": "FY YTD (last closed PP)",
-            "qs": serialize_filters_query(
-                fy_label, "pay_period", fy_start, end_anchor
-            ),
+            "qs": serialize_filters_query(fy_label, "pay_period", fy_start, end_anchor),
         },
         "last_6_pp": {
             "label": "Last 6 pay periods",
@@ -465,7 +459,9 @@ def manager_shifts_export_csv(request):
     cumulative_rows = cast(list[dict[str, object]], ctx.get("cumulative_rows") or [])
     period_rows = cast(list[dict[str, object]], ctx.get("period_table_rows") or [])
     bucket_labels = cast(list[str], ctx.get("bucket_labels") or [])
-    shift_rows = cast(list[dict[str, object]], ctx.get("all_shifts") or ctx.get("shifts") or [])
+    shift_rows = cast(
+        list[dict[str, object]], ctx.get("all_shifts") or ctx.get("shifts") or []
+    )
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -629,7 +625,9 @@ def manager_shifts_export_xlsx(request):
     cumulative_rows = cast(list[dict[str, object]], ctx.get("cumulative_rows") or [])
     period_rows = cast(list[dict[str, object]], ctx.get("period_table_rows") or [])
     bucket_labels = cast(list[str], ctx.get("bucket_labels") or [])
-    shift_rows = cast(list[dict[str, object]], ctx.get("all_shifts") or ctx.get("shifts") or [])
+    shift_rows = cast(
+        list[dict[str, object]], ctx.get("all_shifts") or ctx.get("shifts") or []
+    )
 
     wb = Workbook()
     ws_meta = wb.active
@@ -699,9 +697,7 @@ def manager_shifts_export_xlsx(request):
         ws_period.append(["Manager"] + bucket_labels + ["Total"])
         for row in period_rows:
             counts = cast(list[int], row.get("counts") or [])
-            ws_period.append(
-                [row.get("name")] + list(counts) + [row.get("total")]
-            )
+            ws_period.append([row.get("name")] + list(counts) + [row.get("total")])
 
     ws_detail = wb.create_sheet("Detail")
     ws_detail.append(

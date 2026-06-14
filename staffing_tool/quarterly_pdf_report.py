@@ -176,18 +176,22 @@ def load_quarter_report_data(
             )
             wm = compute_week_metrics(row, coverages, base_configs)
             metrics_list.append(wm)
-            weekly_trend.append((
-                _short_label(ws),
-                wm.staffing_rate * 100,
-                wm.ot_dependency * 100,
-                wm.leave_exposure * 100,
-            ))
-            weekly_detail.append((
-                _short_label(ws),
-                _pct(wm.staffing_rate),
-                _pct(wm.ot_dependency),
-                _pct(wm.leave_exposure),
-            ))
+            weekly_trend.append(
+                (
+                    _short_label(ws),
+                    wm.staffing_rate * 100,
+                    wm.ot_dependency * 100,
+                    wm.leave_exposure * 100,
+                )
+            )
+            weekly_detail.append(
+                (
+                    _short_label(ws),
+                    _pct(wm.staffing_rate),
+                    _pct(wm.ot_dependency),
+                    _pct(wm.leave_exposure),
+                )
+            )
 
             ws_row = cast(Any, row)
             leave_totals["AT"] += int(ws_row.leave_at or 0)
@@ -275,13 +279,19 @@ def load_quarter_report_data(
             gr_cap = int(cfg.gr_total_unit_days) * n if cfg else 0
             rw_n = base_rw.get(base, 0)
             gr_n = base_gr.get(base, 0)
-            base_coverage.append((
-                base,
-                str(rw_n) if rw_n else EM,
-                _pct(rw_n / rw_cap) if rw_cap and rw_n else (EM if not rw_cap else "0.0%"),
-                str(gr_n) if gr_n else EM,
-                _pct(gr_n / gr_cap) if gr_cap and gr_n else (EM if not gr_cap else "0.0%"),
-            ))
+            base_coverage.append(
+                (
+                    base,
+                    str(rw_n) if rw_n else EM,
+                    _pct(rw_n / rw_cap)
+                    if rw_cap and rw_n
+                    else (EM if not rw_cap else "0.0%"),
+                    str(gr_n) if gr_n else EM,
+                    _pct(gr_n / gr_cap)
+                    if gr_cap and gr_n
+                    else (EM if not gr_cap else "0.0%"),
+                )
+            )
 
         return QuarterlyReportContext(
             fy_label_year=fy_label_year,
@@ -323,32 +333,52 @@ def _leave_top2(ctx: QuarterlyReportContext) -> set[str]:
 
 def _period_volumes_table(ctx: QuarterlyReportContext):
     headers = [
-        "Role", "RN Shifts", "PM Shifts", "Total Shifts",
-        "Exceptions", "OT RN", "OT PM",
+        "Role",
+        "RN Shifts",
+        "PM Shifts",
+        "Total Shifts",
+        "Exceptions",
+        "OT RN",
+        "OT PM",
     ]
     col_w = style.full_width_col_widths([2.0, 0.9, 0.9, 1.0, 1.0, 0.85, 0.85])
     rows = [headers] + [list(r) for r in ctx.period_volumes]
     rows.append(list(ctx.period_vol_total))
     total_row = len(rows) - 1
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, total_row - 1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('BACKGROUND', (0, total_row), (-1, total_row), style.MGRAY),
-        ('FONTNAME', (0, total_row), (-1, total_row), style.F('IBMPlexMonoBold')),
-    ] + style.num_style_cells([1, 2, 3, 4, 5, 6])))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, total_row - 1),
+                    [style.WHITE, style.LGRAY],
+                ),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
+                (
+                    "FONTNAME",
+                    (0, total_row),
+                    (-1, total_row),
+                    style.F("IBMPlexMonoBold"),
+                ),
+            ]
+            + style.num_style_cells([1, 2, 3, 4, 5, 6])
+        )
+    )
     return t
 
 
@@ -357,22 +387,27 @@ def _base_coverage_table(ctx: QuarterlyReportContext):
     col_w = style.full_width_col_widths([1.8, 1.3, 1.3, 1.3, 1.8])
     rows = [headers] + [list(r) for r in ctx.base_coverage]
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-    ] + style.num_style_cells([1, 2, 3, 4])))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + style.num_style_cells([1, 2, 3, 4])
+        )
+    )
     return t
 
 
@@ -388,28 +423,44 @@ def _exceptions_table(ctx: QuarterlyReportContext):
     for i, (code, _count, _pct) in enumerate(leave_rows, start=1):
         if code in top2:
             red_rules += [
-                ('TEXTCOLOR', (1, i), (2, i), style.RED),
-                ('FONTNAME', (1, i), (2, i), style.F('IBMPlexMonoBold')),
+                ("TEXTCOLOR", (1, i), (2, i), style.RED),
+                ("FONTNAME", (1, i), (2, i), style.F("IBMPlexMonoBold")),
             ]
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, total_row - 1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (2, -1), 'CENTER'),
-        ('BACKGROUND', (0, total_row), (-1, total_row), style.MGRAY),
-        ('FONTNAME', (0, total_row), (-1, total_row), style.F('IBMPlexMonoBold')),
-    ] + style.num_style_cells([1, 2]) + red_rules))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, total_row - 1),
+                    [style.WHITE, style.LGRAY],
+                ),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (2, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
+                (
+                    "FONTNAME",
+                    (0, total_row),
+                    (-1, total_row),
+                    style.F("IBMPlexMonoBold"),
+                ),
+            ]
+            + style.num_style_cells([1, 2])
+            + red_rules
+        )
+    )
     return t
 
 
@@ -418,22 +469,27 @@ def _weekly_detail_table(ctx: QuarterlyReportContext):
     col_w = style.full_width_col_widths([1.5, 2.0, 2.0, 2.0])
     rows = [headers] + [list(r) for r in ctx.weekly_detail]
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-    ] + style.num_style_cells([1, 2, 3])))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + style.num_style_cells([1, 2, 3])
+        )
+    )
     return t
 
 
@@ -445,32 +501,56 @@ def _build_trend_fig(ctx: QuarterlyReportContext):
     x = range(len(labels))
 
     fig, ax1 = plt.subplots(figsize=(7.5, 2.6))
-    fig.patch.set_facecolor('white')
-    ax1.set_facecolor('white')
-    ax1.bar(x, exc_pct, color=style.C_MGRAY, width=0.55, alpha=0.55,
-            label='Shift Exception % (left)', zorder=1)
-    ax1.plot(x, staffing, color=style.C_BLUE, linewidth=2, marker='o', markersize=4,
-             label='Staffing Rate % (left)', zorder=3)
-    ax1.set_ylabel('Staffing / Exception %', fontsize=7, color='#333333')
+    fig.patch.set_facecolor("white")
+    ax1.set_facecolor("white")
+    ax1.bar(
+        x,
+        exc_pct,
+        color=style.C_MGRAY,
+        width=0.55,
+        alpha=0.55,
+        label="Shift Exception % (left)",
+        zorder=1,
+    )
+    ax1.plot(
+        x,
+        staffing,
+        color=style.C_BLUE,
+        linewidth=2,
+        marker="o",
+        markersize=4,
+        label="Staffing Rate % (left)",
+        zorder=3,
+    )
+    ax1.set_ylabel("Staffing / Exception %", fontsize=7, color="#333333")
     ax1.set_ylim(0, 110)
-    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.0f%%'))
+    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
 
     ax2 = ax1.twinx()
-    ax2.plot(x, ot_dep, color=style.C_RED, linewidth=1.5, marker='s', markersize=3,
-             linestyle='--', label='OT Dependency % (right)', zorder=3)
-    ax2.set_ylabel('OT Dependency %', fontsize=7, color=style.C_RED)
+    ax2.plot(
+        x,
+        ot_dep,
+        color=style.C_RED,
+        linewidth=1.5,
+        marker="s",
+        markersize=3,
+        linestyle="--",
+        label="OT Dependency % (right)",
+        zorder=3,
+    )
+    ax2.set_ylabel("OT Dependency %", fontsize=7, color=style.C_RED)
     ax2.set_ylim(0, 30)
-    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.0f%%'))
-    ax2.spines['right'].set_color(style.C_RED)
-    ax2.tick_params(axis='y', colors=style.C_RED, labelsize=7)
+    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
+    ax2.spines["right"].set_color(style.C_RED)
+    ax2.tick_params(axis="y", colors=style.C_RED, labelsize=7)
 
     ax1.set_xticks(list(x))
-    ax1.set_xticklabels(labels, fontsize=6, rotation=30, ha='right')
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['left'].set_color(style.C_MGRAY)
-    ax1.spines['bottom'].set_color(style.C_MGRAY)
-    ax1.tick_params(colors='#333333', labelsize=7)
-    ax1.yaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle='--')
+    ax1.set_xticklabels(labels, fontsize=6, rotation=30, ha="right")
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["left"].set_color(style.C_MGRAY)
+    ax1.spines["bottom"].set_color(style.C_MGRAY)
+    ax1.tick_params(colors="#333333", labelsize=7)
+    ax1.yaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle="--")
     ax1.set_axisbelow(True)
 
     style.apply_below_chart_legend(fig, ax1, ax2)
@@ -490,13 +570,13 @@ def _build_exception_bar_fig(ctx: QuarterlyReportContext):
     ax.barh(list(y), counts, color=bar_colors, height=0.5)
     ax.set_yticks(list(y))
     ax.set_yticklabels(codes, fontsize=7)
-    ax.set_xlabel('Shift exceptions (count)', fontsize=7, color='#333333')
+    ax.set_xlabel("Shift exceptions (count)", fontsize=7, color="#333333")
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-    ax.xaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle='--')
+    ax.xaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle="--")
     ax.set_axisbelow(True)
     for i, v in enumerate(counts):
         if v:
-            ax.text(v + 0.1, i, str(v), va='center', fontsize=7, color='#333333')
+            ax.text(v + 0.1, i, str(v), va="center", fontsize=7, color="#333333")
     fig.tight_layout(pad=0.4)
     return fig
 
@@ -548,8 +628,12 @@ def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
         Spacer(1, 10),
     ]
 
-    doc.build(story, onFirstPage=on_first, onLaterPages=on_later,
-              canvasmaker=style.NumberedCanvas)
+    doc.build(
+        story,
+        onFirstPage=on_first,
+        onLaterPages=on_later,
+        canvasmaker=style.NumberedCanvas,
+    )
     return output_path
 
 

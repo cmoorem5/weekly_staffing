@@ -56,7 +56,10 @@ def main(argv: list[str] | None = None) -> None:
             fy = latest["fy_label_year"]
             quarter = latest["quarter"]
         else:
-            print("Specify both --fy and --quarter, or omit both for latest.", file=sys.stderr)
+            print(
+                "Specify both --fy and --quarter, or omit both for latest.",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
     out = args.output_dir or str(OUTPUT_DIR)

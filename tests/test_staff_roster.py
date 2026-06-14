@@ -209,7 +209,9 @@ class StaffRosterImportNamesTests(unittest.TestCase):
             self.assertEqual(added, 1)
             self.assertEqual(skipped, 1)
             suggestions = suggest_roster_imports(session, "2026-05-31")
-        self.assertFalse(any(s.display == "Cowart" and s.role == "RN" for s in suggestions))
+        self.assertFalse(
+            any(s.display == "Cowart" and s.role == "RN" for s in suggestions)
+        )
 
     def test_parse_roster_import_form_key(self):
         self.assertEqual(
@@ -270,9 +272,7 @@ class SyncRosterFromImportTests(unittest.TestCase):
             _staffed(person="Smith, Jane", role="MEDIC"),
         ]
         with session_scope(self.db_path) as session:
-            session.add(
-                WeeklyStaffing(week_start=week, filled_day=1, filled_night=0)
-            )
+            session.add(WeeklyStaffing(week_start=week, filled_day=1, filled_night=0))
             session.flush()
             upload = Path(self.tmp.name) / "sample.xlsx"
             upload.write_bytes(b"x")

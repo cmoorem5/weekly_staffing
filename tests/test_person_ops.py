@@ -244,7 +244,9 @@ class PersonOpsQueryTests(unittest.TestCase):
         names = list_distinct_persons(
             self.db_path, date(2026, 5, 25), date(2026, 5, 31)
         )
-        self.assertEqual(names, sorted(["Jones, Bob", "Smith, Jane"], key=person_sort_key))
+        self.assertEqual(
+            names, sorted(["Jones, Bob", "Smith, Jane"], key=person_sort_key)
+        )
 
     def test_list_staff_roster_persons(self):
         roster = list_staff_roster_persons(self.db_path)

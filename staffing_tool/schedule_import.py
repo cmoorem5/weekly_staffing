@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -47,6 +48,26 @@ SkipReason = (
 
 # Max non-empty cells archived per week (SQLite-friendly).
 RAW_CELL_ARCHIVE_LIMIT = 5000
+
+
+@contextmanager
+def _open_workbook(path: str, wb: Workbook | None = None) -> Iterator[Workbook]:
+    """Yield a workbook, reusing ``wb`` when provided instead of re-reading.
+
+    A single schedule import parses the same file several times (records,
+    OPS View daily/detail, raw-cell archive). Passing one already-loaded
+    workbook through those passes avoids 3-4 redundant full-file reads.
+    When ``wb`` is given the caller owns its lifecycle, so it is left open;
+    otherwise the workbook opened here is closed on exit.
+    """
+    if wb is not None:
+        yield wb
+        return
+    opened = load_workbook(path, data_only=True)
+    try:
+        yield opened
+    finally:
+        opened.close()
 
 
 @dataclass
@@ -1307,6 +1328,7 @@ def parse_schedule_workbook(
     week_start: str | None = None,
     unit_overrides: dict[str, str] | None = None,
     manager_last_names_upper: frozenset[str] | None = None,
+    wb: Workbook | None = None,
 ) -> tuple[
     list[ShiftRecord],
     list[ParseIssue],
@@ -1327,8 +1349,6 @@ def parse_schedule_workbook(
     - Sheet 'RN & Medic': RN lines ~4–50, Medic ~52–100 (dates often row 2).
     - Date row may be 1–5 (not always row 1). EMT tab mirrors RN grid.
     """
-    wb = load_workbook(path, data_only=True)
-
     week_start_date: date | None = None
     week_end_date: date | None = None
     if week_start:
@@ -1347,7 +1367,7 @@ def parse_schedule_workbook(
     records: list[ShiftRecord] = []
     issues: list[ParseIssue] = []
 
-    try:
+    with _open_workbook(path, wb) as wb:
         # RN & Medic
         sn_rn = resolve_workbook_sheet(wb, "RN & Medic", "RN AND MEDIC", "RN/MEDIC")
         if sn_rn:
@@ -1430,8 +1450,6 @@ def parse_schedule_workbook(
                 ops_coverage = (ops_rw_d, ops_rw_n, ops_gr_d, ops_gr_n)
 
         return records, issues, ops_coverage
-    finally:
-        wb.close()
 
 
 # --- Aggregation into weekly metrics ---------------------------------------
@@ -1549,16 +1567,15 @@ def _parse_ops_view_daily_worksheet(
     return {d: (vals[0], vals[1]) for d, vals in daily.items()}
 
 
-def parse_ops_view_daily(path: str, week_start: str) -> dict[date, tuple[int, int]]:
+def parse_ops_view_daily(
+    path: str, week_start: str, wb: Workbook | None = None
+) -> dict[date, tuple[int, int]]:
     """Load workbook and return per-day RW/GR staffed counts from OPS View."""
-    wb = load_workbook(path, data_only=True)
-    try:
+    with _open_workbook(path, wb) as wb:
         sn = resolve_workbook_sheet(wb, "OPS View", "Ops View")
         if not sn:
             return {}
         return _parse_ops_view_daily_worksheet(wb[sn], week_start)
-    finally:
-        wb.close()
 
 
 @dataclass
@@ -1678,16 +1695,14 @@ def _parse_ops_view_detail_worksheet(
 def parse_ops_view_detail(
     path: str,
     week_start: str,
+    wb: Workbook | None = None,
 ) -> tuple[list[OpsViewDayBase], list[OpsViewAssignment]]:
     """Load workbook and return OPS View day/base counts and assignments."""
-    wb = load_workbook(path, data_only=True)
-    try:
+    with _open_workbook(path, wb) as wb:
         sn = resolve_workbook_sheet(wb, "OPS View", "Ops View")
         if not sn:
             return [], []
         return _parse_ops_view_detail_worksheet(wb[sn], week_start)
-    finally:
-        wb.close()
 
 
 # Sheet scan ranges for optional raw-cell archive (row_min, row_max, col_max).
@@ -1701,6 +1716,7 @@ _RAW_ARCHIVE_SHEETS: tuple[tuple[str, tuple[str, ...], int, int, int], ...] = (
 def collect_schedule_raw_cells(
     path: str,
     week_start: str,
+    wb: Workbook | None = None,
 ) -> list[dict[str, object]]:
     """
     Non-empty cells from schedule grid areas for optional DB archive.
@@ -1713,9 +1729,8 @@ def collect_schedule_raw_cells(
         return []
     week_end_date = week_start_date + timedelta(days=6)
 
-    wb = load_workbook(path, data_only=True)
     cells: list[dict[str, object]] = []
-    try:
+    with _open_workbook(path, wb) as wb:
         for _label, name_variants, row_min, row_max, col_max in _RAW_ARCHIVE_SHEETS:
             sn = resolve_workbook_sheet(wb, *name_variants)
             if not sn:
@@ -1751,8 +1766,6 @@ def collect_schedule_raw_cells(
                     if len(cells) > RAW_CELL_ARCHIVE_LIMIT:
                         return []
         return cells
-    finally:
-        wb.close()
 
 
 def find_schedule_workbook_for_week(

@@ -32,7 +32,9 @@ def main() -> int:
     ICO.parent.mkdir(parents=True, exist_ok=True)
     img = Image.open(PNG).convert("RGBA")
     sizes = [(256, 256), (128, 128), 64, 48, 32, 16]
-    img.save(ICO, format="ICO", sizes=[(s, s) if isinstance(s, int) else s for s in sizes])
+    img.save(
+        ICO, format="ICO", sizes=[(s, s) if isinstance(s, int) else s for s in sizes]
+    )
     print(f"Wrote {ICO}")
     return 0
 

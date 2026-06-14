@@ -253,12 +253,8 @@ def compute_period_rollups(metrics_list: list[WeekMetrics]) -> PeriodRollups | N
         pooled_leave_exposure=(
             float(leave_total) / float(person_shifts) if person_shifts else 0.0
         ),
-        pooled_system_rw_pct=(
-            float(rw_staffed) / float(rw_denom) if rw_denom else 0.0
-        ),
-        pooled_system_gr_pct=(
-            float(gr_staffed) / float(gr_denom) if gr_denom else 0.0
-        ),
+        pooled_system_rw_pct=(float(rw_staffed) / float(rw_denom) if rw_denom else 0.0),
+        pooled_system_gr_pct=(float(gr_staffed) / float(gr_denom) if gr_denom else 0.0),
     )
 
 

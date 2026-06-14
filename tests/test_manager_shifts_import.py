@@ -114,7 +114,9 @@ class WeeklyManagerShiftMappingsTests(unittest.TestCase):
                 included_in_aggregates=False,
                 manager_event_type="aoc",
             ),
-            _manager_shift_record(person_display="Bowman", shift_date=date(2025, 12, 7)),
+            _manager_shift_record(
+                person_display="Bowman", shift_date=date(2025, 12, 7)
+            ),
         ]
         rows = weekly_manager_shift_mappings("2025-12-07", records)
         self.assertEqual(len(rows), 2)

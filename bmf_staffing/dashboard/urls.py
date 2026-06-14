@@ -41,9 +41,17 @@ urlpatterns = [
     path("", home, name="home"),
     path("reports/", reports_index, name="reports_index"),
     path("settings/", settings_index, name="settings_index"),
-    path("settings/manager-roster/", manager_roster_settings, name="manager_roster_settings"),
+    path(
+        "settings/manager-roster/",
+        manager_roster_settings,
+        name="manager_roster_settings",
+    ),
     path("settings/staff-roster/", staff_roster_settings, name="staff_roster_settings"),
-    path("settings/kpi-thresholds/", kpi_thresholds_settings, name="kpi_thresholds_settings"),
+    path(
+        "settings/kpi-thresholds/",
+        kpi_thresholds_settings,
+        name="kpi_thresholds_settings",
+    ),
     path("admin-tools/backup-db/", backup_db, name="backup_db"),
     path("admin-tools/restore-db/", restore_db, name="restore_db"),
     path("staffing-dashboard/", staffing_dashboard, name="staffing_dashboard"),
@@ -88,7 +96,9 @@ urlpatterns = [
         weekly_report_download_html,
         name="weekly_report_download_html",
     ),
-    path("report/quarterly/", quarterly_staffing_report, name="quarterly_staffing_report"),
+    path(
+        "report/quarterly/", quarterly_staffing_report, name="quarterly_staffing_report"
+    ),
     path("manager-shifts/", manager_shifts, name="manager_shifts"),
     path(
         "manager-shifts/export.csv",

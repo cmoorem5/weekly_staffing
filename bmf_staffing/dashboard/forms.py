@@ -125,32 +125,44 @@ class KpiThresholdRowForm(forms.Form):
     green_min = forms.FloatField(
         required=False,
         label="Green min",
-        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "step": "any"}
+        ),
     )
     green_max = forms.FloatField(
         required=False,
         label="Green max",
-        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "step": "any"}
+        ),
     )
     yellow_min = forms.FloatField(
         required=False,
         label="Yellow min",
-        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "step": "any"}
+        ),
     )
     yellow_max = forms.FloatField(
         required=False,
         label="Yellow max",
-        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "step": "any"}
+        ),
     )
     red_min = forms.FloatField(
         required=False,
         label="Red min",
-        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "step": "any"}
+        ),
     )
     red_max = forms.FloatField(
         required=False,
         label="Red max",
-        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "any"}),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control form-control-sm", "step": "any"}
+        ),
     )
     higher_is_better = forms.BooleanField(
         required=False,
@@ -167,7 +179,11 @@ class ManagerRosterAddForm(forms.Form):
         max_length=128,
         label="Last name",
         widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "e.g. Ender", "autocomplete": "off"}
+            attrs={
+                "class": "form-control",
+                "placeholder": "e.g. Ender",
+                "autocomplete": "off",
+            }
         ),
     )
 
@@ -190,7 +206,11 @@ class StaffRosterAddForm(forms.Form):
         max_length=128,
         label="Last name",
         widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "e.g. Smith", "autocomplete": "off"}
+            attrs={
+                "class": "form-control",
+                "placeholder": "e.g. Smith",
+                "autocomplete": "off",
+            }
         ),
     )
     first_name = forms.CharField(
@@ -198,7 +218,11 @@ class StaffRosterAddForm(forms.Form):
         required=False,
         label="First name (optional)",
         widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "e.g. Jane", "autocomplete": "off"}
+            attrs={
+                "class": "form-control",
+                "placeholder": "e.g. Jane",
+                "autocomplete": "off",
+            }
         ),
     )
     role = forms.ChoiceField(

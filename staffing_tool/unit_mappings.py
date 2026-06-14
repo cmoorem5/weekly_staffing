@@ -40,7 +40,9 @@ def load_unit_mappings_from_csv(path: str | Path) -> dict[str, str]:
             return result
         fields = {f.lower().strip(): f for f in reader.fieldnames if f}
         raw_col = fields.get("raw") or fields.get("raw_code")
-        map_col = fields.get("maps_to") or fields.get("map_to") or fields.get("canonical")
+        map_col = (
+            fields.get("maps_to") or fields.get("map_to") or fields.get("canonical")
+        )
         if not raw_col or not map_col:
             return result
         for row in reader:

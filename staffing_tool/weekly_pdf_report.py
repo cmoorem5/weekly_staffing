@@ -152,7 +152,9 @@ def _backfill_daily_detail(session, week_start: str, db_path: str) -> bool:
     return True
 
 
-def _daily_row_tuple(day_date: date, filled: int, rw: int, gr: int, exc: int) -> tuple[str, str, str, str, str]:
+def _daily_row_tuple(
+    day_date: date, filled: int, rw: int, gr: int, exc: int
+) -> tuple[str, str, str, str, str]:
     label = f"{day_date.strftime('%A')} {day_date.month}/{day_date.day}"
     return (
         label,
@@ -263,9 +265,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             .filter(WeeklyLeaveDetail.week_start == week_start)
             .all()
         )
-        detail_breakdown = {
-            (r.role, r.leave_type): int(r.count) for r in leave_details
-        }
+        detail_breakdown = {(r.role, r.leave_type): int(r.count) for r in leave_details}
         exception_by_role: list[tuple[str, int, int, int, int, int, int]] = []
         for role in EXCEPTION_GRID_ROLES:
             vals = tuple(
@@ -283,7 +283,11 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
 
         ot_by_role = [
             (ROLE_LABELS["RN"], int(ws.ot_rn_day or 0), int(ws.ot_rn_night or 0)),
-            (ROLE_LABELS["Medic"], int(ws.ot_medic_day or 0), int(ws.ot_medic_night or 0)),
+            (
+                ROLE_LABELS["Medic"],
+                int(ws.ot_medic_day or 0),
+                int(ws.ot_medic_night or 0),
+            ),
             (ROLE_LABELS["EMT"], int(ws.ot_emt_day or 0), int(ws.ot_emt_night or 0)),
         ]
         ot_total_day = sum(day for _, day, _ in ot_by_role)
@@ -301,13 +305,19 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             gr_cap = int(cfg.gr_total_unit_days) if cfg else 0
             rw_n = int(m.get("rw_staffed", 0))
             gr_n = int(m.get("gr_staffed", 0))
-            base_coverage.append((
-                base,
-                str(rw_n) if rw_n else EM,
-                _pct(m["rw_pct"]) if rw_cap and rw_n else (EM if not rw_cap else "0.0%"),
-                str(gr_n) if gr_n else EM,
-                _pct(m["gr_pct"]) if gr_cap and gr_n else (EM if not gr_cap else "0.0%"),
-            ))
+            base_coverage.append(
+                (
+                    base,
+                    str(rw_n) if rw_n else EM,
+                    _pct(m["rw_pct"])
+                    if rw_cap and rw_n
+                    else (EM if not rw_cap else "0.0%"),
+                    str(gr_n) if gr_n else EM,
+                    _pct(m["gr_pct"])
+                    if gr_cap and gr_n
+                    else (EM if not gr_cap else "0.0%"),
+                )
+            )
 
         trend_weeks = (
             session.query(WeeklyStaffing.week_start)
@@ -332,12 +342,14 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
                 .all()
             )
             wm = compute_week_metrics(wrow, wc, base_configs)
-            trend_data.append((
-                _short_label(ws_iso),
-                wm.staffing_rate * 100,
-                wm.ot_dependency * 100,
-                wm.leave_exposure * 100,
-            ))
+            trend_data.append(
+                (
+                    _short_label(ws_iso),
+                    wm.staffing_rate * 100,
+                    wm.ot_dependency * 100,
+                    wm.leave_exposure * 100,
+                )
+            )
 
         week_of, week_dates = _week_display(week_start)
         daily_data = _load_daily_data(session, week_start, db_path)
@@ -399,25 +411,40 @@ def _daily_table(ctx: WeeklyReportContext):
     rows.append(["Week Total", ft, rw, gr, exc])
     total_row = len(rows) - 1
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, total_row - 1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (4, -1), 'CENTER'),
-        ('BACKGROUND', (0, total_row), (-1, total_row), style.MGRAY),
-        ('FONTNAME', (0, total_row), (-1, total_row), style.F('IBMPlexMonoBold')),
-    ] + style.num_style_cells([2, 3, 4])))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, total_row - 1),
+                    [style.WHITE, style.LGRAY],
+                ),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (4, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
+                (
+                    "FONTNAME",
+                    (0, total_row),
+                    (-1, total_row),
+                    style.F("IBMPlexMonoBold"),
+                ),
+            ]
+            + style.num_style_cells([2, 3, 4])
+        )
+    )
     return t
 
 
@@ -426,22 +453,27 @@ def _base_coverage_table(ctx: WeeklyReportContext):
     col_w = style.full_width_col_widths([1.5, 1.25, 1.25, 1.25, 2.25])
     rows = [headers] + [list(r) for r in ctx.base_coverage]
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-    ] + style.num_style_cells([1, 2, 3, 4])))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + style.num_style_cells([1, 2, 3, 4])
+        )
+    )
     return t
 
 
@@ -457,28 +489,44 @@ def _exception_table(ctx: WeeklyReportContext):
     for i, (code, _count, _pct) in enumerate(leave_rows, start=1):
         if code in top2:
             red_rules += [
-                ('TEXTCOLOR', (1, i), (2, i), style.RED),
-                ('FONTNAME', (1, i), (2, i), style.F('IBMPlexMonoBold')),
+                ("TEXTCOLOR", (1, i), (2, i), style.RED),
+                ("FONTNAME", (1, i), (2, i), style.F("IBMPlexMonoBold")),
             ]
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, total_row - 1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (2, -1), 'CENTER'),
-        ('BACKGROUND', (0, total_row), (-1, total_row), style.MGRAY),
-        ('FONTNAME', (0, total_row), (-1, total_row), style.F('IBMPlexMonoBold')),
-    ] + style.num_style_cells([1, 2]) + red_rules))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, total_row - 1),
+                    [style.WHITE, style.LGRAY],
+                ),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (2, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
+                (
+                    "FONTNAME",
+                    (0, total_row),
+                    (-1, total_row),
+                    style.F("IBMPlexMonoBold"),
+                ),
+            ]
+            + style.num_style_cells([1, 2])
+            + red_rules
+        )
+    )
     return t
 
 
@@ -488,33 +536,50 @@ def _ot_by_role_table(ctx: WeeklyReportContext):
     rows = [headers]
     for label, day, night in ctx.ot_by_role:
         rows.append([label, str(day), str(night), str(day + night)])
-    rows.append([
-        "Total",
-        str(ctx.ot_total_day),
-        str(ctx.ot_total_night),
-        str(ctx.ot_total_day + ctx.ot_total_night),
-    ])
+    rows.append(
+        [
+            "Total",
+            str(ctx.ot_total_day),
+            str(ctx.ot_total_night),
+            str(ctx.ot_total_day + ctx.ot_total_night),
+        ]
+    )
     total_row = len(rows) - 1
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, total_row - 1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('BACKGROUND', (0, total_row), (-1, total_row), style.MGRAY),
-        ('FONTNAME', (0, total_row), (-1, total_row), style.F('IBMPlexMonoBold')),
-    ] + style.num_style_cells([1, 2, 3])))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, total_row - 1),
+                    [style.WHITE, style.LGRAY],
+                ),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
+                (
+                    "FONTNAME",
+                    (0, total_row),
+                    (-1, total_row),
+                    style.F("IBMPlexMonoBold"),
+                ),
+            ]
+            + style.num_style_cells([1, 2, 3])
+        )
+    )
     return t
 
 
@@ -527,33 +592,48 @@ def _exception_by_role_table(ctx: WeeklyReportContext):
     rows.append(["Total", *[str(v) for v in ctx.exception_col_totals]])
     total_row = len(rows) - 1
     t = Table(rows, colWidths=col_w)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), style.NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), style.WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), style.F('BarlowBold')),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTNAME', (0, 1), (-1, -1), style.F('BarlowRegular')),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, total_row - 1), [style.WHITE, style.LGRAY]),
-        ('GRID', (0, 0), (-1, -1), 0.5, style.MGRAY),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('BACKGROUND', (0, total_row), (-1, total_row), style.MGRAY),
-        ('FONTNAME', (0, total_row), (-1, total_row), style.F('IBMPlexMonoBold')),
-    ] + style.num_style_cells(list(range(1, len(headers))))))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
+                ("FONTSIZE", (0, 1), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, total_row - 1),
+                    [style.WHITE, style.LGRAY],
+                ),
+                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
+                (
+                    "FONTNAME",
+                    (0, total_row),
+                    (-1, total_row),
+                    style.F("IBMPlexMonoBold"),
+                ),
+            ]
+            + style.num_style_cells(list(range(1, len(headers))))
+        )
+    )
     return t
 
 
 def _fig_to_png_base64(fig) -> str:
     buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode('ascii')
+    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 def _build_trend_fig(ctx: WeeklyReportContext):
@@ -564,32 +644,56 @@ def _build_trend_fig(ctx: WeeklyReportContext):
     x = range(len(labels))
 
     fig, ax1 = plt.subplots(figsize=(7.5, 2.4))
-    fig.patch.set_facecolor('white')
-    ax1.set_facecolor('white')
-    ax1.bar(x, exc_pct, color=style.C_MGRAY, width=0.55, alpha=0.55,
-            label='Exception % (left)', zorder=1)
-    ax1.plot(x, staffing, color=style.C_BLUE, linewidth=2, marker='o', markersize=4,
-             label='Staffing Rate % (left)', zorder=3)
-    ax1.set_ylabel('Staffing / Exception %', fontsize=7, color='#333333')
+    fig.patch.set_facecolor("white")
+    ax1.set_facecolor("white")
+    ax1.bar(
+        x,
+        exc_pct,
+        color=style.C_MGRAY,
+        width=0.55,
+        alpha=0.55,
+        label="Exception % (left)",
+        zorder=1,
+    )
+    ax1.plot(
+        x,
+        staffing,
+        color=style.C_BLUE,
+        linewidth=2,
+        marker="o",
+        markersize=4,
+        label="Staffing Rate % (left)",
+        zorder=3,
+    )
+    ax1.set_ylabel("Staffing / Exception %", fontsize=7, color="#333333")
     ax1.set_ylim(0, 110)
-    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.0f%%'))
+    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
 
     ax2 = ax1.twinx()
-    ax2.plot(x, ot_dep, color=style.C_RED, linewidth=1.5, marker='s', markersize=3,
-             linestyle='--', label='OT Dependency % (right)', zorder=3)
-    ax2.set_ylabel('OT Dependency %', fontsize=7, color=style.C_RED)
+    ax2.plot(
+        x,
+        ot_dep,
+        color=style.C_RED,
+        linewidth=1.5,
+        marker="s",
+        markersize=3,
+        linestyle="--",
+        label="OT Dependency % (right)",
+        zorder=3,
+    )
+    ax2.set_ylabel("OT Dependency %", fontsize=7, color=style.C_RED)
     ax2.set_ylim(0, 30)
-    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.0f%%'))
-    ax2.spines['right'].set_color(style.C_RED)
-    ax2.tick_params(axis='y', colors=style.C_RED, labelsize=7)
+    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
+    ax2.spines["right"].set_color(style.C_RED)
+    ax2.tick_params(axis="y", colors=style.C_RED, labelsize=7)
 
     ax1.set_xticks(list(x))
     ax1.set_xticklabels(labels, fontsize=7)
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['left'].set_color(style.C_MGRAY)
-    ax1.spines['bottom'].set_color(style.C_MGRAY)
-    ax1.tick_params(colors='#333333', labelsize=7)
-    ax1.yaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle='--')
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["left"].set_color(style.C_MGRAY)
+    ax1.spines["bottom"].set_color(style.C_MGRAY)
+    ax1.tick_params(colors="#333333", labelsize=7)
+    ax1.yaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle="--")
     ax1.set_axisbelow(True)
 
     style.apply_below_chart_legend(fig, ax1, ax2)
@@ -612,19 +716,21 @@ def _build_exception_bar_fig(ctx: WeeklyReportContext):
     ax.barh(list(y), counts, color=bar_colors, height=0.5)
     ax.set_yticks(list(y))
     ax.set_yticklabels(codes, fontsize=7)
-    ax.set_xlabel('Shift exceptions (count)', fontsize=7, color='#333333')
+    ax.set_xlabel("Shift exceptions (count)", fontsize=7, color="#333333")
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-    ax.xaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle='--')
+    ax.xaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle="--")
     ax.set_axisbelow(True)
     for i, v in enumerate(counts):
         if v:
-            ax.text(v + 0.1, i, str(v), va='center', fontsize=7, color='#333333')
+            ax.text(v + 0.1, i, str(v), va="center", fontsize=7, color="#333333")
     fig.tight_layout(pad=0.4)
     return fig
 
 
 def _exception_bar_chart(ctx: WeeklyReportContext):
-    return style.chart_to_image(_build_exception_bar_fig(ctx), style.USABLE_W, 1.8 * inch)
+    return style.chart_to_image(
+        _build_exception_bar_fig(ctx), style.USABLE_W, 1.8 * inch
+    )
 
 
 def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
@@ -678,8 +784,12 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
     story.append(_base_coverage_table(ctx))
     story.append(Spacer(1, 10))
 
-    doc.build(story, onFirstPage=on_first, onLaterPages=on_later,
-              canvasmaker=style.NumberedCanvas)
+    doc.build(
+        story,
+        onFirstPage=on_first,
+        onLaterPages=on_later,
+        canvasmaker=style.NumberedCanvas,
+    )
     return output_path
 
 
@@ -701,21 +811,21 @@ def _html_data_table(
     total_row: bool = False,
 ) -> str:
     right_cols = right_cols or set()
-    th = ''.join(
+    th = "".join(
         f'<th style="padding:6px 8px;text-align:{"right" if i in right_cols else "left"};">{h}</th>'
         for i, h in enumerate(headers)
     )
-    body = ''
+    body = ""
     for ri, row in enumerate(rows):
         is_total = total_row and ri == len(rows) - 1
-        bg = mgray if is_total else (lgray if ri % 2 else '#ffffff')
-        fw = 'font-weight:bold;' if is_total else ''
-        cells = ''
+        bg = mgray if is_total else (lgray if ri % 2 else "#ffffff")
+        fw = "font-weight:bold;" if is_total else ""
+        cells = ""
         for ci, cell in enumerate(row):
-            align = 'right' if ci in right_cols else ('left' if ci == 0 else 'center')
+            align = "right" if ci in right_cols else ("left" if ci == 0 else "center")
             cells += (
                 f'<td style="padding:6px 8px;text-align:{align};border:1px solid {mgray};{fw}">'
-                f'{cell}</td>'
+                f"{cell}</td>"
             )
         body += f'<tr style="background:{bg};">{cells}</tr>'
     return (
@@ -728,12 +838,18 @@ def _html_data_table(
 def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     leave_rows, total = _leave_rows(ctx)
     top2 = _leave_top2(ctx)
-    navy, blue, red, lgray, mgray = '#052C47', '#2A4492', '#C12126', '#E6E6E6', '#CBC7D1'
+    navy, blue, red, lgray, mgray = (
+        "#052C47",
+        "#2A4492",
+        "#C12126",
+        "#E6E6E6",
+        "#CBC7D1",
+    )
 
-    trend_b64 = _fig_to_png_base64(_build_trend_fig(ctx)) if ctx.trend_data else ''
+    trend_b64 = _fig_to_png_base64(_build_trend_fig(ctx)) if ctx.trend_data else ""
     exc_chart_b64 = _fig_to_png_base64(_build_exception_bar_fig(ctx))
 
-    kpi_cells = ''.join(
+    kpi_cells = "".join(
         f'<td style="padding:8px 4px;text-align:center;border:1px solid {mgray};">'
         f'<div style="font-size:18px;font-weight:bold;color:{navy};">{val}</div>'
         f'<div style="font-size:11px;color:#333;">{label}</div></td>'
@@ -741,7 +857,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     )
 
     max_count = max((c for _, c in ctx.leave_breakdown), default=1) or 1
-    exc_rows = ''
+    exc_rows = ""
     for code, count, pct in leave_rows:
         color = red if code in top2 else blue
         bar_w = int(100 * count / max_count) if count else 0
@@ -752,39 +868,41 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
             f'<td style="padding:6px 8px;border:1px solid {mgray};">'
             f'<div style="background:{lgray};height:14px;border-radius:2px;">'
             f'<div style="background:{color};width:{bar_w}%;height:14px;"></div>'
-            f'</div></td></tr>'
+            f"</div></td></tr>"
         )
 
-    grid_label = ' &middot; '.join(EXCEPTION_GRID_COLS)
+    grid_label = " &middot; ".join(EXCEPTION_GRID_COLS)
 
     daily_rows = [list(r) for r in ctx.daily_data]
     ft, rw, gr, exc = ctx.daily_totals
-    daily_rows.append(['Week Total', ft, rw, gr, exc])
-    has_daily_detail = any(
-        not row[1].startswith(EM) for row in ctx.daily_data
-    )
+    daily_rows.append(["Week Total", ft, rw, gr, exc])
+    has_daily_detail = any(not row[1].startswith(EM) for row in ctx.daily_data)
     daily_detail_note = (
-        ''
+        ""
         if has_daily_detail
         else (
             '<p style="font-size:11px;color:#555;margin:10px 0 0;">'
-            'Per-day detail is filled when you import the schedule for this week. '
-            'Re-import from <strong>Import schedule</strong> if daily rows are blank.'
-            '</p>'
+            "Per-day detail is filled when you import the schedule for this week. "
+            "Re-import from <strong>Import schedule</strong> if daily rows are blank."
+            "</p>"
         )
     )
     daily_table = _html_data_table(
-        ['Day', 'Filled / Target', 'RW', 'GR', 'Exceptions'],
+        ["Day", "Filled / Target", "RW", "GR", "Exceptions"],
         daily_rows,
-        navy=navy, lgray=lgray, mgray=mgray,
+        navy=navy,
+        lgray=lgray,
+        mgray=mgray,
         right_cols={1, 2, 3, 4},
         total_row=True,
     )
 
     base_table = _html_data_table(
-        ['Base', 'RW Shifts', 'RW Avail %', 'GR Shifts', 'GR Avail %'],
+        ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
         [list(r) for r in ctx.base_coverage],
-        navy=navy, lgray=lgray, mgray=mgray,
+        navy=navy,
+        lgray=lgray,
+        mgray=mgray,
         right_cols={1, 2, 3, 4},
     )
 
@@ -792,46 +910,55 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
         [label, str(day), str(night), str(day + night)]
         for label, day, night in ctx.ot_by_role
     ]
-    ot_rows.append([
-        'Total',
-        str(ctx.ot_total_day),
-        str(ctx.ot_total_night),
-        str(ctx.ot_total_day + ctx.ot_total_night),
-    ])
+    ot_rows.append(
+        [
+            "Total",
+            str(ctx.ot_total_day),
+            str(ctx.ot_total_night),
+            str(ctx.ot_total_day + ctx.ot_total_night),
+        ]
+    )
     ot_table = _html_data_table(
-        ['Role', 'Day', 'Night', 'Total'],
+        ["Role", "Day", "Night", "Total"],
         ot_rows,
-        navy=navy, lgray=lgray, mgray=mgray,
+        navy=navy,
+        lgray=lgray,
+        mgray=mgray,
         right_cols={1, 2, 3},
         total_row=True,
     )
 
     exc_role_rows = [
-        [label, *[str(v) for v in vals]]
-        for label, *vals in ctx.exception_by_role
+        [label, *[str(v) for v in vals]] for label, *vals in ctx.exception_by_role
     ]
-    exc_role_rows.append(['Total', *[str(v) for v in ctx.exception_col_totals]])
+    exc_role_rows.append(["Total", *[str(v) for v in ctx.exception_col_totals]])
     exc_role_table = _html_data_table(
-        ['Role', *EXCEPTION_GRID_COLS],
+        ["Role", *EXCEPTION_GRID_COLS],
         exc_role_rows,
-        navy=navy, lgray=lgray, mgray=mgray,
+        navy=navy,
+        lgray=lgray,
+        mgray=mgray,
         right_cols=set(range(1, len(EXCEPTION_GRID_COLS) + 1)),
         total_row=True,
     )
 
-    top2_note = ', '.join(
-        f'{code} ({next(c for cd, c in ctx.leave_breakdown if cd == code)})'
-        for code in sorted(top2, key=lambda c: next(x for cd, x in ctx.leave_breakdown if cd == c), reverse=True)
+    top2_note = ", ".join(
+        f"{code} ({next(c for cd, c in ctx.leave_breakdown if cd == code)})"
+        for code in sorted(
+            top2,
+            key=lambda c: next(x for cd, x in ctx.leave_breakdown if cd == c),
+            reverse=True,
+        )
     )
 
-    trend_section = ''
+    trend_section = ""
     if trend_b64:
         trend_section = (
-            _html_section_bar('8-WEEK STAFFING TREND', navy)
+            _html_section_bar("8-WEEK STAFFING TREND", navy)
             + f'<tr><td style="padding:12px 16px;">'
             f'<img src="data:image/png;base64,{trend_b64}" alt="8-week staffing trend" '
             f'style="width:100%;max-width:568px;height:auto;display:block;" />'
-            f'</td></tr>'
+            f"</td></tr>"
         )
 
     html = f"""<!DOCTYPE html>
@@ -854,14 +981,14 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 <div style="font-size:10px;color:{lgray};">CLINICAL OPERATIONS</div>
 </td></tr>
 
-{_html_section_bar('KEY PERFORMANCE INDICATORS', navy)}
+{_html_section_bar("KEY PERFORMANCE INDICATORS", navy)}
 <tr><td style="padding:12px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>{kpi_cells}</tr></table>
 </td></tr>
 
 {trend_section}
 
-{_html_section_bar(f'EXCEPTION BREAKDOWN THIS WEEK ({grid_label})', navy)}
+{_html_section_bar(f"EXCEPTION BREAKDOWN THIS WEEK ({grid_label})", navy)}
 <tr><td style="padding:12px 16px;">
 <img src="data:image/png;base64,{exc_chart_b64}" alt="Exception breakdown" style="width:100%;max-width:568px;height:auto;display:block;margin-bottom:12px;" />
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;border-collapse:collapse;">
@@ -875,29 +1002,29 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 <tr style="background:{mgray};font-weight:bold;">
 <td style="padding:6px 8px;border:1px solid {mgray};">Total</td>
 <td align="right" style="padding:6px 4px;border:1px solid {mgray};">{total}</td>
-<td align="right" style="padding:6px 4px;border:1px solid {mgray};">{'100%' if total else EM}</td>
+<td align="right" style="padding:6px 4px;border:1px solid {mgray};">{"100%" if total else EM}</td>
 <td style="border:1px solid {mgray};"></td>
 </tr>
 </table>
-<p style="font-size:11px;color:#555;margin:10px 0 0;">Top drivers (red in chart): {top2_note or 'n/a'}.</p>
+<p style="font-size:11px;color:#555;margin:10px 0 0;">Top drivers (red in chart): {top2_note or "n/a"}.</p>
 </td></tr>
 
-{_html_section_bar('OVERTIME BY ROLE', navy)}
+{_html_section_bar("OVERTIME BY ROLE", navy)}
 <tr><td style="padding:12px 16px;">{ot_table}
 <p style="font-size:11px;color:#555;margin:10px 0 0;">OT shift counts by RN, Paramedic, and EMT (day / night).</p>
 </td></tr>
 
-{_html_section_bar('SCHEDULE EXCEPTIONS BY ROLE', navy)}
+{_html_section_bar("SCHEDULE EXCEPTIONS BY ROLE", navy)}
 <tr><td style="padding:12px 16px;">{exc_role_table}
 <p style="font-size:11px;color:#555;margin:10px 0 0;">Shift counts by role and exception type (AT &middot; LT &middot; SICK &middot; LOA &middot; JURY &middot; BREV).</p>
 </td></tr>
 
-{_html_section_bar('DAILY DETAIL', navy)}
+{_html_section_bar("DAILY DETAIL", navy)}
 <tr><td style="padding:12px 16px;">{daily_table}
 {daily_detail_note}
 </td></tr>
 
-{_html_section_bar('COVERAGE BY BASE', navy)}
+{_html_section_bar("COVERAGE BY BASE", navy)}
 <tr><td style="padding:12px 16px;">{base_table}</td></tr>
 
 <tr><td style="padding:16px 24px;font-size:11px;color:#666;border-top:1px solid {mgray};">
@@ -907,7 +1034,7 @@ Boston MedFlight &middot; Clinical Operations &middot; Confidential
 </table></td></tr></table>
 </body></html>"""
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
     return output_path
 
@@ -930,7 +1057,9 @@ def export_weekly_staffing_html(db_path: str, week_start: str, output_dir: str) 
     return build_html(ctx, html_path)
 
 
-def export_weekly_staffing_both(db_path: str, week_start: str, output_dir: str) -> tuple[str, str]:
+def export_weekly_staffing_both(
+    db_path: str, week_start: str, output_dir: str
+) -> tuple[str, str]:
     ctx = load_week_report_data(db_path, week_start)
     pdf_path, html_path = _output_paths(output_dir, week_start)
     build_pdf(ctx, pdf_path)

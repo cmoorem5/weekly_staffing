@@ -152,9 +152,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
     fy_start = parse_fy_week1_from_request(request, today)
     fy_end = fy_end_date(fy_start)
     fy_label = fy_label_year(fy_start)
-    fy_choices = fy_choice_rows(
-        fy_label_year(fy_week1_sunday_containing(today))
-    )
+    fy_choices = fy_choice_rows(fy_label_year(fy_week1_sunday_containing(today)))
 
     granularity = (request.GET.get("granularity") or "pay_period").strip().lower()
     if granularity not in {"quarter", "month", "pay_period"}:
@@ -275,11 +273,17 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 (WeeklyStaffing.entered_by == "import")
                 | (WeeklyStaffing.notes.ilike("imported from schedule%"))
             )
-            .order_by(WeeklyStaffing.updated_at.desc(), WeeklyStaffing.week_start.desc())
+            .order_by(
+                WeeklyStaffing.updated_at.desc(), WeeklyStaffing.week_start.desc()
+            )
             .first()
         )
-        last_import_week_start = getattr(imported, "week_start", None) if imported else None
-        last_import_updated_at = getattr(imported, "updated_at", None) if imported else None
+        last_import_week_start = (
+            getattr(imported, "week_start", None) if imported else None
+        )
+        last_import_updated_at = (
+            getattr(imported, "updated_at", None) if imported else None
+        )
 
         # Data quality: missing week_start rows and missing schedule-import markers.
         staff_by_week: dict[str, tuple[str | None, str | None]] = {}
@@ -386,7 +390,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             weekly_metrics.append((date.fromisoformat(w.week_start), m))
 
         # Exceptions: weekly totals from WeeklyLeaveDetail by leave_type, rolled up into groups.
-        exc_by_week_by_group: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        exc_by_week_by_group: dict[str, dict[str, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
         exc_total_by_week: dict[str, int] = defaultdict(int)
         exc_q = (
             session.query(
@@ -437,7 +443,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             mgr_total_by_shift_date[sd_s] += nn
             mgr_by_shift_date_by_base[sd_s][base_s] += nn
 
-        manager_line_shifts_breakdown_order = sorted(base_names, key=lambda s: s.lower())
+        manager_line_shifts_breakdown_order = sorted(
+            base_names, key=lambda s: s.lower()
+        )
         manager_line_shifts_breakdown_series = {
             b: [] for b in manager_line_shifts_breakdown_order
         }
@@ -521,7 +529,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
 
         # Manager line shifts per bucket: sum counts by day (shift_date)
         mgr_bucket_total = 0
-        mgr_bucket_by_base: dict[str, int] = {b: 0 for b in manager_line_shifts_breakdown_order}
+        mgr_bucket_by_base: dict[str, int] = {
+            b: 0 for b in manager_line_shifts_breakdown_order
+        }
         cur = b_start
         while cur <= b_end:
             sd = cur.isoformat()
@@ -532,7 +542,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             cur += timedelta(days=1)
         manager_line_shifts_total_series.append(mgr_bucket_total)
         for b in manager_line_shifts_breakdown_order:
-            manager_line_shifts_breakdown_series[b].append(int(mgr_bucket_by_base.get(b, 0)))
+            manager_line_shifts_breakdown_series[b].append(
+                int(mgr_bucket_by_base.get(b, 0))
+            )
         manager_line_shifts_table.append(
             {
                 "label": label,
@@ -607,7 +619,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "system_rw_series_json": json.dumps(system_rw_series),
         "system_gr_series_json": json.dumps(system_gr_series),
         "table_rows": table_rows,
-        "manager_line_shifts_total_series_json": json.dumps(manager_line_shifts_total_series),
+        "manager_line_shifts_total_series_json": json.dumps(
+            manager_line_shifts_total_series
+        ),
         "manager_line_shifts_breakdown_order": manager_line_shifts_breakdown_order,
         "manager_line_shifts_breakdown_series_json": json.dumps(
             manager_line_shifts_breakdown_series
@@ -617,7 +631,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "exc_total_series_json": json.dumps(exc_total_series),
         "exc_breakdown_series_json": json.dumps(exc_breakdown_series),
         "exc_table_rows": exc_table_rows,
-        "filters_qs": serialize_filters_query(fy_label, granularity, date_start, date_end),
+        "filters_qs": serialize_filters_query(
+            fy_label, granularity, date_start, date_end
+        ),
         "no_data": False,
         "preset_links": preset_links,
         "data_quality_rows": data_quality_rows,
@@ -703,7 +719,8 @@ def staffing_dashboard_export_csv(request):
     writer.writerow([])
     writer.writerow(["Manager line shifts"])
     writer.writerow(
-        ["Period", "Period start", "Period end", "Total (count)"] + [f"{b} (count)" for b in mgr_order]
+        ["Period", "Period start", "Period end", "Total (count)"]
+        + [f"{b} (count)" for b in mgr_order]
     )
     for r in mgr_rows:
         by_base = cast(dict[str, int], r.get("manager_line_shifts_by_base") or {})
@@ -781,8 +798,12 @@ def staffing_dashboard_export_xlsx(request):
     ws_meta.append(["Data through (default)", ctx.get("data_through")])
     ws_meta.append(["Latest week in DB", ctx.get("latest_week_start")])
     ws_meta.append(["Latest updated at", ctx.get("latest_updated_at")])
-    ws_meta.append(["Last schedule import week_start", ctx.get("last_import_week_start")])
-    ws_meta.append(["Last schedule import updated at", ctx.get("last_import_updated_at")])
+    ws_meta.append(
+        ["Last schedule import week_start", ctx.get("last_import_week_start")]
+    )
+    ws_meta.append(
+        ["Last schedule import updated at", ctx.get("last_import_updated_at")]
+    )
 
     ws = wb.create_sheet("Summary", 1)
     ws.append(
@@ -826,7 +847,10 @@ def staffing_dashboard_export_xlsx(request):
         )
 
     ws_mgr = wb.create_sheet("Manager line shifts")
-    ws_mgr.append(["Period", "Period start", "Period end", "Total (count)"] + [f"{b} (count)" for b in mgr_order])
+    ws_mgr.append(
+        ["Period", "Period start", "Period end", "Total (count)"]
+        + [f"{b} (count)" for b in mgr_order]
+    )
     for r in mgr_rows:
         by_base = cast(dict[str, int], r.get("manager_line_shifts_by_base") or {})
         ws_mgr.append(
@@ -882,4 +906,3 @@ def staffing_dashboard_export_xlsx(request):
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
-

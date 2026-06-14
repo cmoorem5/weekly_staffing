@@ -256,9 +256,7 @@ def load_person_ops_summary(
     if not person:
         return summary
 
-    rows = load_person_ops_detail(
-        db_path, person, date_start, date_end, role=role
-    )
+    rows = load_person_ops_detail(db_path, person, date_start, date_end, role=role)
     leave_counts: dict[str, int] = defaultdict(int)
 
     for row in rows:

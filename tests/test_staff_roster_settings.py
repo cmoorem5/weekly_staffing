@@ -63,8 +63,9 @@ class StaffRosterSettingsViewTests(unittest.TestCase):
                 session.flush()
                 entry_id = session.query(SaStaffRosterEntry).first().id
 
-            with patch.object(view_helpers, "DB_PATH", db_path), patch.object(
-                settings_views, "DB_PATH", db_path
+            with (
+                patch.object(view_helpers, "DB_PATH", db_path),
+                patch.object(settings_views, "DB_PATH", db_path),
             ):
                 c = Client(HTTP_HOST="localhost")
                 url = reverse("staff_roster_settings")

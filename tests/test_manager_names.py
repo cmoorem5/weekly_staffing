@@ -29,9 +29,7 @@ def test_canonical_from_row_type_prefix():
 
 
 def test_canonical_from_composite_row_label():
-    assert (
-        canonical_manager_name("1-Jonathan Tonelli, Holst", ROSTER) == "Holst"
-    )
+    assert canonical_manager_name("1-Jonathan Tonelli, Holst", ROSTER) == "Holst"
 
 
 def test_canonical_already_normalized():

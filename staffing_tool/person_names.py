@@ -26,9 +26,7 @@ SKIP_NAME_VALUES: frozenset[str] = frozenset(
 _ROW_GROUP_PREFIX_RE = re.compile(r"^\d+-")
 
 # Legacy garbled labels: ``D, Cowart``, ``1-Chatigny, Aaron, Chatigny``
-_LEGACY_SHIFT_PREFIX_RE = re.compile(
-    r"^(?:[Pp]|[Nn]|[Dd]|PD|[Mm]),\s+"
-)
+_LEGACY_SHIFT_PREFIX_RE = re.compile(r"^(?:[Pp]|[Nn]|[Dd]|PD|[Mm]),\s+")
 _LEGACY_ROW_GROUP_RE = re.compile(r"^\d+-")
 
 
@@ -220,10 +218,10 @@ def is_likely_person_name(name: str) -> bool:
 
 def normalize_legacy_person_display(name: str) -> str | None:
     """
-  Attempt to recover a clean label from a legacy garbled ``person_display``.
+    Attempt to recover a clean label from a legacy garbled ``person_display``.
 
-  Returns None when the value cannot be normalized confidently.
-  """
+    Returns None when the value cannot be normalized confidently.
+    """
     s = (name or "").strip()
     if not s:
         return None
@@ -242,7 +240,9 @@ def normalize_legacy_person_display(name: str) -> str | None:
         rest = _LEGACY_ROW_GROUP_RE.sub("", s, count=1).strip()
         parts = [p.strip() for p in rest.split(",") if p.strip()]
         if len(parts) >= 2:
-            candidate = f"{_preserve_name_part(parts[0])}, {_preserve_name_part(parts[1])}"
+            candidate = (
+                f"{_preserve_name_part(parts[0])}, {_preserve_name_part(parts[1])}"
+            )
             if is_plausible_person_display(candidate):
                 return candidate
         parsed = parse_name_cell(rest, is_col_a=True)
