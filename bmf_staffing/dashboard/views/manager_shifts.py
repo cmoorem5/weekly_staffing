@@ -28,6 +28,7 @@ from staffing_tool.time_buckets import (
     bucket_label_short,
     buckets_for_range,
 )
+from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
 from .dashboard_filters import (
     fy_choice_rows,
@@ -41,7 +42,6 @@ from .helpers import (
     FY_AND_PAY_PERIOD_POLICY_NOTE,
     _ensure_db,
     _manager_last_names_upper_for_parse,
-    _utc_now_iso,
 )
 
 # Manager line-shift minimums (policy): full FY and biweekly pay-period equivalent.

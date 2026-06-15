@@ -1,48 +1,33 @@
 """Shared dashboard view helpers (DB path, uploads, archive paths)."""
 
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from django.conf import settings
 from django.http import Http404
-from staffing_tool.db import ensure_db_ready, session_scope
+from staffing_tool.db import DEFAULT_BASES, ensure_db_ready, session_scope
 from staffing_tool.manager_roster import (
     default_manager_last_names_upper,
     manager_last_names_upper_from_session,
 )
-from staffing_tool.schedule_import import AggregatedWeek
 from staffing_tool.staff_roster import (
     StaffRosterMatchIndex,
     staff_roster_index_from_session,
 )
 
-BASES = ["Bedford", "Lawrence", "Mansfield", "Manchester", "Plymouth"]
+logger = logging.getLogger(__name__)
+
+# Canonical base order comes from DEFAULT_BASES so the dashboard and the
+# staffing_tool importer never disagree about which bases exist.
+BASES = [name for name, _rw, _gr in DEFAULT_BASES]
 
 # Shown in dashboard exports (CSV/XLSX metadata) so files self-describe FY rules.
 FY_AND_PAY_PERIOD_POLICY_NOTE = (
     "FY: week 1 starts the Sunday on or before Sep 28; FY ends the day before the "
     "next FY start. Pay periods: 14-day windows starting each FY week-1 Sunday."
 )
-
-
-def _ops_coverage_total(
-    ops: tuple[dict[str, int], dict[str, int], dict[str, int], dict[str, int]] | None,
-) -> int:
-    if not ops:
-        return 0
-    return sum(sum(d.values()) for d in ops)
-
-
-def _agg_leave_total(agg: AggregatedWeek) -> int:
-    return (
-        agg.leave_at
-        + agg.leave_lt
-        + agg.leave_sick
-        + agg.leave_loa
-        + agg.leave_jury
-        + getattr(agg, "leave_brev", 0)
-    )
 
 
 DB_PATH = getattr(settings, "STAFFING_DB_PATH", None)
@@ -136,10 +121,6 @@ def _resolve_output_dir() -> str:
     return "output"
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _is_local_request(request) -> bool:
     """
     Simple guardrail: allow only loopback requests.
@@ -166,6 +147,28 @@ def _ensure_db():
         ensure_db_ready(DB_PATH)
 
 
+def backup_staffing_db_before_write() -> Path | None:
+    """Snapshot staffing.db into archive/ before a destructive write.
+
+    Never raises: a backup failure is logged and reported to the caller as
+    ``None`` rather than blocking the user's import or delete.
+    """
+    if not DB_PATH or not os.path.isfile(DB_PATH):
+        return None
+    keep = getattr(settings, "STAFFING_BACKUP_KEEP", 30)
+    try:
+        from staffing_tool.db_backup import create_db_backup
+
+        return create_db_backup(
+            DB_PATH,
+            archive_dir=_archive_dir_under_repo_root(),
+            keep=keep,
+        )
+    except Exception:
+        logger.warning("Pre-write backup of staffing.db failed", exc_info=True)
+        return None
+
+
 def staffing_db_health(db_path: str | None = None) -> dict[str, object]:
     """Snapshot for Settings health panel: paths, import markers, row counts."""
     path = db_path or DB_PATH
@@ -188,7 +191,7 @@ def staffing_db_health(db_path: str | None = None) -> dict[str, object]:
 
             health["data_quality"] = audit_kpi_data_quality(session)
     except Exception:
-        pass
+        logger.warning("staffing_db_health query failed for %s", path, exc_info=True)
     return health
 
 
@@ -235,7 +238,7 @@ def staffing_db_snapshot(db_path: str | None = None) -> dict[str, str | None]:
                 empty["last_import_week_start"] = imported.week_start
                 empty["last_import_updated_at"] = imported.updated_at
     except Exception:
-        pass
+        logger.warning("staffing_db_snapshot query failed for %s", path, exc_info=True)
     return empty
 
 

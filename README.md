@@ -46,6 +46,16 @@ deployment, set these before starting Django:
 
 Validate a production configuration with `python manage.py check --deploy`.
 
+## Data safety (automatic backups)
+
+Before any destructive write — applying a schedule import (which replaces that
+week's data) or deleting a week — the dashboard snapshots `staffing.db` to
+`archive/staffing_autobackup_<timestamp>.db`. The most recent
+`STAFFING_BACKUP_KEEP` auto-backups (default 30) are retained; **manual**
+backups (`staffing_backup_*.db` from the admin tool or `Backup_Staffing_DB.bat`)
+are never pruned. Recover a bad import from **Admin tools → Restore database**,
+which itself backs up the current DB before overwriting.
+
 ## Command line
 
 Initialize or migrate the database, then use subcommands such as `upsert-week`, `export-board-pack`:

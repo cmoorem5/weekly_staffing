@@ -29,6 +29,7 @@ from staffing_tool.models import (
     WeeklyStaffing,
 )
 from staffing_tool.time_buckets import bucket_label, buckets_for_range
+from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
 from .dashboard_filters import (
     fy_choice_rows,
@@ -38,7 +39,7 @@ from .dashboard_filters import (
     serialize_filters_query,
     serialize_filters_query_from_parts,
 )
-from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db, _utc_now_iso
+from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db
 
 
 def _parse_multi_param(request, key: str) -> list[str]:

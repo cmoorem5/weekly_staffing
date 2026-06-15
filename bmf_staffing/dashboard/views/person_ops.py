@@ -17,9 +17,10 @@ from staffing_tool.person_ops import (
     load_person_ops_detail,
     load_person_ops_summary,
 )
+from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
 from .dashboard_filters import parse_date_param, parse_fy_week1_from_request
-from .helpers import DB_PATH, _ensure_db, _utc_now_iso
+from .helpers import DB_PATH, _ensure_db
 
 DEFAULT_WEEKS_BACK = 4
 

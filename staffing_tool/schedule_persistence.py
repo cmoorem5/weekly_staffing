@@ -4,7 +4,7 @@ Persist full schedule import detail (audit, person events, OPS View, raw cells).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import logging
 
 from openpyxl.workbook import Workbook
 from sqlalchemy.orm import Session
@@ -27,10 +27,9 @@ from .schedule_import import (
     weekly_person_shift_mappings,
 )
 from .staff_roster import StaffRosterMatchIndex, sync_roster_from_import
+from .timeutil import utc_now_iso as _utc_now_iso
 
-
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+logger = logging.getLogger(__name__)
 
 
 def _clear_week_detail_tables(session: Session, week_start: str) -> None:
@@ -94,12 +93,24 @@ def persist_schedule_import_detail(
         try:
             raw_cells = collect_schedule_raw_cells(upload_path, week_start, wb=workbook)
         except Exception:
+            logger.warning(
+                "Raw-cell archive failed for week %s (%s); continuing without it.",
+                week_start,
+                upload_path,
+                exc_info=True,
+            )
             raw_cells = []
     try:
         ops_days, ops_assignments = parse_ops_view_detail(
             upload_path, week_start, wb=workbook
         )
     except Exception:
+        logger.warning(
+            "OPS View detail parse failed for week %s (%s); continuing without it.",
+            week_start,
+            upload_path,
+            exc_info=True,
+        )
         ops_days, ops_assignments = [], []
 
     person_maps = weekly_person_shift_mappings(

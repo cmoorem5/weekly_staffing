@@ -5,19 +5,15 @@ Load and persist unit code overrides for schedule import.
 from __future__ import annotations
 
 import csv
-from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from .models import UnitCodeMapping
 from .paths import PROJECT_ROOT
+from .timeutil import utc_now_iso as _utc_now_iso
 
 DEFAULT_UNIT_MAP_CSV = PROJECT_ROOT / "data" / "unit_mappings.csv"
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _normalize_key(raw: str) -> str:
@@ -72,16 +68,15 @@ def save_unit_mappings(
         return 0
     now = _utc_now_iso()
     changed = 0
+    # Load existing rows once instead of one SELECT per mapping. The in-memory
+    # index also dedupes inputs that normalize to the same key in one call.
+    existing = {row.raw_code: row for row in session.query(UnitCodeMapping).all()}
     for raw, maps_to in mappings.items():
         key = _normalize_key(raw)
         value = _normalize_value(maps_to)
         if not key or not value:
             continue
-        row = (
-            session.query(UnitCodeMapping)
-            .filter(UnitCodeMapping.raw_code == key)
-            .first()
-        )
+        row = existing.get(key)
         if row:
             if row.maps_to != value or row.source != source:
                 row.maps_to = value
@@ -89,15 +84,15 @@ def save_unit_mappings(
                 row.updated_at = now
                 changed += 1
         else:
-            session.add(
-                UnitCodeMapping(
-                    raw_code=key,
-                    maps_to=value,
-                    source=source[:32],
-                    created_at=now,
-                    updated_at=now,
-                )
+            new_row = UnitCodeMapping(
+                raw_code=key,
+                maps_to=value,
+                source=source[:32],
+                created_at=now,
+                updated_at=now,
             )
+            session.add(new_row)
+            existing[key] = new_row
             changed += 1
     if changed:
         session.flush()

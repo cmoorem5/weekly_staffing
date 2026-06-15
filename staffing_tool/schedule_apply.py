@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
@@ -33,12 +32,9 @@ from .schedule_import import (
     weekly_manager_shift_mappings,
 )
 from .schedule_persistence import persist_schedule_import_detail
+from .timeutil import utc_now_iso as _utc_now_iso
 
 BASES = [name for name, _rw, _gr in DEFAULT_BASES]
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _ops_coverage_total(

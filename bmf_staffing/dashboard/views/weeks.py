@@ -26,6 +26,7 @@ from staffing_tool.models import (
 )
 from staffing_tool.rag import evaluate_rag
 from staffing_tool.report import export_board_pack
+from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 from staffing_tool.validation import notes_required, notes_required_message
 
 from ..forms import BaseCoverageFormSet, BaseTotalsFormSet, WeekForm
@@ -35,7 +36,7 @@ from .helpers import (
     _ensure_db,
     _last_sunday,
     _resolve_output_dir,
-    _utc_now_iso,
+    backup_staffing_db_before_write,
 )
 
 
@@ -576,6 +577,8 @@ def week_delete(request, week_start):
     """Confirm and delete a week (and its base coverage + position grid)."""
     _ensure_db()
     if request.method == "POST":
+        # Snapshot before delete so the week can be recovered from archive/.
+        backup_staffing_db_before_write()
         with session_scope(DB_PATH) as session:
             row = (
                 session.query(WeeklyStaffing)

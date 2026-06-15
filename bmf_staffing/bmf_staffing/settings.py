@@ -120,3 +120,7 @@ STAFFING_OUTPUT_DIR = os.path.join(WEEKLY_STAFFING_ROOT, "output")
 # Schedule uploads: delete files older than this many hours (see views._cleanup).
 # Keep uploaded schedule workbooks for one week (re-import / daily detail backfill).
 STAFFING_UPLOAD_RETENTION_HOURS = 168
+
+# Auto-backups of staffing.db before destructive writes (import / week delete).
+# The most recent N are kept in archive/; manual backups are never pruned.
+STAFFING_BACKUP_KEEP = 30

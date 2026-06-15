@@ -13,6 +13,7 @@ from staffing_tool.staff_roster import (
     parse_roster_import_form_key,
     suggest_roster_imports,
 )
+from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
 from ..forms import (
     PERCENT_KPI_METRICS,
@@ -25,7 +26,6 @@ from .helpers import (
     DB_PATH,
     FY_AND_PAY_PERIOD_POLICY_NOTE,
     _ensure_db,
-    _utc_now_iso,
     staffing_db_health,
 )
 

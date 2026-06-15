@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from sqlalchemy.orm import Session
 
 from .metrics import compute_week_metrics
@@ -32,12 +34,21 @@ def audit_kpi_data_quality(session: Session) -> dict[str, object]:
     ot_mismatches: list[str] = []
     legacy_pfml: list[str] = []
 
+    # Load coverage and leave detail for all weeks once, then group in memory,
+    # rather than running two SELECTs per week.
+    cov_by_week: dict[str, list[WeeklyBaseCoverage]] = defaultdict(list)
+    for cov_row in session.query(WeeklyBaseCoverage).all():
+        cov_by_week[cov_row.week_start].append(cov_row)
+    leave_by_week: dict[str, list[WeeklyLeaveDetail]] = defaultdict(list)
+    for leave_row in session.query(WeeklyLeaveDetail).all():
+        leave_by_week[leave_row.week_start].append(leave_row)
+
     for ws in weeks:
         week = ws.week_start
-        cov = session.query(WeeklyBaseCoverage).filter_by(week_start=week).all()
+        cov = cov_by_week.get(week, [])
         metrics = compute_week_metrics(ws, cov, configs)
 
-        details = session.query(WeeklyLeaveDetail).filter_by(week_start=week).all()
+        details = leave_by_week.get(week, [])
         if details:
             bd = {(d.role, d.leave_type): d.count for d in details}
             grid_total, _ = _leave_totals_from_breakdown(bd)

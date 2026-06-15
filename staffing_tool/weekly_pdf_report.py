@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import os
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -327,20 +328,26 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             .all()
         )
         trend_starts = [w[0] for w in reversed(trend_weeks)]
+        # Fetch the trend weeks and their coverage in two queries, not 2 per week.
+        trend_rows = {
+            r.week_start: r
+            for r in session.query(WeeklyStaffing)
+            .filter(WeeklyStaffing.week_start.in_(trend_starts))
+            .all()
+        }
+        trend_cov: dict[str, list[WeeklyBaseCoverage]] = defaultdict(list)
+        for cov_row in (
+            session.query(WeeklyBaseCoverage)
+            .filter(WeeklyBaseCoverage.week_start.in_(trend_starts))
+            .all()
+        ):
+            trend_cov[cov_row.week_start].append(cov_row)
         trend_data: list[tuple[str, float, float, float]] = []
         for ws_iso in trend_starts:
-            wrow = (
-                session.query(WeeklyStaffing)
-                .filter(WeeklyStaffing.week_start == ws_iso)
-                .first()
-            )
+            wrow = trend_rows.get(ws_iso)
             if not wrow:
                 continue
-            wc = (
-                session.query(WeeklyBaseCoverage)
-                .filter(WeeklyBaseCoverage.week_start == ws_iso)
-                .all()
-            )
+            wc = trend_cov.get(ws_iso, [])
             wm = compute_week_metrics(wrow, wc, base_configs)
             trend_data.append(
                 (

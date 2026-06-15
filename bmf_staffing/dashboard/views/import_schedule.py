@@ -23,6 +23,7 @@ from .helpers import (
     _last_sunday,
     _manager_last_names_upper_for_parse,
     _schedule_upload_dir,
+    backup_staffing_db_before_write,
 )
 
 # Reject oversized uploads early (schedule workbooks are well under this).
@@ -133,6 +134,10 @@ def import_schedule(request):
             entered_by = (
                 request.user.username if request.user.is_authenticated else "import"
             )
+            # Snapshot the DB first: applying replaces this week's data, so a
+            # mis-parsed import stays recoverable from archive/.
+            backup_staffing_db_before_write()
+
             roster_added = 0
             with session_scope(DB_PATH) as session:
                 if unit_overrides:

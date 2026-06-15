@@ -5,7 +5,6 @@ Database setup, session management, and seed data for staffing.db.
 import os
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from functools import lru_cache
 
 from sqlalchemy import create_engine, event, text
@@ -16,10 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from .manager_names import backfill_canonical_manager_shift_names
 from .manager_roster import seed_manager_roster_if_empty
 from .models import Base, BaseConfig, KpiThreshold, VehicleSlot
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+from .timeutil import utc_now_iso as _utc_now_iso
 
 
 def _resolve_db_path(db_path: str | None) -> str:
