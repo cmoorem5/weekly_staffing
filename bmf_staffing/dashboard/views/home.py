@@ -17,7 +17,7 @@ from staffing_tool.models import (
 )
 from staffing_tool.rag import evaluate_rag
 
-from .helpers import DB_PATH, _ensure_db, _last_sunday
+from .helpers import DB_PATH, _ensure_db, _last_sunday, staffing_db_snapshot
 
 # Home overview cards: (card label, KpiThreshold metric_name) — values are rolling averages
 HOME_OVERVIEW_METRICS = [
@@ -62,11 +62,19 @@ def home(request):
         "recent_weeks": [],
         "overview_weeks_count": 0,
         "overview_range_label": "",
+        "last_import_week_start": None,
+        "last_import_updated_at": None,
+        "total_week_count": 0,
     }
     if not DB_PATH:
         return render(request, "dashboard/home.html", context)
 
+    snapshot = staffing_db_snapshot(DB_PATH)
+    context["last_import_week_start"] = snapshot.get("last_import_week_start")
+    context["last_import_updated_at"] = snapshot.get("last_import_updated_at")
+
     with session_scope(DB_PATH) as session:
+        context["total_week_count"] = session.query(WeeklyStaffing).count()
         week_rows = (
             session.query(WeeklyStaffing)
             .order_by(WeeklyStaffing.week_start.desc())

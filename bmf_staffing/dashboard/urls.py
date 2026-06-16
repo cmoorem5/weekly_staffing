@@ -9,6 +9,7 @@ from django.urls import path
 from .views import (
     backup_db,
     base_totals,
+    database_backups,
     export_excel,
     home,
     import_schedule,
@@ -54,6 +55,7 @@ urlpatterns = [
     ),
     path("admin-tools/backup-db/", backup_db, name="backup_db"),
     path("admin-tools/restore-db/", restore_db, name="restore_db"),
+    path("settings/backups/", database_backups, name="database_backups"),
     path("staffing-dashboard/", staffing_dashboard, name="staffing_dashboard"),
     path(
         "staffing-dashboard/export.csv",

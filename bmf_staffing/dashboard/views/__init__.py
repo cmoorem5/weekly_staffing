@@ -1,6 +1,6 @@
 """Dashboard views package (split from monolithic views.py)."""
 
-from .admin_tools import backup_db, restore_db
+from .admin_tools import backup_db, database_backups, restore_db
 from .home import home
 from .import_schedule import import_schedule
 from .manager_shifts import (
@@ -39,6 +39,7 @@ from .weeks import (
 
 __all__ = [
     "backup_db",
+    "database_backups",
     "base_totals",
     "export_excel",
     "home",

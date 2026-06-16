@@ -1,0 +1,146 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Database backups{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2 no-print">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Database backups</li>
+  </ol>
+</nav>
+
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Admin tools</div>
+  <h1 class="bmf-page-title">Database backups</h1>
+  <p class="bmf-page-subtitle mb-0">
+    Snapshots of <code>staffing.db</code> saved in <code>archive/</code>. Automatic backups are
+    created before every import and delete; manual backups come from the Backup database tool.
+    Restoring overwrites the current database &mdash; a fresh safety backup is taken first.
+  </p>
+</div>
+
+{% if backups %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <div class="bmf-stat">
+    <div class="bmf-stat-value">{{ backup_count }}</div>
+    <div class="bmf-stat-label">Total backups</div>
+  </div>
+  <div class="bmf-stat">
+    <div class="bmf-stat-value">{{ auto_count }}</div>
+    <div class="bmf-stat-label">Automatic</div>
+  </div>
+  <div class="bmf-stat">
+    <div class="bmf-stat-value">{{ manual_count }}</div>
+    <div class="bmf-stat-label">Manual</div>
+  </div>
+</div>
+
+<div class="card bmf-card shadow-sm">
+  <div class="card-header bmf-card-header d-flex justify-content-between align-items-center">
+    <span>Recent backups</span>
+    <a class="btn btn-outline-primary btn-sm" href="{% url 'backup_db' %}">Create backup now</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 bg-white">
+      <thead>
+        <tr>
+          <th scope="col">Created</th>
+          <th scope="col">Type</th>
+          <th scope="col" class="text-end">Size</th>
+          <th scope="col">File</th>
+          <th scope="col" class="text-end">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in backups %}
+        <tr>
+          <td>{% if b.timestamp %}{{ b.timestamp }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+          <td>
+            {% if b.is_auto %}
+              <span class="badge rounded-pill bg-secondary">Automatic</span>
+            {% else %}
+              <span class="badge rounded-pill" style="background-color: var(--bmf-blue);">Manual</span>
+            {% endif %}
+          </td>
+          <td class="text-end bmf-numeric">{{ b.size }}</td>
+          <td><code class="small">{{ b.name }}</code></td>
+          <td class="text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm"
+                    data-bs-toggle="modal" data-bs-target="#restoreModal"
+                    data-backup-name="{{ b.name }}" data-backup-time="{{ b.timestamp }}">
+              Restore
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="text-muted small mt-3 mb-0">
+  Archive folder: <code>{{ archive_dir }}</code>
+</p>
+
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" data-no-loading="1">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="restoreModalLabel">Restore database?</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning d-flex align-items-start gap-2">
+            <span aria-hidden="true">&#9888;</span>
+            <div>This replaces the current <code>staffing.db</code> with the selected backup.
+            A safety backup of the current database is created automatically first.</div>
+          </div>
+          <dl class="row small mb-0">
+            <dt class="col-sm-4">Backup file</dt>
+            <dd class="col-sm-8"><code id="restoreModalName"></code></dd>
+            <dt class="col-sm-4">Created</dt>
+            <dd class="col-sm-8" id="restoreModalTime"></dd>
+          </dl>
+          <input type="hidden" name="backup_name" id="restoreModalInput" value="">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Restore this backup</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var modal = document.getElementById('restoreModal');
+    if (!modal) return;
+    modal.addEventListener('show.bs.modal', function (event) {
+      var trigger = event.relatedTarget;
+      if (!trigger) return;
+      var name = trigger.getAttribute('data-backup-name') || '';
+      var time = trigger.getAttribute('data-backup-time') || '';
+      modal.querySelector('#restoreModalInput').value = name;
+      modal.querySelector('#restoreModalName').textContent = name;
+      modal.querySelector('#restoreModalTime').textContent = time || '\u2014';
+    });
+  })();
+</script>
+{% else %}
+<div class="bmf-empty-state">
+  <div class="bmf-empty-icon" aria-hidden="true">&#128190;</div>
+  <h2 class="h5">No backups yet</h2>
+  <p class="text-muted mb-3">
+    Backups appear here automatically after your first schedule import or delete.
+    You can also create one now.
+  </p>
+  <div class="d-flex justify-content-center flex-wrap gap-2">
+    <a class="btn btn-primary" href="{% url 'backup_db' %}">Create backup now</a>
+    <a class="btn btn-outline-secondary" href="{% url 'import_schedule' %}">Import schedule</a>
+  </div>
+  <p class="text-muted small mt-3 mb-0">Archive folder: <code>{{ archive_dir }}</code></p>
+</div>
+{% endif %}
+{% endblock %}

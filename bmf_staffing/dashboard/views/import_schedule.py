@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.html import format_html
 from staffing_tool.db import session_scope
 from staffing_tool.schedule_apply import apply_schedule_workbook
 from staffing_tool.schedule_import import (
@@ -169,6 +170,15 @@ def import_schedule(request):
                 success_msg += f" Safety backup saved to archive/{backup_path.name}."
             success_msg += " Please review and export."
             messages.success(request, success_msg)
+            if backup_path is not None:
+                messages.info(
+                    request,
+                    format_html(
+                        'Safety backup created before this import. '
+                        '<a class="alert-link" href="{}">View backups</a>.',
+                        reverse("database_backups"),
+                    ),
+                )
             if backup_path is None:
                 messages.warning(
                     request,

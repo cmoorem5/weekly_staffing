@@ -10,7 +10,7 @@
   <!-- BMF typography: Barlow (fallback Arial, Helvetica) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link href="{% static 'dashboard/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
   <style>
     /* BMF brand colors */
@@ -142,6 +142,180 @@
       filter: brightness(1.05);
     }
 
+    /* ---- BMF UI component library (added for product polish) ---- */
+    main.container { max-width: 1180px; }
+
+    .bmf-numeric {
+      font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Page header band */
+    .bmf-page-head {
+      margin-bottom: 1.25rem;
+    }
+    .bmf-page-head .bmf-page-title {
+      font-size: 1.65rem;
+      color: var(--bmf-navy);
+    }
+    .bmf-eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--bmf-blue);
+      margin-bottom: 0.15rem;
+    }
+
+    /* Cards */
+    .bmf-card { border-radius: 0.65rem; }
+    .card { border-radius: 0.65rem; }
+    .bmf-card-header { border-bottom: 1px solid var(--bmf-medium-gray); }
+    .bmf-hover-lift { transition: transform .12s ease, box-shadow .12s ease; }
+    .bmf-hover-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 .5rem 1.25rem rgba(5, 44, 71, 0.12) !important;
+    }
+
+    /* KPI cards with status accent */
+    .bmf-kpi-card {
+      border: 1px solid var(--bmf-medium-gray);
+      border-left: 4px solid var(--bmf-medium-gray);
+      border-radius: 0.65rem;
+      background: var(--bmf-white);
+      height: 100%;
+    }
+    .bmf-kpi-card .bmf-kpi-value {
+      font-family: "IBM Plex Mono", monospace;
+      font-weight: 600;
+      font-size: 2rem;
+      line-height: 1.1;
+      color: var(--bmf-navy);
+    }
+    .bmf-kpi-card .bmf-kpi-label {
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #5a6470;
+    }
+    .bmf-kpi-card.bmf-accent-ontarget { border-left-color: #2e7d32; }
+    .bmf-kpi-card.bmf-accent-monitor  { border-left-color: #b7791f; }
+    .bmf-kpi-card.bmf-accent-action   { border-left-color: var(--bmf-red); }
+
+    /* RAG status pills (labels: On target / Monitor / Action needed) */
+    .bmf-rag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .bmf-rag--ontarget { background: #e3f3e4; color: #1e5a23; border-color: #b9e0bc; }
+    .bmf-rag--monitor  { background: #fbf0d6; color: #7a560f; border-color: #f0dca6; }
+    .bmf-rag--action   { background: #fbe1e2; color: #8c1418; border-color: #f3b9bb; }
+    .bmf-rag--none     { background: var(--bmf-gray); color: #5a6470; border-color: var(--bmf-medium-gray); }
+
+    /* Empty states */
+    .bmf-empty-state {
+      background: var(--bmf-white);
+      border: 1px dashed var(--bmf-medium-gray);
+      border-radius: 0.75rem;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+    }
+    .bmf-empty-state .bmf-empty-icon {
+      width: 3rem; height: 3rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      background: var(--bmf-gray);
+      color: var(--bmf-navy);
+      font-size: 1.4rem;
+      margin-bottom: 0.75rem;
+    }
+    .bmf-empty-state h2, .bmf-empty-state h3 { color: var(--bmf-navy); }
+
+    /* Stepper (import flow) */
+    .bmf-stepper {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      list-style: none;
+      padding: 0;
+      margin: 0 0 1.5rem;
+    }
+    .bmf-stepper li {
+      flex: 1 1 0;
+      min-width: 9rem;
+      border: 1px solid var(--bmf-medium-gray);
+      border-radius: 0.5rem;
+      background: var(--bmf-white);
+      padding: 0.55rem 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: #5a6470;
+    }
+    .bmf-stepper li .bmf-step-num {
+      width: 1.6rem; height: 1.6rem;
+      flex: 0 0 auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      background: var(--bmf-gray);
+      color: #5a6470;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .bmf-stepper li.is-active {
+      border-color: var(--bmf-blue);
+      color: var(--bmf-navy);
+      font-weight: 600;
+    }
+    .bmf-stepper li.is-active .bmf-step-num { background: var(--bmf-blue); color: #fff; }
+    .bmf-stepper li.is-done { color: var(--bmf-navy); }
+    .bmf-stepper li.is-done .bmf-step-num { background: #2e7d32; color: #fff; }
+
+    /* Quick-link / action tiles */
+    .bmf-tile {
+      display: block;
+      text-decoration: none;
+      color: var(--bmf-navy);
+      background: var(--bmf-white);
+      border: 1px solid var(--bmf-medium-gray);
+      border-radius: 0.65rem;
+      padding: 1rem;
+      height: 100%;
+    }
+    .bmf-tile:hover { color: var(--bmf-blue); }
+    .bmf-tile .bmf-tile-title { font-weight: 600; }
+    .bmf-tile .bmf-tile-sub { font-size: 0.82rem; color: #5a6470; }
+
+    /* Stat chips */
+    .bmf-stat {
+      background: var(--bmf-white);
+      border: 1px solid var(--bmf-medium-gray);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.9rem;
+    }
+    .bmf-stat .bmf-stat-value {
+      font-family: "IBM Plex Mono", monospace;
+      font-weight: 600;
+      font-size: 1.25rem;
+      color: var(--bmf-navy);
+    }
+    .bmf-stat .bmf-stat-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #5a6470;
+    }
+
+    /* Submit affordance: dim + label while a form posts */
+    .bmf-submitting { opacity: 0.65; pointer-events: none; }
+
     .print-only { display: none; }
     .no-print { }
 
@@ -257,6 +431,7 @@
                 <li><a class="dropdown-item" href="{% url 'kpi_thresholds_settings' %}">KPI thresholds</a></li>
                 <li><a class="dropdown-item" href="{% url 'base_totals' %}">Base totals (RW / GR)</a></li>
                 <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'database_backups' %}">Database backups</a></li>
                 <li><a class="dropdown-item" href="{% url 'backup_db' %}">Backup database</a></li>
                 <li><a class="dropdown-item" href="{% url 'restore_db' %}">Restore database</a></li>
               </ul>
@@ -268,14 +443,24 @@
 
     <main class="container my-4">
       {% if messages %}
-      <div class="mb-3">
+      <div class="mb-3 no-print">
         {% for message in messages %}
           {% if 'success' in message.tags %}
-            <div class="alert alert-success mb-2" role="alert">{{ message }}</div>
+            <div class="alert alert-success d-flex align-items-start gap-2 mb-2" role="alert">
+              <span aria-hidden="true">&#10003;</span><div>{{ message }}</div>
+            </div>
+          {% elif 'warning' in message.tags %}
+            <div class="alert alert-warning d-flex align-items-start gap-2 mb-2" role="alert">
+              <span aria-hidden="true">&#9888;</span><div>{{ message }}</div>
+            </div>
           {% elif 'error' in message.tags %}
-            <div class="alert alert-danger mb-2" role="alert">{{ message }}</div>
+            <div class="alert alert-danger d-flex align-items-start gap-2 mb-2" role="alert">
+              <span aria-hidden="true">&#9888;</span><div>{{ message }}</div>
+            </div>
           {% else %}
-            <div class="alert alert-secondary mb-2" role="alert">{{ message }}</div>
+            <div class="alert alert-secondary d-flex align-items-start gap-2 mb-2" role="alert">
+              <span aria-hidden="true">&#8505;</span><div>{{ message }}</div>
+            </div>
           {% endif %}
         {% endfor %}
       </div>
@@ -311,5 +496,24 @@
   </div>
 
   <script src="{% static 'dashboard/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+  <script>
+    // Loading affordance: dim a form and show "Working…" on the clicked submit
+    // button so long imports/report builds feel responsive. Skips file inputs
+    // with no chosen file so native required-validation still fires.
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!(form instanceof HTMLFormElement) || form.dataset.noLoading) return;
+      if (typeof form.checkValidity === 'function' && !form.checkValidity()) return;
+      var btn = e.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+      if (btn && !btn.dataset.busy) {
+        btn.dataset.busy = '1';
+        if (btn.tagName === 'BUTTON') {
+          btn.dataset.originalHtml = btn.innerHTML;
+          btn.innerHTML = 'Working\u2026';
+        }
+        form.classList.add('bmf-submitting');
+      }
+    });
+  </script>
 </body>
 </html>

@@ -148,7 +148,18 @@
 {% endif %}
 
 {% if no_data %}
-  <p class="mt-4 text-muted">No weekly staffing data in this range.</p>
+  <div class="bmf-empty-state mt-4">
+    <div class="bmf-empty-icon" aria-hidden="true">&#128197;</div>
+    <h2 class="h5">No staffing data for FY{{ fy_label }}</h2>
+    <p class="text-muted mb-3">
+      There are no weeks in this fiscal year range yet. Import a schedule or pick a different
+      fiscal year above.
+    </p>
+    <div class="d-flex justify-content-center flex-wrap gap-2">
+      <a class="btn btn-primary" href="{% url 'import_schedule' %}">Import schedule</a>
+      <a class="btn btn-outline-secondary" href="{% url 'week_list' %}">View all weeks</a>
+    </div>
+  </div>
 {% else %}
   <div class="row g-3 mt-3">
     <div class="col-12 col-lg-6">

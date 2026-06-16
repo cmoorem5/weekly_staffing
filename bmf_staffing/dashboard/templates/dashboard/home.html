@@ -1,47 +1,69 @@
 {% extends "dashboard/base.html" %}
+{% load dashboard_extras %}
 {% block title %}BMF Staffing – Home{% endblock %}
 {% block content %}
-<h1 class="h2 mb-3">Boston MedFlight staffing</h1>
-<p class="text-muted">Enter weekly data, import schedules, and export the weekly Excel summary. Week start is always <strong>Sunday</strong> (Sun–Sat).</p>
+
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Boston MedFlight · Clinical Operations</div>
+  <h1 class="bmf-page-title">Weekly staffing</h1>
+  <p class="bmf-page-subtitle mb-0">
+    Import weekly schedules, review KPIs, and export board-ready reports. Weeks run
+    <strong>Sunday &rarr; Saturday</strong>.
+  </p>
+</div>
 
 {% if latest_week_start %}
-  <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3">Rolling overview</h2>
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <div class="bmf-stat">
+      <div class="bmf-stat-value">{{ latest_week_start }}</div>
+      <div class="bmf-stat-label">Latest week</div>
+    </div>
+    <div class="bmf-stat">
+      <div class="bmf-stat-value">{{ total_week_count }}</div>
+      <div class="bmf-stat-label">Weeks in database</div>
+    </div>
+    <div class="bmf-stat">
+      <div class="bmf-stat-value" style="font-size: 1rem;">
+        {% if last_import_week_start %}{{ last_import_week_start }}{% else %}&mdash;{% endif %}
+      </div>
+      <div class="bmf-stat-label">Last schedule import</div>
+    </div>
+  </div>
+
+  <h2 class="bmf-section-title">Rolling overview</h2>
   <p class="text-muted small mb-2">
-    <strong>{{ overview_weeks_count }}</strong> week{% if overview_weeks_count != 1 %}s{% endif %} averaged
+    <strong>{{ overview_weeks_count }}</strong> week{{ overview_weeks_count|pluralize }} averaged
     <span class="text-muted">({{ overview_range_label }})</span>.
-    Each card shows the <strong>mean of weekly ratios</strong> across those weeks; the subtitle shows the <strong>pooled period rate</strong> (totals ÷ totals). Status colors (Green/Yellow/Red) use the <strong>pooled</strong> rate against the same thresholds as a single week.
-    Weekly values are listed below.
+    Each card shows the <strong>mean of weekly ratios</strong>; the subtitle shows the
+    <strong>pooled period rate</strong> (totals &divide; totals). Status uses the pooled rate against
+    the same thresholds as a single week.
   </p>
 
   {% if overview_red_count or overview_yellow_count %}
-  <div class="alert {% if overview_red_count %}alert-danger{% else %}alert-warning{% endif %} py-2 mb-3" role="alert">
-    {% if overview_red_count %}
-      <strong>Attention (rolling period):</strong> {{ overview_red_count }} metric{% if overview_red_count != 1 %}s{% endif %} at <strong>Red</strong>
-      {% if overview_yellow_count %} &middot; {{ overview_yellow_count }} at Yellow{% endif %}
-    {% else %}
-      <strong>Watch (rolling period):</strong> {{ overview_yellow_count }} metric{% if overview_yellow_count != 1 %}s{% endif %} at Yellow (none at Red).
-    {% endif %}
+  <div class="alert {% if overview_red_count %}alert-danger{% else %}alert-warning{% endif %} d-flex align-items-start gap-2 py-2 mb-3" role="alert">
+    <span aria-hidden="true">&#9888;</span>
+    <div>
+      {% if overview_red_count %}
+        <strong>Attention (rolling period):</strong> {{ overview_red_count }} metric{{ overview_red_count|pluralize }} need action
+        {% if overview_yellow_count %} &middot; {{ overview_yellow_count }} to monitor{% endif %}.
+      {% else %}
+        <strong>Watch (rolling period):</strong> {{ overview_yellow_count }} metric{{ overview_yellow_count|pluralize }} to monitor (none need action).
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 
   <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 mb-4">
     {% for k in overview_kpis %}
     <div class="col">
-      <div class="card h-100 border shadow-sm">
-        <div class="card-body">
+      <div class="bmf-kpi-card
+        {% if k.rag == 'Green' %}bmf-accent-ontarget{% elif k.rag == 'Yellow' %}bmf-accent-monitor{% elif k.rag == 'Red' %}bmf-accent-action{% endif %}">
+        <div class="p-3">
           <div class="d-flex justify-content-between align-items-start gap-2">
-            <span class="small text-muted text-uppercase fw-semibold">{{ k.label }}</span>
-            {% if k.rag == 'Green' %}
-              <span class="badge rounded-pill bg-success">Green</span>
-            {% elif k.rag == 'Yellow' %}
-              <span class="badge rounded-pill bg-warning text-dark">Yellow</span>
-            {% elif k.rag == 'Red' %}
-              <span class="badge rounded-pill" style="background-color: var(--bmf-red);">Red</span>
-            {% else %}
-              <span class="badge rounded-pill bg-secondary">—</span>
-            {% endif %}
+            <span class="bmf-kpi-label">{{ k.label }}</span>
+            {% rag_badge k.rag %}
           </div>
-          <p class="display-6 fw-bold mb-0 mt-2">{{ k.value_pct }}%</p>
+          <p class="bmf-kpi-value mb-0 mt-2">{{ k.value_pct }}%</p>
           <p class="small text-muted mb-0">{{ k.pooled_pct }}% period (pooled)</p>
         </div>
       </div>
@@ -49,74 +71,119 @@
     {% endfor %}
   </div>
 
-  <h2 class="h6 text-uppercase fw-bold text-muted border-bottom pb-2 mb-2">Latest week in data</h2>
-  <p class="mb-2">
-    <strong>{{ latest_week_start }}</strong>
-    {% if latest_updated_at %}
-      <span class="text-muted small">&middot; last updated {{ latest_updated_at }}</span>
-    {% endif %}
-  </p>
-  <p class="small text-muted mb-3">
-    Filled crew shifts: <strong>{{ latest_filled_total }}</strong> / {{ latest_required_total }}
-    {% if latest_vacancies %}&middot; vacancies: <strong>{{ latest_vacancies }}</strong>{% endif %}
-    {% if latest_staffing_over_required %}
-      &middot; <span class="text-muted">Staffing rate {{ latest_staffing_rate_pct }}% — filled exceeds the 84-shift weekly requirement (extra paired RN+Medic coverage from the schedule).</span>
-    {% endif %}
-  </p>
-  <p class="mb-4">
-    <a href="{% url 'week_edit' latest_week_start %}" class="btn btn-primary">Edit latest week</a>
-    <a href="{% url 'export_excel' latest_week_start %}" class="btn btn-outline-primary">Export Excel</a>
-    <a href="{% url 'week_list' %}" class="btn btn-outline-secondary">All weeks</a>
-  </p>
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="card bmf-card shadow-sm h-100">
+        <div class="card-header bmf-card-header">Last four weeks</div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">Newest first. Status reflects <strong>staffing rate</strong>.</p>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 bg-white">
+              <thead>
+                <tr>
+                  <th scope="col">Week (Sun)</th>
+                  <th scope="col" class="text-end">Staffing</th>
+                  <th scope="col" class="text-end">OT dep</th>
+                  <th scope="col" class="text-end">Shift exc</th>
+                  <th scope="col" class="text-end">RW sys</th>
+                  <th scope="col" class="text-end">GR sys</th>
+                  <th scope="col">Status</th>
+                  <th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for w in recent_weeks %}
+                <tr {% if w.week_start == latest_week_start %}class="table-light"{% endif %}>
+                  <td><strong>{{ w.week_start }}</strong>{% if w.week_start == latest_week_start %} <span class="text-muted small">(latest)</span>{% endif %}</td>
+                  <td class="text-end bmf-numeric">{{ w.rate_pct }}%</td>
+                  <td class="text-end bmf-numeric">{{ w.ot_pct }}%</td>
+                  <td class="text-end bmf-numeric">{{ w.leave_pct }}%</td>
+                  <td class="text-end bmf-numeric">{{ w.rw_pct }}%</td>
+                  <td class="text-end bmf-numeric">{{ w.gr_pct }}%</td>
+                  <td>{% rag_badge w.rag %}</td>
+                  <td class="text-end"><a href="{% url 'week_edit' w.week_start %}" class="small">Edit</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  <h2 class="h5 text-uppercase fw-bold border-bottom pb-2 mb-3 mt-4">Last four weeks</h2>
-  <p class="text-muted small mb-2">Weekly values (newest first). Status color is based on <strong>staffing rate</strong> only.</p>
-  <div class="table-responsive mb-4">
-    <table class="table table-sm table-bordered bg-white align-middle">
-      <thead>
-        <tr>
-          <th>Week (Sun)</th>
-          <th>Staffing</th>
-          <th>OT dep</th>
-          <th>Shift exc</th>
-          <th>RW sys</th>
-          <th>GR sys</th>
-          <th>RAG</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for w in recent_weeks %}
-        <tr {% if w.week_start == latest_week_start %}class="table-light"{% endif %}>
-          <td><strong>{{ w.week_start }}</strong>{% if w.week_start == latest_week_start %} <span class="text-muted small">(latest)</span>{% endif %}</td>
-          <td>{{ w.rate_pct }}%</td>
-          <td>{{ w.ot_pct }}%</td>
-          <td>{{ w.leave_pct }}%</td>
-          <td>{{ w.rw_pct }}%</td>
-          <td>{{ w.gr_pct }}%</td>
-          <td>{{ w.rag }}</td>
-          <td><a href="{% url 'week_edit' w.week_start %}" class="small">Edit</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="col-lg-5">
+      <div class="card bmf-card shadow-sm h-100">
+        <div class="card-header bmf-card-header">Latest week &middot; {{ latest_week_start }}</div>
+        <div class="card-body d-flex flex-column">
+          {% if latest_updated_at %}
+          <p class="text-muted small mb-2">Last updated {{ latest_updated_at }}</p>
+          {% endif %}
+          <p class="mb-1">
+            Filled crew shifts:
+            <strong class="bmf-numeric">{{ latest_filled_total }}</strong> / {{ latest_required_total }}
+            {% if latest_vacancies %}&middot; vacancies: <strong class="bmf-numeric">{{ latest_vacancies }}</strong>{% endif %}
+          </p>
+          {% if latest_staffing_over_required %}
+          <p class="small text-muted">
+            Staffing rate {{ latest_staffing_rate_pct }}% — filled exceeds the 84-shift weekly
+            requirement (extra paired RN+Medic coverage from the schedule).
+          </p>
+          {% endif %}
+          <div class="mt-auto d-flex flex-wrap gap-2 pt-2">
+            <a href="{% url 'week_edit' latest_week_start %}" class="btn btn-primary btn-sm">Edit latest week</a>
+            <a href="{% url 'export_excel' latest_week_start %}" class="btn btn-outline-primary btn-sm">Export Excel</a>
+            <a href="{% url 'week_list' %}" class="btn btn-outline-secondary btn-sm">All weeks</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
+
 {% else %}
-  <div class="alert alert-secondary mb-4">
-    No weekly data yet. Add a week or import a schedule to see KPIs here.
+  <div class="bmf-empty-state mb-4">
+    <div class="bmf-empty-icon" aria-hidden="true">&#128202;</div>
+    <h2 class="h4">No weekly data yet</h2>
+    <p class="text-muted mb-4">
+      Import a schedule workbook to populate KPIs, or add a week manually. Week start is always a
+      <strong>Sunday</strong> (Sun&ndash;Sat).
+    </p>
+    <div class="d-flex justify-content-center flex-wrap gap-2">
+      <a class="btn btn-primary" href="{% url 'import_schedule' %}">Import schedule</a>
+      <a class="btn btn-outline-secondary" href="{% url 'week_add' %}">Add week manually</a>
+    </div>
+    <p class="text-muted small mt-3 mb-0">Calendar Sunday for new entries: <strong>{{ last_sunday }}</strong></p>
   </div>
 {% endif %}
 
-<h2 class="h6 text-uppercase fw-bold text-muted border-bottom pb-2 mb-2">Quick links</h2>
-<div class="d-flex flex-wrap gap-2 mb-3">
-  <a class="btn btn-outline-primary btn-sm" href="{% url 'reports_index' %}">Reports &amp; analytics</a>
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'settings_index' %}">Settings</a>
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'import_schedule' %}">Import schedule</a>
+<h2 class="bmf-section-title">Quick actions</h2>
+<div class="row row-cols-1 row-cols-sm-2 row-cols-lg-4 g-3 mb-3">
+  <div class="col">
+    <a class="bmf-tile bmf-hover-lift shadow-sm" href="{% url 'import_schedule' %}">
+      <div class="bmf-tile-title">Import schedule</div>
+      <div class="bmf-tile-sub">Upload a weekly workbook</div>
+    </a>
+  </div>
+  <div class="col">
+    <a class="bmf-tile bmf-hover-lift shadow-sm" href="{% url 'reports_index' %}">
+      <div class="bmf-tile-title">Reports &amp; analytics</div>
+      <div class="bmf-tile-sub">Weekly / quarterly / monthly</div>
+    </a>
+  </div>
+  <div class="col">
+    <a class="bmf-tile bmf-hover-lift shadow-sm" href="{% url 'settings_index' %}">
+      <div class="bmf-tile-title">Settings</div>
+      <div class="bmf-tile-sub">Rosters, thresholds, base totals</div>
+    </a>
+  </div>
+  <div class="col">
+    <a class="bmf-tile bmf-hover-lift shadow-sm" href="{% url 'database_backups' %}">
+      <div class="bmf-tile-title">Database backups</div>
+      <div class="bmf-tile-sub">Browse &amp; restore snapshots</div>
+    </a>
+  </div>
 </div>
-<ul class="mb-2">
-  <li><a href="{% url 'week_list' %}">Weeks</a> – Recent weeks, edit, export.</li>
-  <li><a href="{% url 'reports_index' %}">Reports</a> – Staffing dashboard, manager shifts, weekly PDF/HTML report, monthly board pack.</li>
-  <li><a href="{% url 'settings_index' %}">Settings</a> – Manager roster, KPI thresholds, base totals, backup.</li>
-</ul>
+
+{% if latest_week_start %}
 <p class="text-muted small mb-0">Calendar Sunday for new entries: <strong>{{ last_sunday }}</strong></p>
+{% endif %}
 {% endblock %}

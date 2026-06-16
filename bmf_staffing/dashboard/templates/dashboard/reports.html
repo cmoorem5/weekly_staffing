@@ -1,11 +1,25 @@
 {% extends "dashboard/base.html" %}
 {% block title %}Reports{% endblock %}
 {% block content %}
-<h1 class="bmf-page-title">Reports &amp; analytics</h1>
-<p class="bmf-page-subtitle">
-  Choose a report below. Each opens with <strong>FY{{ fy_label }} year-to-date</strong> defaults
-  (through {{ data_through }}). Adjust filters on the report page before exporting.
-</p>
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Reports &amp; analytics</div>
+  <h1 class="bmf-page-title">Reports &amp; analytics</h1>
+  <p class="bmf-page-subtitle mb-0">
+    Choose a report below. Each opens with <strong>FY{{ fy_label }} year-to-date</strong> defaults
+    (through {{ data_through }}). Adjust filters on the report page before exporting.
+  </p>
+</div>
+
+{% if not latest_week_start %}
+<div class="bmf-empty-state mb-4">
+  <div class="bmf-empty-icon" aria-hidden="true">&#128202;</div>
+  <h2 class="h5">No data to report on yet</h2>
+  <p class="text-muted mb-3">
+    Reports populate once there is at least one week in the database. Import a schedule to begin.
+  </p>
+  <a class="btn btn-primary" href="{% url 'import_schedule' %}">Import schedule</a>
+</div>
+{% endif %}
 
 {% if last_import_week_start %}
 <div class="alert alert-info py-2 mb-3" role="alert">

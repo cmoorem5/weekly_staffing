@@ -131,6 +131,15 @@ def settings_index(request):
             "meta": "5 bases",
         },
         {
+            "title": "Database backups",
+            "description": (
+                "Browse automatic and manual backups in archive/ and restore any "
+                "snapshot with one click (localhost only)."
+            ),
+            "url_name": "database_backups",
+            "meta": "Admin tool",
+        },
+        {
             "title": "Backup database",
             "description": "Copy staffing.db to archive/ with a timestamp (localhost only).",
             "url_name": "backup_db",

@@ -1,28 +1,62 @@
 {% extends "dashboard/base.html" %}
 {% block title %}Import schedule{% endblock %}
 {% block content %}
-<h1 class="bmf-page-title">Import weekly schedule</h1>
-<p class="bmf-page-subtitle">
-  Upload the schedule workbook (one or two weeks in the grid). The next screen will detect available Sunday start dates so you can choose the week to import.
-</p>
-<p class="text-muted small mb-3">Optional: “Preferred week start” is only used to preselect a detected week.</p>
 
-<form method="post" enctype="multipart/form-data">
-  {% csrf_token %}
-  <table class="table table-sm table-bordered bg-white" style="max-width: 56rem;">
-    <tr>
-      <td class="w-50"><label class="form-label mb-0" for="id_week_start">Preferred week start (optional)</label></td>
-      <td><input type="text" class="form-control" name="week_start" id="id_week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD (Sunday)" /></td>
-    </tr>
-    <tr>
-      <td><label class="form-label mb-0" for="id_schedule_file">Schedule Excel file</label></td>
-      <td><input type="file" class="form-control" name="schedule_file" id="id_schedule_file" accept=".xlsx,.xlsm" required aria-label="Schedule Excel file" /></td>
-    </tr>
-  </table>
-  <p class="mt-3 mb-0 d-flex flex-wrap gap-2">
-    <button type="submit" class="btn btn-primary">Upload &amp; preview</button>
-    <a href="{% url 'week_list' %}" class="btn btn-outline-secondary">Cancel</a>
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Operations</div>
+  <h1 class="bmf-page-title">Import weekly schedule</h1>
+  <p class="bmf-page-subtitle mb-0">
+    Upload the schedule workbook (one or two weeks in the grid). The next screen detects the
+    available Sunday start dates so you can choose the week to import.
   </p>
-</form>
-{% endblock %}
+</div>
 
+<ol class="bmf-stepper">
+  <li class="is-active"><span class="bmf-step-num">1</span><span>Upload workbook</span></li>
+  <li><span class="bmf-step-num">2</span><span>Preview &amp; choose week</span></li>
+  <li><span class="bmf-step-num">3</span><span>Apply &amp; save</span></li>
+</ol>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Step 1 &middot; Upload workbook</div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="id_schedule_file">Schedule Excel file</label>
+            <input type="file" class="form-control" name="schedule_file" id="id_schedule_file"
+                   accept=".xlsx,.xlsm" required aria-label="Schedule Excel file">
+            <div class="form-text">Accepted formats: <code>.xlsx</code>, <code>.xlsm</code> (max 25&nbsp;MB).</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_week_start">Preferred week start <span class="text-muted">(optional)</span></label>
+            <input type="text" class="form-control" name="week_start" id="id_week_start"
+                   value="{{ week_start }}" placeholder="YYYY-MM-DD (Sunday)" style="max-width: 16rem;">
+            <div class="form-text">Only used to preselect a detected week on the next screen.</div>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">Upload &amp; preview</button>
+            <a href="{% url 'week_list' %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card bmf-card shadow-sm h-100">
+      <div class="card-header bmf-card-header">Before you import</div>
+      <div class="card-body">
+        <ul class="small text-muted mb-0 ps-3">
+          <li>A <strong>safety backup</strong> of the database is taken automatically before any import.</li>
+          <li>Importing a week <strong>replaces</strong> that week's existing data.</li>
+          <li>You'll preview parsed counts and resolve any unknown unit codes before applying.</li>
+          <li class="mt-2"><a href="{% url 'database_backups' %}">View database backups</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

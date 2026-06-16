@@ -1,36 +1,65 @@
 {% extends "dashboard/base.html" %}
+{% load dashboard_extras %}
 {% block title %}Weeks{% endblock %}
 {% block content %}
-<h1>Recent weeks</h1>
-<p><a href="{% url 'week_add' %}" class="btn">Add week</a></p>
-<table>
-  <thead>
-    <tr>
-      <th>Week (Sun)</th>
-      <th>Staffing rate</th>
-      <th>OT dep</th>
-      <th>Shift exc</th>
-      <th>RAG</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for w in weeks %}
-    <tr>
-      <td>{{ w.week_start }}</td>
-      <td>{{ w.rate_pct }}%</td>
-      <td>{{ w.ot_pct }}%</td>
-      <td>{{ w.leave_pct }}%</td>
-      <td>{{ w.rag }}</td>
-      <td>
-        <a href="{% url 'week_edit' w.week_start %}" class="btn btn-secondary">Edit</a>
-        <a href="{% url 'export_excel' w.week_start %}" class="btn">Export Excel</a>
-        <a href="{% url 'week_delete' w.week_start %}" style="color:#c00;">Delete</a>
-      </td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="6">No weeks yet. <a href="{% url 'week_add' %}">Add week</a>.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+
+<div class="bmf-page-head d-flex flex-wrap justify-content-between align-items-end gap-2">
+  <div>
+    <div class="bmf-eyebrow">Operations</div>
+    <h1 class="bmf-page-title mb-0">Recent weeks</h1>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'import_schedule' %}" class="btn btn-primary btn-sm">Import schedule</a>
+    <a href="{% url 'week_add' %}" class="btn btn-outline-secondary btn-sm">Add week</a>
+  </div>
+</div>
+
+{% if weeks %}
+<div class="card bmf-card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 bg-white">
+      <thead>
+        <tr>
+          <th scope="col">Week (Sun)</th>
+          <th scope="col" class="text-end">Staffing rate</th>
+          <th scope="col" class="text-end">OT dep</th>
+          <th scope="col" class="text-end">Shift exc</th>
+          <th scope="col">Status</th>
+          <th scope="col" class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in weeks %}
+        <tr>
+          <td><strong>{{ w.week_start }}</strong></td>
+          <td class="text-end bmf-numeric">{{ w.rate_pct }}%</td>
+          <td class="text-end bmf-numeric">{{ w.ot_pct }}%</td>
+          <td class="text-end bmf-numeric">{{ w.leave_pct }}%</td>
+          <td>{% rag_badge w.rag %}</td>
+          <td class="text-end">
+            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+              <a href="{% url 'week_edit' w.week_start %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+              <a href="{% url 'export_excel' w.week_start %}" class="btn btn-outline-primary btn-sm">Export</a>
+              <a href="{% url 'week_delete' w.week_start %}" class="btn btn-outline-danger btn-sm">Delete</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="bmf-empty-state">
+  <div class="bmf-empty-icon" aria-hidden="true">&#128197;</div>
+  <h2 class="h5">No weeks yet</h2>
+  <p class="text-muted mb-3">
+    Import a schedule workbook to populate weeks automatically, or add one manually.
+  </p>
+  <div class="d-flex justify-content-center flex-wrap gap-2">
+    <a class="btn btn-primary" href="{% url 'import_schedule' %}">Import schedule</a>
+    <a class="btn btn-outline-secondary" href="{% url 'week_add' %}">Add week manually</a>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

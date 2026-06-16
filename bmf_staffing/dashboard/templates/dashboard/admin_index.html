@@ -19,6 +19,12 @@
         </tr>
         <tr>
           <th scope="row">
+            <a href="{% url 'database_backups' %}">Database backups</a>
+          </th>
+          <td class="text-muted">Browse archive/ backups and one-click restore (localhost-only).</td>
+        </tr>
+        <tr>
+          <th scope="row">
             <a href="{% url 'backup_db' %}">Backup DB</a>
           </th>
           <td class="text-muted">Copy staffing.db to archive/ with a timestamp.</td>
