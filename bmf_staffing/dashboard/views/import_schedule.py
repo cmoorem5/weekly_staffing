@@ -136,7 +136,7 @@ def import_schedule(request):
             )
             # Snapshot the DB first: applying replaces this week's data, so a
             # mis-parsed import stays recoverable from archive/.
-            backup_staffing_db_before_write()
+            backup_path = backup_staffing_db_before_write()
 
             roster_added = 0
             with session_scope(DB_PATH) as session:
@@ -165,8 +165,16 @@ def import_schedule(request):
             if roster_added:
                 noun = "staff member" if roster_added == 1 else "staff members"
                 success_msg += f" {roster_added} new {noun} added to roster."
+            if backup_path:
+                success_msg += f" Safety backup saved to archive/{backup_path.name}."
             success_msg += " Please review and export."
             messages.success(request, success_msg)
+            if backup_path is None:
+                messages.warning(
+                    request,
+                    "Import completed, but the automatic safety backup did not run. "
+                    "Use Admin tools → Backup database before your next import.",
+                )
             url = reverse("week_edit", kwargs={"week_start": week_start})
             return redirect(f"{url}?imported=1")
 

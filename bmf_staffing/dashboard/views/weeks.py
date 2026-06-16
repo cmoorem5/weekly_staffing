@@ -578,7 +578,7 @@ def week_delete(request, week_start):
     _ensure_db()
     if request.method == "POST":
         # Snapshot before delete so the week can be recovered from archive/.
-        backup_staffing_db_before_write()
+        backup_path = backup_staffing_db_before_write()
         with session_scope(DB_PATH) as session:
             row = (
                 session.query(WeeklyStaffing)
@@ -587,7 +587,15 @@ def week_delete(request, week_start):
             )
             if row:
                 session.delete(row)
-                messages.success(request, f"Week {week_start} deleted.")
+                delete_msg = f"Week {week_start} deleted."
+                if backup_path:
+                    delete_msg += f" Safety backup saved to archive/{backup_path.name}."
+                messages.success(request, delete_msg)
+                if backup_path is None:
+                    messages.warning(
+                        request,
+                        "Week deleted, but the automatic safety backup did not run.",
+                    )
             else:
                 messages.error(request, f"No data for week {week_start}.")
         return redirect("week_list")
