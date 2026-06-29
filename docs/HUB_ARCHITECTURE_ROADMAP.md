@@ -1,4 +1,4 @@
-# Staffing Hub — Architecture & Roadmap
+# CrewPulse — Architecture & Roadmap
 
 > **Status:** Draft / living document — captures the planning conversation so we can keep
 > refining it before committing to implementation. **No code changes yet.**
@@ -10,7 +10,7 @@
 ## 1. Vision
 
 Turn the current **Weekly Staffing** tool (a localhost KPI/report generator that *imports* an
-Excel schedule) into a **comprehensive Boston MedFlight operations hub**: the single management
+Excel schedule) into **CrewPulse** — a **comprehensive Boston MedFlight operations hub**: the single management
 layer that ingests the published schedule, lets the on-duty AOC operate it live (sick calls,
 leave approvals, overtime, swaps), produces all reports and KPIs automatically, and broadcasts
 the schedule to crews through secure, auto-updating calendars.
@@ -260,19 +260,17 @@ already authoritative by then.)*
 ## 15. Naming
 
 This is the **operations/management layer**, not the scheduler ("Crew Ops 360" is the peers'). Avoid
-"Weekly" (it's no longer just weekly). Candidates:
+"Weekly" (it's no longer just weekly).
 
-- **MedFlight Ops Hub**
-- **Staffing Command** / **Staffing Ops Center**
-- **Coverage Hub**
-- **CrewPulse**
-
-> **Decision:** _pending._
+> **Decision:** **CrewPulse.** Distinctive, app-like, and suggests a live read on the crew —
+> calendars, sick calls, OT, KPIs. Pairs alongside "Crew Ops 360" without sounding like a
+> spreadsheet. (Considered: MedFlight Ops Hub, Staffing Command, Coverage Hub.)
 
 ---
 
 ## 16. Decisions locked in this conversation
 
+- **Name = CrewPulse.**
 - Federated with Crew Ops 360; consume the **published 2-week Excel block**, do not absorb scheduling.
 - **DB becomes the source of truth** post-publish; Excel is a synced mirror (outbox via Graph).
 - Publish unit = **2-week pay-period block**; always **3 active blocks / 6 weeks**, archive-on-roll.
@@ -296,4 +294,3 @@ This is the **operations/management layer**, not the scheduler ("Crew Ops 360" i
 7. **Token lifecycle** — offboarding flow that revokes crew calendar links.
 8. **The "publish" signal** — concrete mechanic with the peers (folder/status/button) the Hub watches.
 9. **Structured sidecar export** — will the peers add a CSV/JSON alongside the Excel?
-10. **Final name.**
