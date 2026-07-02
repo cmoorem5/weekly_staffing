@@ -2,25 +2,39 @@
 {% load crew_hub_extras %}
 
 {% block page_title %}{{ title }}{% endblock %}
-{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a day to edit{% endblock %}
+{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a day to edit{% if kind == "comm" %}; drag a chip to move or swap it; right-click a chip to set sick / swap / overtime{% endif %}{% endblock %}
 
 {% block hub_content %}
 <style>
   .ch-cal { width: 100%; table-layout: fixed; border: 1px solid #CBC7D1; background: #fff; border-radius: 6px; overflow: hidden; }
   .ch-cal th { background: #052C47; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 4px; text-align: center; font-weight: bold; }
-  .ch-cal td { vertical-align: top; height: 92px; border: 1px solid #E6E6E6; padding: 0; }
+  .ch-cal td { vertical-align: top; height: 108px; border: 1px solid #E6E6E6; padding: 0; }
   .ch-cal td.empty { background: #F4F4F7; }
-  .ch-cal a.daycell { display: block; height: 100%; padding: 5px 7px; text-decoration: none; color: inherit; }
-  .ch-cal a.daycell:hover { background: #E8EEF8; }
-  .ch-daynum { font-size: 12px; font-weight: bold; color: #052C47; }
+  .ch-cal td.drop-ok { outline: 2px dashed #2A4492; outline-offset: -3px; background: #E8EEF8; }
+  .ch-daycell { display: block; min-height: 100%; padding: 5px 6px; text-decoration: none; color: inherit; }
+  .ch-daynum { font-size: 12px; font-weight: bold; color: #052C47; text-decoration: none; }
+  .ch-daynum:hover { color: #2A4492; }
   .ch-today .ch-daynum { color: #fff; background: #2A4492; border-radius: 999px; padding: 1px 7px; display: inline-block; }
-  .ch-fill { font-size: 10px; margin-top: 3px; display: inline-block; border-radius: 999px; padding: 1px 7px; font-weight: bold; }
+  .ch-fill { font-size: 10px; margin-left: 4px; display: inline-block; border-radius: 999px; padding: 1px 7px; font-weight: bold; }
   .ch-fill.full { background: #E8F6F1; color: #0F6E56; border: 1px solid #9FD4C3; }
   .ch-fill.partial { background: #fdf3e7; color: #b35e00; border: 1px solid #E8761A; }
   .ch-fill.none { background: #F0EFF4; color: #5a6a7a; border: 1px solid #CBC7D1; }
-  .ch-names { font-size: 10px; color: #5a6a7a; margin-top: 3px; line-height: 1.35; overflow: hidden; }
-  .ch-mine { outline: 2px solid #2A4492; outline-offset: -2px; }
+  .ch-chip { display: flex; gap: 4px; align-items: baseline; font-size: 10px; line-height: 1.5; border-radius: 3px; padding: 1px 5px; margin-top: 2px; background: #F4F4F7; border: 1px solid #E6E6E6; color: #1a1a1a; cursor: grab; user-select: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .ch-chip .seat { font-weight: bold; color: #2A4492; flex: 0 0 auto; }
+  .ch-chip.wt-sick { background: #fbeced; border-color: #C12126; color: #8c1418; }
+  .ch-chip.wt-swap { background: #E8EEF8; border-color: #2A4492; color: #1d3270; }
+  .ch-chip.wt-overtime { background: #fdf3e7; border-color: #E8761A; color: #8a4a05; }
+  .ch-chip.mine { outline: 2px solid #2A4492; outline-offset: -2px; }
+  .ch-chip.dragging { opacity: .4; }
+  .ch-names { font-size: 10px; color: #5a6a7a; margin-top: 3px; line-height: 1.35; }
   .ch-cal-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .ch-legend { display: flex; gap: 10px; align-items: center; font-size: 10px; color: #5a6a7a; margin: 8px 0 0; flex-wrap: wrap; }
+  .ch-legend .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 3px; border: 1px solid #CBC7D1; }
+  #ctx_menu { position: fixed; z-index: 1000; display: none; background: #fff; border: 1px solid #CBC7D1; border-radius: 6px; box-shadow: 0 6px 18px rgba(5,44,71,.18); min-width: 170px; overflow: hidden; }
+  #ctx_menu .hdr { font-size: 10px; color: #5a6a7a; text-transform: uppercase; letter-spacing: .5px; padding: 6px 12px 4px; border-bottom: 1px solid #F0EFF4; }
+  #ctx_menu button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 12px; font-size: 12px; font-family: Arial, sans-serif; cursor: pointer; color: #1a1a1a; }
+  #ctx_menu button:hover { background: #E8EEF8; }
+  #ctx_menu button.danger { color: #C12126; }
 </style>
 
 <div class="ch-cal-nav no-print">
@@ -29,17 +43,23 @@
   <a class="ch-btn ch-btn-outline" href="?month={{ nav.next }}{% if selected_member %}&member={{ selected_member }}{% endif %}">{{ nav.next }} →</a>
   <span style="flex:1;"></span>
   {% if kind == "comm" %}
+    <form method="post" action="{% url 'crew_hub:comm_rotations_apply' %}" style="display:inline;" data-no-loading
+          onsubmit="return confirm('Fill {{ nav.current|date:'F Y' }} from all active rotations? Days already assigned are kept as-is.');">
+      {% csrf_token %}
+      <input type="hidden" name="month" value="{{ nav.current|date:'Y-m' }}">
+      <button type="submit" class="ch-btn ch-btn-secondary">⟳ Apply rotations</button>
+    </form>
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_rotations' %}">Rotations</a>
     <form method="get" style="display:flex; gap:6px; align-items:center;" data-no-loading>
       <input type="hidden" name="month" value="{{ nav.current|date:'Y-m' }}">
-      <label class="ch-label" style="margin:0;">Highlight my days</label>
-      <select name="member" class="ch-select" style="width:auto;" onchange="this.form.submit()">
+      <select name="member" class="ch-select" style="width:auto;" onchange="this.form.submit()" title="Highlight one person's days">
         <option value="">— everyone —</option>
         {% for m in members %}
           <option value="{{ m.pk }}" {% if selected_member == m.pk|stringformat:"s" %}selected{% endif %}>{{ m.name }}</option>
         {% endfor %}
       </select>
     </form>
-    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_staff' %}">Manage roster</a>
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_staff' %}">Roster</a>
   {% else %}
     <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_roster' %}">Manage roster</a>
   {% endif %}
@@ -54,20 +74,26 @@
     <tr>
       {% for day in week %}
         {% if day %}
-          <td class="{% if day == today %}ch-today{% endif %}">
+          <td class="{% if day == today %}ch-today{% endif %}" {% if kind == "comm" %}data-date="{{ day|date:'Y-m-d' }}"{% endif %}>
             {% with info=cells|get_item:day %}
-            <a class="daycell {% if info.mine %}ch-mine{% endif %}" href="{% url day_url_name date_str=day|date:'Y-m-d' %}">
-              <span class="ch-daynum">{{ day.day }}</span>
-              {% if info %}
-                <span class="ch-fill {% if info.filled >= seat_total %}full{% elif info.filled > 0 %}partial{% else %}none{% endif %}">{{ info.filled }}/{{ seat_total }}</span>
+            <div class="ch-daycell">
+              <a class="ch-daynum" href="{% url day_url_name date_str=day|date:'Y-m-d' %}" title="Open day editor">{{ day.day }}</a>
+              <span class="ch-fill {% if info and info.filled >= seat_total %}full{% elif info and info.filled > 0 %}partial{% else %}none{% endif %}">{{ info.filled|default:0 }}/{{ seat_total }}</span>
+              {% if info.chips %}
+                {% for chip in info.chips %}
+                  <div class="ch-chip wt-{{ chip.work_type }} {% if chip.mine %}mine{% endif %}"
+                       draggable="true" data-pk="{{ chip.pk }}" data-name="{{ chip.name }}" data-seat="{{ chip.seat }}"
+                       title="{{ chip.seat }}: {{ chip.name }} — drag to move, right-click for work type">
+                    <span class="seat">{{ chip.seat }}</span>{{ chip.name }}
+                  </div>
+                {% endfor %}
+              {% elif info.names %}
                 <div class="ch-names">
-                  {% for n in info.names|slice:":4" %}{{ n }}<br>{% endfor %}
-                  {% if info.names|length > 4 %}…{% endif %}
+                  {% for n in info.names|slice:":5" %}{{ n }}<br>{% endfor %}
+                  {% if info.names|length > 5 %}…{% endif %}
                 </div>
-              {% else %}
-                <span class="ch-fill none">0/{{ seat_total }}</span>
               {% endif %}
-            </a>
+            </div>
             {% endwith %}
           </td>
         {% else %}
@@ -78,4 +104,109 @@
     {% endfor %}
   </tbody>
 </table>
+
+{% if kind == "comm" %}
+<div class="ch-legend no-print">
+  <span><span class="swatch" style="background:#F4F4F7;"></span>Regular</span>
+  <span><span class="swatch" style="background:#fbeced; border-color:#C12126;"></span>Sick leave</span>
+  <span><span class="swatch" style="background:#E8EEF8; border-color:#2A4492;"></span>Swap</span>
+  <span><span class="swatch" style="background:#fdf3e7; border-color:#E8761A;"></span>Overtime</span>
+  <span style="margin-left:auto;">Drag a chip onto another day to move it — dropping on an occupied seat swaps the two days.</span>
+</div>
+
+<div id="ctx_menu">
+  <div class="hdr" id="ctx_title">Work type</div>
+  <button type="button" data-wt="regular">Regular</button>
+  <button type="button" data-wt="sick">Sick leave</button>
+  <button type="button" data-wt="swap">Swap</button>
+  <button type="button" data-wt="overtime">Overtime</button>
+  <button type="button" class="danger" data-remove="1">Remove from day</button>
+</div>
+
+<script>
+(function () {
+  var CSRF = "{{ csrf_token }}";
+  var menu = document.getElementById('ctx_menu');
+  var menuPk = null;
+
+  function post(url, body) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify(body || {})
+    }).then(function (r) { return r.json(); });
+  }
+
+  // --- Right-click work-type menu ---
+  document.querySelectorAll('.ch-chip').forEach(function (chip) {
+    chip.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      menuPk = chip.dataset.pk;
+      document.getElementById('ctx_title').textContent =
+        chip.dataset.seat + ' · ' + chip.dataset.name;
+      menu.style.display = 'block';
+      menu.style.left = Math.min(e.clientX, window.innerWidth - 190) + 'px';
+      menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
+    });
+  });
+  document.addEventListener('click', function () { menu.style.display = 'none'; });
+  document.addEventListener('scroll', function () { menu.style.display = 'none'; }, true);
+
+  menu.querySelectorAll('button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!menuPk) return;
+      var req;
+      if (btn.dataset.remove) {
+        req = post('/hub/comm/api/assignment/' + menuPk + '/remove/');
+      } else {
+        req = post('/hub/comm/api/assignment/' + menuPk + '/work-type/',
+                   { work_type: btn.dataset.wt });
+      }
+      req.then(function (data) {
+        if (data.ok) location.reload();
+        else alert(data.error || 'Update failed.');
+      }).catch(function () { alert('Update failed — check your connection.'); });
+    });
+  });
+
+  // --- Drag and drop between days ---
+  var draggedPk = null;
+  document.querySelectorAll('.ch-chip').forEach(function (chip) {
+    chip.addEventListener('dragstart', function (e) {
+      draggedPk = chip.dataset.pk;
+      chip.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    chip.addEventListener('dragend', function () {
+      chip.classList.remove('dragging');
+      document.querySelectorAll('td.drop-ok').forEach(function (td) {
+        td.classList.remove('drop-ok');
+      });
+    });
+  });
+  document.querySelectorAll('td[data-date]').forEach(function (td) {
+    td.addEventListener('dragover', function (e) {
+      if (!draggedPk) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      td.classList.add('drop-ok');
+    });
+    td.addEventListener('dragleave', function () { td.classList.remove('drop-ok'); });
+    td.addEventListener('drop', function (e) {
+      e.preventDefault();
+      td.classList.remove('drop-ok');
+      if (!draggedPk) return;
+      post('/hub/comm/api/assignment/' + draggedPk + '/move/',
+           { date: td.dataset.date })
+        .then(function (data) {
+          if (data.ok) location.reload();
+          else alert(data.error || 'Move failed.');
+        })
+        .catch(function () { alert('Move failed — check your connection.'); });
+      draggedPk = null;
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

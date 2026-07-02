@@ -10,6 +10,13 @@ from .report import (
     report_submit,
     report_today,
 )
+from .rotations import (
+    api_comm_move,
+    api_comm_remove,
+    api_comm_work_type,
+    comm_rotations,
+    comm_rotations_apply,
+)
 from .schedulers import (
     comm_day,
     comm_month,
@@ -21,8 +28,13 @@ from .schedulers import (
 from .vehicles import vehicle_board
 
 __all__ = [
+    "api_comm_move",
+    "api_comm_remove",
+    "api_comm_work_type",
     "comm_day",
     "comm_month",
+    "comm_rotations",
+    "comm_rotations_apply",
     "comm_staff",
     "duty_day",
     "duty_month",

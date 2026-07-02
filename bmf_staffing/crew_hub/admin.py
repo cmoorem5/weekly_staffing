@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     CommCenterEntry,
+    CommRotation,
     CommShiftAssignment,
     CommStaffMember,
     CrewEntry,
@@ -45,9 +46,22 @@ class CommStaffMemberAdmin(admin.ModelAdmin):
 
 @admin.register(CommShiftAssignment)
 class CommShiftAssignmentAdmin(admin.ModelAdmin):
-    list_display = ("date", "seat", "name", "note")
-    list_filter = ("seat",)
+    list_display = ("date", "seat", "name", "work_type", "note")
+    list_filter = ("seat", "work_type")
     date_hierarchy = "date"
+
+
+@admin.register(CommRotation)
+class CommRotationAdmin(admin.ModelAdmin):
+    list_display = (
+        "member",
+        "seat",
+        "pattern_label",
+        "anchor_date",
+        "end_date",
+        "active",
+    )
+    list_filter = ("seat", "pattern_type", "active")
 
 
 class VehicleStatusLogInline(admin.TabularInline):

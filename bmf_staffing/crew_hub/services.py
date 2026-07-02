@@ -42,12 +42,55 @@ def _duty_names_for(date: dt.date) -> dict[str, str]:
 
 
 def _comm_names_for(date: dt.date) -> dict[str, str]:
-    """Seat -> name from the Comm Center scheduler."""
+    """Seat -> name (with Sick/Swap/OT tag) from the Comm Center scheduler."""
     return {
-        a.seat: a.name
+        a.seat: a.name_with_tag
         for a in CommShiftAssignment.objects.filter(date=date).select_related("member")
         if a.name
     }
+
+
+def apply_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
+    """Materialize active Comm rotations into seat assignments.
+
+    Returns (created, skipped). Existing assignments always win — a
+    rotation never overwrites a manual entry or another rotation's row,
+    so re-applying after edits is safe (CrewSense-style behavior).
+    """
+    from .models import CommRotation
+
+    rotations = list(CommRotation.objects.filter(active=True).select_related("member"))
+    existing = {
+        (a.date, a.seat)
+        for a in CommShiftAssignment.objects.filter(
+            date__gte=first, date__lte=last
+        ).only("date", "seat")
+    }
+    created = 0
+    skipped = 0
+    to_create = []
+    day = first
+    while day <= last:
+        for rotation in rotations:
+            if not rotation.works_on(day):
+                continue
+            key = (day, rotation.seat)
+            if key in existing:
+                skipped += 1
+                continue
+            existing.add(key)
+            to_create.append(
+                CommShiftAssignment(
+                    date=day,
+                    seat=rotation.seat,
+                    member=rotation.member,
+                    note=rotation.note,
+                )
+            )
+            created += 1
+        day += dt.timedelta(days=1)
+    CommShiftAssignment.objects.bulk_create(to_create)
+    return created, skipped
 
 
 @transaction.atomic

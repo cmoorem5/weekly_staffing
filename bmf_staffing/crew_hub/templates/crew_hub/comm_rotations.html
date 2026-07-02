@@ -1,0 +1,113 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Comm Center rotations{% endblock %}
+{% block page_subtitle %}Repeating work patterns per specialist. Rotations fill the calendar when you click “Apply rotations” on the month view — days already assigned are never overwritten, so manual edits always win.{% endblock %}
+
+{% block hub_content %}
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
+
+  <div class="ch-card">
+    <div class="ch-card-header blue">Add a rotation</div>
+    <div class="ch-card-body">
+      <form method="post" data-no-loading>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add">
+
+        <label class="ch-label">Staff member</label>
+        <select class="ch-select" name="member" required style="margin-bottom:10px;">
+          <option value="">—</option>
+          {% for m in members %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
+        </select>
+
+        <label class="ch-label">Seat</label>
+        <select class="ch-select" name="seat" required style="margin-bottom:10px;">
+          {% for seat in seats %}<option value="{{ seat.code }}">{{ seat.label }}{% if seat.time %} ({{ seat.time }}){% endif %}</option>{% endfor %}
+        </select>
+
+        <label class="ch-label">Pattern</label>
+        <select class="ch-select" name="pattern_type" style="margin-bottom:10px;" onchange="patternSwap(this.value)">
+          <option value="cycle">Cycle — days on / days off</option>
+          <option value="weekly">Weekly — fixed weekdays</option>
+        </select>
+
+        <div id="pat_cycle" style="display:flex; gap:10px; margin-bottom:10px;">
+          <div style="flex:1;">
+            <label class="ch-label">Days on</label>
+            <input class="ch-input" type="number" name="days_on" min="1" max="14" value="4">
+          </div>
+          <div style="flex:1;">
+            <label class="ch-label">Days off</label>
+            <input class="ch-input" type="number" name="days_off" min="0" max="14" value="4">
+          </div>
+        </div>
+
+        <div id="pat_weekly" style="display:none; margin-bottom:10px;">
+          <label class="ch-label">Weekdays</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px;">
+            {% for num, label in weekday_options %}
+              <label style="display:flex; gap:3px; align-items:center;"><input type="checkbox" name="weekday_{{ num }}"> {{ label }}</label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-bottom:10px;">
+          <div style="flex:1;">
+            <label class="ch-label">Starts (cycle day 1)</label>
+            <input class="ch-input" type="date" name="anchor_date" required>
+          </div>
+          <div style="flex:1;">
+            <label class="ch-label">Ends (optional)</label>
+            <input class="ch-input" type="date" name="end_date">
+          </div>
+        </div>
+
+        <label class="ch-label">Note (optional)</label>
+        <input class="ch-input" type="text" name="note" style="margin-bottom:12px;" placeholder="e.g. Kelly schedule group B">
+
+        <button type="submit" class="ch-btn ch-btn-primary">Add rotation</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="ch-card">
+    <div class="ch-card-header light">Current rotations</div>
+    <div class="ch-card-body">
+      {% for r in rotations %}
+        <div style="border-bottom:1px solid #f0f0f0; padding:7px 0; {% if not r.active %}opacity:.55;{% endif %}">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1;">
+              <span style="font-size:12px; font-weight:bold; color:#052C47;">{{ r.member.name }}</span>
+              <span style="font-size:11px; color:#2A4492; font-weight:bold;"> · {{ r.get_seat_display }}</span>
+              <div class="ch-note">{{ r.pattern_label }}{% if r.end_date %} · ends {{ r.end_date }}{% endif %}{% if r.note %} · {{ r.note }}{% endif %}</div>
+            </div>
+            <form method="post" data-no-loading>
+              {% csrf_token %}
+              <input type="hidden" name="action" value="toggle">
+              <input type="hidden" name="pk" value="{{ r.pk }}">
+              <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 10px; font-size:11px;">{% if r.active %}Pause{% else %}Resume{% endif %}</button>
+            </form>
+            <form method="post" data-no-loading onsubmit="return confirm('Delete this rotation? Days already on the calendar are kept.');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="pk" value="{{ r.pk }}">
+              <button type="submit" class="ch-btn ch-btn-danger" style="padding:3px 10px; font-size:11px;">Delete</button>
+            </form>
+          </div>
+        </div>
+      {% empty %}
+        <span class="ch-note">No rotations yet. Add one on the left, then use “Apply rotations” on the month calendar.</span>
+      {% endfor %}
+      <div style="margin-top:12px;">
+        <a href="{% url 'crew_hub:comm_month' %}" style="font-size:12px; color:#2A4492;">← Back to the calendar</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function patternSwap(value) {
+  document.getElementById('pat_cycle').style.display = value === 'cycle' ? 'flex' : 'none';
+  document.getElementById('pat_weekly').style.display = value === 'weekly' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

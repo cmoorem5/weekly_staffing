@@ -3,8 +3,13 @@
 from django.urls import path
 
 from .views import (
+    api_comm_move,
+    api_comm_remove,
+    api_comm_work_type,
     comm_day,
     comm_month,
+    comm_rotations,
+    comm_rotations_apply,
     comm_staff,
     duty_day,
     duty_month,
@@ -29,6 +34,19 @@ urlpatterns = [
     # Comm Center scheduler
     path("comm/", comm_month, name="comm_month"),
     path("comm/staff/", comm_staff, name="comm_staff"),
+    path("comm/rotations/", comm_rotations, name="comm_rotations"),
+    path("comm/rotations/apply/", comm_rotations_apply, name="comm_rotations_apply"),
+    path(
+        "comm/api/assignment/<int:pk>/work-type/",
+        api_comm_work_type,
+        name="api_comm_work_type",
+    ),
+    path("comm/api/assignment/<int:pk>/move/", api_comm_move, name="api_comm_move"),
+    path(
+        "comm/api/assignment/<int:pk>/remove/",
+        api_comm_remove,
+        name="api_comm_remove",
+    ),
     path("comm/<str:date_str>/", comm_day, name="comm_day"),
     # Duty officer scheduler
     path("duty/", duty_month, name="duty_month"),

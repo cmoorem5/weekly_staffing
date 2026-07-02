@@ -87,6 +87,18 @@ class CommStaffMember(models.Model):
 class CommShiftAssignment(models.Model):
     """One Comm Center seat on one date."""
 
+    WORK_REGULAR = "regular"
+    WORK_SICK = "sick"
+    WORK_SWAP = "swap"
+    WORK_OT = "overtime"
+    WORK_TYPE_CHOICES = [
+        (WORK_REGULAR, "Regular"),
+        (WORK_SICK, "Sick leave"),
+        (WORK_SWAP, "Swap"),
+        (WORK_OT, "Overtime"),
+    ]
+    WORK_TYPE_TAGS = {WORK_SICK: "Sick", WORK_SWAP: "Swap", WORK_OT: "OT"}
+
     date = models.DateField(db_index=True)
     seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
     member = models.ForeignKey(
@@ -97,6 +109,9 @@ class CommShiftAssignment(models.Model):
         blank=True,
         default="",
         help_text="Free-text name when the person is not in the roster.",
+    )
+    work_type = models.CharField(
+        max_length=16, choices=WORK_TYPE_CHOICES, default=WORK_REGULAR
     )
     note = models.CharField(max_length=256, blank=True, default="")
 
@@ -112,6 +127,85 @@ class CommShiftAssignment(models.Model):
     @property
     def name(self) -> str:
         return self.display_name or (self.member.name if self.member else "")
+
+    @property
+    def name_with_tag(self) -> str:
+        """Name plus a short work-type tag, e.g. 'Comms Test-Alpha (OT)'."""
+        tag = self.WORK_TYPE_TAGS.get(self.work_type)
+        if self.name and tag:
+            return f"{self.name} ({tag})"
+        return self.name
+
+
+class CommRotation(models.Model):
+    """A repeating work pattern that materializes seat assignments.
+
+    Two pattern types:
+    * cycle  — N days on / M days off, counted from ``anchor_date``.
+    * weekly — fixed weekdays every week.
+
+    ``apply_rotations_for_range`` turns active rotations into
+    CommShiftAssignment rows, skipping any (date, seat) already filled so
+    manual edits always win.
+    """
+
+    PATTERN_CYCLE = "cycle"
+    PATTERN_WEEKLY = "weekly"
+    PATTERN_CHOICES = [
+        (PATTERN_CYCLE, "Cycle (days on / days off)"),
+        (PATTERN_WEEKLY, "Weekly (fixed weekdays)"),
+    ]
+
+    member = models.ForeignKey(
+        CommStaffMember, on_delete=models.CASCADE, related_name="rotations"
+    )
+    seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
+    pattern_type = models.CharField(
+        max_length=8, choices=PATTERN_CHOICES, default=PATTERN_CYCLE
+    )
+    days_on = models.PositiveSmallIntegerField(default=4)
+    days_off = models.PositiveSmallIntegerField(default=4)
+    # Comma-separated Python weekday numbers (0=Mon .. 6=Sun) for weekly.
+    weekdays = models.CharField(max_length=32, blank=True, default="")
+    anchor_date = models.DateField(
+        help_text="First day of the pattern (cycle day 1 / first active week)."
+    )
+    end_date = models.DateField(
+        null=True, blank=True, help_text="Optional last day the rotation applies."
+    )
+    active = models.BooleanField(default=True)
+    note = models.CharField(max_length=256, blank=True, default="")
+
+    class Meta:
+        ordering = ["member__name", "seat"]
+
+    def __str__(self) -> str:
+        return f"{self.member.name} — {self.get_seat_display()} ({self.pattern_label})"
+
+    @property
+    def weekday_set(self) -> set[int]:
+        return {int(d) for d in self.weekdays.split(",") if d.strip().isdigit()}
+
+    @property
+    def pattern_label(self) -> str:
+        if self.pattern_type == self.PATTERN_CYCLE:
+            return f"{self.days_on} on / {self.days_off} off from {self.anchor_date}"
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        picked = [day_names[d] for d in sorted(self.weekday_set)]
+        return f"every {', '.join(picked) or '—'}"
+
+    def works_on(self, date) -> bool:
+        """True when this rotation puts the member in the seat on ``date``."""
+        if not self.active or date < self.anchor_date:
+            return False
+        if self.end_date and date > self.end_date:
+            return False
+        if self.pattern_type == self.PATTERN_WEEKLY:
+            return date.weekday() in self.weekday_set
+        cycle_len = self.days_on + self.days_off
+        if cycle_len == 0:
+            return False
+        return (date - self.anchor_date).days % cycle_len < self.days_on
 
 
 class Vehicle(models.Model):

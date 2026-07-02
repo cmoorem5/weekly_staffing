@@ -20,6 +20,7 @@
           <td class="ch-label" style="width:130px; padding:4px 8px 4px 0;">Seat</td>
           <td class="ch-label" style="padding:4px 8px 4px 0;">Roster member</td>
           <td class="ch-label" style="padding:4px 8px 4px 0;">…or type a name</td>
+          <td class="ch-label" style="width:110px; padding:4px 8px 4px 0;">Work type</td>
           <td class="ch-label" style="padding:4px 0;">Note</td>
         </tr>
         {% for row in rows %}
@@ -38,6 +39,14 @@
           </td>
           <td style="padding:4px 8px 4px 0;">
             <input class="ch-input" type="text" name="name_{{ row.seat.code }}" value="{% if row.assignment %}{{ row.assignment.display_name }}{% endif %}" placeholder="Non-roster / orientee">
+          </td>
+          <td style="padding:4px 8px 4px 0;">
+            <select class="ch-select" name="wt_{{ row.seat.code }}">
+              <option value="regular" {% if not row.assignment or row.assignment.work_type == 'regular' %}selected{% endif %}>Regular</option>
+              <option value="sick" {% if row.assignment.work_type == 'sick' %}selected{% endif %}>Sick leave</option>
+              <option value="swap" {% if row.assignment.work_type == 'swap' %}selected{% endif %}>Swap</option>
+              <option value="overtime" {% if row.assignment.work_type == 'overtime' %}selected{% endif %}>Overtime</option>
+            </select>
           </td>
           <td style="padding:4px 0;">
             <input class="ch-input" type="text" name="note_{{ row.seat.code }}" value="{% if row.assignment %}{{ row.assignment.note }}{% endif %}">

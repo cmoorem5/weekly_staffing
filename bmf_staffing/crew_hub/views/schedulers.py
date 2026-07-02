@@ -55,15 +55,28 @@ def comm_month(request):
     for a in assignments:
         by_day.setdefault(a.date, []).append(a)
 
+    seat_order = {seat.code: i for i, seat in enumerate(shifts.COMM_SEATS)}
     day_cells = {}
     for day, items in by_day.items():
         filled = [a for a in items if a.name]
+        filled.sort(key=lambda a: seat_order.get(a.seat, 99))
         mine = member_id and any(
             a.member_id == int(member_id) for a in filled if a.member_id
         )
         day_cells[day] = {
             "filled": len([a for a in filled if a.seat != "EXTRA"]),
-            "names": [f"{a.get_seat_display()}: {a.name}" for a in filled],
+            "chips": [
+                {
+                    "pk": a.pk,
+                    "seat": a.get_seat_display(),
+                    "name": a.name,
+                    "work_type": a.work_type,
+                    "mine": bool(
+                        member_id and a.member_id and a.member_id == int(member_id)
+                    ),
+                }
+                for a in filled
+            ],
             "mine": bool(mine),
         }
 
@@ -92,12 +105,16 @@ def comm_day(request, date_str):
 
     if request.method == "POST":
         dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
+        valid_work_types = {c for c, _ in CommShiftAssignment.WORK_TYPE_CHOICES}
         with transaction.atomic():
             for target in dates:
                 for seat in shifts.COMM_SEATS:
                     member_raw = request.POST.get(f"member_{seat.code}", "").strip()
                     name_raw = request.POST.get(f"name_{seat.code}", "").strip()
                     note = request.POST.get(f"note_{seat.code}", "").strip()
+                    work_type = request.POST.get(f"wt_{seat.code}", "").strip()
+                    if work_type not in valid_work_types:
+                        work_type = CommShiftAssignment.WORK_REGULAR
                     member = None
                     if member_raw.isdigit():
                         member = next(
@@ -115,6 +132,7 @@ def comm_day(request, date_str):
                             "member": member,
                             "display_name": name_raw if member is None else "",
                             "note": note,
+                            "work_type": work_type,
                         },
                     )
         messages.success(
