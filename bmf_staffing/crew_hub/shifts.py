@@ -130,6 +130,8 @@ class CommSeat:
     code: str
     label: str
     time: str
+    # Paid hours for one shift in this seat (payroll/ADP export).
+    hours: float = 12.0
 
 
 COMM_SEATS: tuple[CommSeat, ...] = (
@@ -142,7 +144,9 @@ COMM_SEATS: tuple[CommSeat, ...] = (
     CommSeat("N2", "N-2", "1830–0630"),
     CommSeat("P", "P", "1930–0730"),
     CommSeat("P2", "P-2", "1930–0730"),
-    CommSeat("EXTRA", "Orientee / Extra", ""),
+    # Orientee/extra time varies; counted as 0 hours unless payroll says
+    # otherwise — adjust in the exported CSV if needed.
+    CommSeat("EXTRA", "Orientee / Extra", "", hours=0.0),
 )
 
 COMM_SEAT_CHOICES = [(s.code, s.label) for s in COMM_SEATS]

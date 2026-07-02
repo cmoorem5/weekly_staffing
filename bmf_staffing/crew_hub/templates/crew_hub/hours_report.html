@@ -1,0 +1,98 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Hours &amp; payroll report{% endblock %}
+{% block page_subtitle %}Per-person hours from the Comm Center schedule plus duty-day counts, ready to export as CSV for payroll (e.g. ADP upload). Sick days are tracked separately and excluded from worked hours.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card no-print">
+  <div class="ch-card-header light">Filters</div>
+  <div class="ch-card-body">
+    <form method="get" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;" data-no-loading>
+      <div>
+        <label class="ch-label">From</label>
+        <input class="ch-input" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+      </div>
+      <div>
+        <label class="ch-label">Through</label>
+        <input class="ch-input" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+      </div>
+      <div style="min-width:220px;">
+        <label class="ch-label">Person (optional, name contains)</label>
+        <input class="ch-input" type="text" name="person" value="{{ person }}" placeholder="e.g. Test-Alpha">
+      </div>
+      <button type="submit" class="ch-btn ch-btn-primary">Run report</button>
+      <a class="ch-btn ch-btn-secondary" href="{% url 'crew_hub:hours_report_csv' %}?kind=summary&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&person={{ person|urlencode }}">⬇ Summary CSV (ADP)</a>
+      <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:hours_report_csv' %}?kind=detail&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&person={{ person|urlencode }}">⬇ Detail CSV</a>
+    </form>
+  </div>
+</div>
+
+<div class="ch-card">
+  <div class="ch-card-header">Totals by person — {{ start|date:"M j, Y" }} to {{ end|date:"M j, Y" }}</div>
+  <div class="ch-card-body">
+    {% if report.totals %}
+    <table style="width:100%;">
+      <tr>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Person</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">Regular hrs</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">OT hrs</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">Swap hrs</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">Sick hrs</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">Worked total</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">Duty days</td>
+        <td class="ch-label" style="text-align:right; padding:4px 0;">Comm shifts</td>
+      </tr>
+      {% for t in report.totals %}
+      <tr style="border-bottom:1px solid #f0f0f0;">
+        <td style="font-size:12px; font-weight:bold; color:#052C47; padding:5px 8px 5px 0;">{{ t.person }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px;">{{ t.regular|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px; {% if t.overtime %}color:#b35e00; font-weight:bold;{% endif %}">{{ t.overtime|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px;">{{ t.swap|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px; {% if t.sick %}color:#C12126; font-weight:bold;{% endif %}">{{ t.sick|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px; font-weight:bold;">{{ t.worked|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px;">{{ t.duty_days }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 0;">{{ t.shifts }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td style="font-size:12px; font-weight:bold; color:#052C47; padding:6px 8px 0 0;">Total</td>
+        <td colspan="4"></td>
+        <td style="font-size:12px; text-align:right; font-weight:bold; color:#052C47; padding:6px 8px 0;">{{ report.grand_worked|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; font-weight:bold; color:#052C47; padding:6px 8px 0;">{{ report.grand_duty_days }}</td>
+        <td></td>
+      </tr>
+    </table>
+    {% else %}
+    <span class="ch-note">No assignments in this range{% if person %} for “{{ person }}”{% endif %}.</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="ch-card">
+  <div class="ch-card-header light">Detail — one row per assignment ({{ report.detail|length }})</div>
+  <div class="ch-card-body" style="max-height: 420px; overflow-y: auto;">
+    {% if report.detail %}
+    <table style="width:100%;">
+      <tr>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Date</td>
+        <td class="ch-label" style="padding:4px 8px;">Person</td>
+        <td class="ch-label" style="padding:4px 8px;">Assignment</td>
+        <td class="ch-label" style="padding:4px 8px;">Work type</td>
+        <td class="ch-label" style="text-align:right; padding:4px 0;">Hours</td>
+      </tr>
+      {% for row in report.detail %}
+      <tr style="border-bottom:1px solid #f0f0f0;">
+        <td style="font-size:12px; padding:4px 8px 4px 0; white-space:nowrap;">{{ row.date|date:"D, M j" }}</td>
+        <td style="font-size:12px; padding:4px 8px;">{{ row.person }}</td>
+        <td style="font-size:12px; padding:4px 8px;">{{ row.assignment }}</td>
+        <td style="font-size:12px; padding:4px 8px; {% if row.work_type == 'Sick leave' %}color:#C12126;{% elif row.work_type == 'Overtime' %}color:#b35e00;{% elif row.work_type == 'Swap' %}color:#2A4492;{% endif %}">{{ row.work_type }}</td>
+        <td style="font-size:12px; text-align:right; padding:4px 0;">{{ row.hours|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <span class="ch-note">Nothing to show.</span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

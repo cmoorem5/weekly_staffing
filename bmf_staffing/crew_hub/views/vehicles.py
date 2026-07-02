@@ -6,6 +6,7 @@ from django.db import transaction
 from django.shortcuts import redirect, render
 
 from ..models import Vehicle, VehicleStatusLog
+from .helpers import can_manage_schedules
 
 
 @login_required
@@ -14,6 +15,14 @@ def vehicle_board(request):
     vehicles = list(Vehicle.objects.filter(active=True))
 
     if request.method == "POST":
+        if not can_manage_schedules(request.user):
+            messages.error(
+                request,
+                "You need schedule-manager access to update vehicle "
+                "statuses. Ask an admin to add you to the “Crew Hub "
+                "Managers” group.",
+            )
+            return redirect("crew_hub:vehicle_board")
         changed = 0
         with transaction.atomic():
             for vehicle in vehicles:

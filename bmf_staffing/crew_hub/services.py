@@ -31,13 +31,13 @@ from .models import (
 
 
 def _duty_names_for(date: dt.date) -> dict[str, str]:
-    """Role -> joined names from the duty scheduler (two MDOCs -> 'A / B')."""
+    """Role -> joined names (with work-type tags) from the duty scheduler."""
     names: dict[str, list[str]] = {}
     for assignment in DutyAssignment.objects.filter(date=date).select_related(
         "officer"
     ):
         if assignment.name:
-            names.setdefault(assignment.role, []).append(assignment.name)
+            names.setdefault(assignment.role, []).append(assignment.name_with_tag)
     return {role: " / ".join(people) for role, people in names.items()}
 
 
@@ -90,6 +90,48 @@ def apply_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
             created += 1
         day += dt.timedelta(days=1)
     CommShiftAssignment.objects.bulk_create(to_create)
+    return created, skipped
+
+
+def apply_duty_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
+    """Materialize active duty rotations into role assignments.
+
+    Returns (created, skipped). A day where the role already has any
+    assignment is skipped entirely — existing coverage always wins.
+    """
+    from .models import DutyRotation
+
+    rotations = list(DutyRotation.objects.filter(active=True).select_related("officer"))
+    existing = {
+        (a.date, a.role)
+        for a in DutyAssignment.objects.filter(date__gte=first, date__lte=last).only(
+            "date", "role"
+        )
+    }
+    created = 0
+    skipped = 0
+    to_create = []
+    day = first
+    while day <= last:
+        for rotation in rotations:
+            if not rotation.works_on(day):
+                continue
+            key = (day, rotation.role)
+            if key in existing:
+                skipped += 1
+                continue
+            existing.add(key)
+            to_create.append(
+                DutyAssignment(
+                    date=day,
+                    role=rotation.role,
+                    officer=rotation.officer,
+                    note=rotation.note,
+                )
+            )
+            created += 1
+        day += dt.timedelta(days=1)
+    DutyAssignment.objects.bulk_create(to_create)
     return created, skipped
 
 

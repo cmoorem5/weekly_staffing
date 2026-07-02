@@ -2,7 +2,7 @@
 {% load crew_hub_extras %}
 
 {% block page_title %}{{ title }}{% endblock %}
-{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a day to edit{% if kind == "comm" %}; drag a chip to move or swap it; right-click a chip to set sick / swap / overtime{% endif %}{% endblock %}
+{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a day number to edit; drag a chip to move or swap it; right-click a chip to set sick / swap / overtime{% endblock %}
 
 {% block hub_content %}
 <style>
@@ -42,14 +42,14 @@
   <strong style="font-size:14px; color:#052C47;">{{ nav.current|date:"F Y" }}</strong>
   <a class="ch-btn ch-btn-outline" href="?month={{ nav.next }}{% if selected_member %}&member={{ selected_member }}{% endif %}">{{ nav.next }} →</a>
   <span style="flex:1;"></span>
+  <form method="post" action="{% if kind == 'comm' %}{% url 'crew_hub:comm_rotations_apply' %}{% else %}{% url 'crew_hub:duty_rotations_apply' %}{% endif %}" style="display:inline;" data-no-loading
+        onsubmit="return confirm('Fill {{ nav.current|date:'F Y' }} from all active rotations? Days already assigned are kept as-is.');">
+    {% csrf_token %}
+    <input type="hidden" name="month" value="{{ nav.current|date:'Y-m' }}">
+    <button type="submit" class="ch-btn ch-btn-secondary">⟳ Apply rotations</button>
+  </form>
+  <a class="ch-btn ch-btn-outline" href="{% if kind == 'comm' %}{% url 'crew_hub:comm_rotations' %}{% else %}{% url 'crew_hub:duty_rotations' %}{% endif %}">Rotations</a>
   {% if kind == "comm" %}
-    <form method="post" action="{% url 'crew_hub:comm_rotations_apply' %}" style="display:inline;" data-no-loading
-          onsubmit="return confirm('Fill {{ nav.current|date:'F Y' }} from all active rotations? Days already assigned are kept as-is.');">
-      {% csrf_token %}
-      <input type="hidden" name="month" value="{{ nav.current|date:'Y-m' }}">
-      <button type="submit" class="ch-btn ch-btn-secondary">⟳ Apply rotations</button>
-    </form>
-    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_rotations' %}">Rotations</a>
     <form method="get" style="display:flex; gap:6px; align-items:center;" data-no-loading>
       <input type="hidden" name="month" value="{{ nav.current|date:'Y-m' }}">
       <select name="member" class="ch-select" style="width:auto;" onchange="this.form.submit()" title="Highlight one person's days">
@@ -61,7 +61,7 @@
     </form>
     <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_staff' %}">Roster</a>
   {% else %}
-    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_roster' %}">Manage roster</a>
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_roster' %}">Roster</a>
   {% endif %}
 </div>
 
@@ -74,7 +74,7 @@
     <tr>
       {% for day in week %}
         {% if day %}
-          <td class="{% if day == today %}ch-today{% endif %}" {% if kind == "comm" %}data-date="{{ day|date:'Y-m-d' }}"{% endif %}>
+          <td class="{% if day == today %}ch-today{% endif %}" data-date="{{ day|date:'Y-m-d' }}">
             {% with info=cells|get_item:day %}
             <div class="ch-daycell">
               <a class="ch-daynum" href="{% url day_url_name date_str=day|date:'Y-m-d' %}" title="Open day editor">{{ day.day }}</a>
@@ -105,7 +105,6 @@
   </tbody>
 </table>
 
-{% if kind == "comm" %}
 <div class="ch-legend no-print">
   <span><span class="swatch" style="background:#F4F4F7;"></span>Regular</span>
   <span><span class="swatch" style="background:#fbeced; border-color:#C12126;"></span>Sick leave</span>
@@ -126,6 +125,7 @@
 <script>
 (function () {
   var CSRF = "{{ csrf_token }}";
+  var API = '/hub/{{ kind }}/api/assignment/';
   var menu = document.getElementById('ctx_menu');
   var menuPk = null;
 
@@ -157,9 +157,9 @@
       if (!menuPk) return;
       var req;
       if (btn.dataset.remove) {
-        req = post('/hub/comm/api/assignment/' + menuPk + '/remove/');
+        req = post(API + menuPk + '/remove/');
       } else {
-        req = post('/hub/comm/api/assignment/' + menuPk + '/work-type/',
+        req = post(API + menuPk + '/work-type/',
                    { work_type: btn.dataset.wt });
       }
       req.then(function (data) {
@@ -196,7 +196,7 @@
       e.preventDefault();
       td.classList.remove('drop-ok');
       if (!draggedPk) return;
-      post('/hub/comm/api/assignment/' + draggedPk + '/move/',
+      post(API + draggedPk + '/move/',
            { date: td.dataset.date })
         .then(function (data) {
           if (data.ok) location.reload();
@@ -208,5 +208,4 @@
   });
 })();
 </script>
-{% endif %}
 {% endblock %}

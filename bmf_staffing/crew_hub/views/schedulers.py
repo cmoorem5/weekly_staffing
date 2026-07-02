@@ -16,9 +16,21 @@ from ..models import (
     DutyAssignment,
     DutyOfficer,
 )
-from .helpers import local_today, month_nav, month_weeks, parse_date_or_404, parse_month
+from .helpers import (
+    can_manage_schedules,
+    local_today,
+    month_nav,
+    month_weeks,
+    parse_date_or_404,
+    parse_month,
+)
 
 MAX_REPEAT_DAYS = 62  # Guardrail for "apply through" ranges.
+
+PERM_DENIED_MSG = (
+    "You need schedule-manager access to make changes. Ask an admin to add "
+    "you to the “Crew Hub Managers” group."
+)
 
 
 def _repeat_dates(start: dt.date, repeat_until_raw: str) -> list[dt.date]:
@@ -104,6 +116,9 @@ def comm_day(request, date_str):
     members = list(CommStaffMember.objects.filter(active=True))
 
     if request.method == "POST":
+        if not can_manage_schedules(request.user):
+            messages.error(request, PERM_DENIED_MSG)
+            return redirect("crew_hub:comm_day", date_str=date_str)
         dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
         valid_work_types = {c for c, _ in CommShiftAssignment.WORK_TYPE_CHOICES}
         with transaction.atomic():
@@ -166,6 +181,9 @@ def comm_day(request, date_str):
 @login_required
 def comm_staff(request):
     if request.method == "POST":
+        if not can_manage_schedules(request.user):
+            messages.error(request, PERM_DENIED_MSG)
+            return redirect("crew_hub:comm_staff")
         action = request.POST.get("action", "add")
         if action == "add":
             name = request.POST.get("name", "").strip()
@@ -216,13 +234,24 @@ def duty_month(request):
     for a in assignments:
         by_day.setdefault(a.date, []).append(a)
 
+    role_order = {role: i for i, role in enumerate(shifts.DUTY_ROLE_ORDER)}
     day_cells = {}
     for day, items in by_day.items():
         filled = [a for a in items if a.name]
+        filled.sort(key=lambda a: (role_order.get(a.role, 99), a.pk))
         roles = {a.role for a in filled}
         day_cells[day] = {
             "filled": len(roles),
-            "names": [f"{shifts.DUTY_ROLE_LABELS[a.role]}: {a.name}" for a in filled],
+            "chips": [
+                {
+                    "pk": a.pk,
+                    "seat": shifts.DUTY_ROLE_LABELS[a.role],
+                    "name": a.name,
+                    "work_type": a.work_type,
+                    "mine": False,
+                }
+                for a in filled
+            ],
             "mine": False,
         }
 
@@ -250,24 +279,37 @@ def duty_day(request, date_str):
     officers = list(DutyOfficer.objects.filter(active=True))
 
     if request.method == "POST":
+        if not can_manage_schedules(request.user):
+            messages.error(request, PERM_DENIED_MSG)
+            return redirect("crew_hub:duty_day", date_str=date_str)
         dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
+        valid_work_types = {c for c, _ in DutyAssignment.WORK_TYPE_CHOICES}
         with transaction.atomic():
             for target in dates:
                 for role in shifts.DUTY_ROLE_ORDER:
                     DutyAssignment.objects.filter(date=target, role=role).delete()
                     officer_raw = request.POST.get(f"officer_{role}", "").strip()
                     second_raw = request.POST.get(f"second_{role}", "").strip()
+                    work_type = request.POST.get(f"wt_{role}", "").strip()
+                    if work_type not in valid_work_types:
+                        work_type = DutyAssignment.WORK_REGULAR
                     if officer_raw.isdigit():
                         officer = next(
                             (o for o in officers if o.pk == int(officer_raw)), None
                         )
                         if officer:
                             DutyAssignment.objects.create(
-                                date=target, role=role, officer=officer
+                                date=target,
+                                role=role,
+                                officer=officer,
+                                work_type=work_type,
                             )
                     if second_raw:
                         DutyAssignment.objects.create(
-                            date=target, role=role, display_name=second_raw
+                            date=target,
+                            role=role,
+                            display_name=second_raw,
+                            work_type=work_type,
                         )
         messages.success(
             request,
@@ -290,6 +332,9 @@ def duty_day(request, date_str):
                 "label": label,
                 "primary_id": primary.officer_id if primary else None,
                 "second_name": second.display_name if second else "",
+                "work_type": (primary or second).work_type
+                if (primary or second)
+                else DutyAssignment.WORK_REGULAR,
             }
         )
 
@@ -309,6 +354,9 @@ def duty_day(request, date_str):
 @login_required
 def duty_roster(request):
     if request.method == "POST":
+        if not can_manage_schedules(request.user):
+            messages.error(request, PERM_DENIED_MSG)
+            return redirect("crew_hub:duty_roster")
         action = request.POST.get("action", "add")
         if action == "add":
             name = request.POST.get("name", "").strip()

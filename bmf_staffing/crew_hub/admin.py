@@ -10,6 +10,7 @@ from .models import (
     DutyAssignment,
     DutyOfficer,
     DutyRosterEntry,
+    DutyRotation,
     ExtraEntry,
     MissCategoryCount,
     PendingTransport,
@@ -32,9 +33,22 @@ class DutyOfficerAdmin(admin.ModelAdmin):
 
 @admin.register(DutyAssignment)
 class DutyAssignmentAdmin(admin.ModelAdmin):
-    list_display = ("date", "role", "name", "note")
-    list_filter = ("role",)
+    list_display = ("date", "role", "name", "work_type", "note")
+    list_filter = ("role", "work_type")
     date_hierarchy = "date"
+
+
+@admin.register(DutyRotation)
+class DutyRotationAdmin(admin.ModelAdmin):
+    list_display = (
+        "officer",
+        "role",
+        "pattern_label",
+        "anchor_date",
+        "end_date",
+        "active",
+    )
+    list_filter = ("role", "pattern_type", "active")
 
 
 @admin.register(CommStaffMember)

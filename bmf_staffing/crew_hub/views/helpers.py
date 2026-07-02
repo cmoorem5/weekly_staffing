@@ -8,6 +8,13 @@ import datetime as dt
 from django.http import Http404
 from django.utils import timezone
 
+SCHEDULE_PERM = "crew_hub.manage_schedules"
+
+
+def can_manage_schedules(user) -> bool:
+    """Schedule-edit gate: superusers and 'Crew Hub Managers' members pass."""
+    return user.has_perm(SCHEDULE_PERM)
+
 
 def parse_date_or_404(date_str: str) -> dt.date:
     try:

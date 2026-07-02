@@ -6,6 +6,9 @@ from .views import (
     api_comm_move,
     api_comm_remove,
     api_comm_work_type,
+    api_duty_move,
+    api_duty_remove,
+    api_duty_work_type,
     comm_day,
     comm_month,
     comm_rotations,
@@ -14,6 +17,10 @@ from .views import (
     duty_day,
     duty_month,
     duty_roster,
+    duty_rotations,
+    duty_rotations_apply,
+    hours_report,
+    hours_report_csv,
     hub_home,
     report_detail,
     report_html,
@@ -51,6 +58,22 @@ urlpatterns = [
     # Duty officer scheduler
     path("duty/", duty_month, name="duty_month"),
     path("duty/roster/", duty_roster, name="duty_roster"),
+    path("duty/rotations/", duty_rotations, name="duty_rotations"),
+    path("duty/rotations/apply/", duty_rotations_apply, name="duty_rotations_apply"),
+    path(
+        "duty/api/assignment/<int:pk>/work-type/",
+        api_duty_work_type,
+        name="api_duty_work_type",
+    ),
+    path("duty/api/assignment/<int:pk>/move/", api_duty_move, name="api_duty_move"),
+    path(
+        "duty/api/assignment/<int:pk>/remove/",
+        api_duty_remove,
+        name="api_duty_remove",
+    ),
+    # Hours / payroll reporting
+    path("reports/hours/", hours_report, name="hours_report"),
+    path("reports/hours/csv/", hours_report_csv, name="hours_report_csv"),
     path("duty/<str:date_str>/", duty_day, name="duty_day"),
     # Vehicle status board
     path("vehicles/", vehicle_board, name="vehicle_board"),

@@ -97,6 +97,21 @@ DATABASES = {
     },
 }
 
+# Optional PostgreSQL for the default (Django/Crew Hub) database — set
+# DJANGO_DB_ENGINE=postgresql plus the DJANGO_DB_* variables in .env.
+# Requires `pip install "psycopg[binary]"`. The legacy `staffing` alias
+# stays on SQLite either way (it is SQLAlchemy-owned).
+if os.environ.get("DJANGO_DB_ENGINE", "").lower() in ("postgres", "postgresql"):
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DJANGO_DB_NAME", "crew_hub"),
+        "USER": os.environ.get("DJANGO_DB_USER", "crew_hub"),
+        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", ""),
+        "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
+        "PORT": os.environ.get("DJANGO_DB_PORT", "5432"),
+        "CONN_MAX_AGE": 60,
+    }
+
 DATABASE_ROUTERS = ["dashboard.db_router.StaffingDbRouter"]
 
 AUTH_PASSWORD_VALIDATORS = []

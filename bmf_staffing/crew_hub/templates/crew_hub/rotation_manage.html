@@ -1,7 +1,7 @@
 {% extends "crew_hub/base.html" %}
 
-{% block page_title %}Comm Center rotations{% endblock %}
-{% block page_subtitle %}Repeating work patterns per specialist. Rotations fill the calendar when you click “Apply rotations” on the month view — days already assigned are never overwritten, so manual edits always win.{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_subtitle %}Repeating work patterns per person. Rotations fill the calendar when you click “Apply rotations” on the month view — days already assigned are never overwritten, so manual edits always win.{% endblock %}
 
 {% block hub_content %}
 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
@@ -13,15 +13,15 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="add">
 
-        <label class="ch-label">Staff member</label>
-        <select class="ch-select" name="member" required style="margin-bottom:10px;">
+        <label class="ch-label">{{ person_label }}</label>
+        <select class="ch-select" name="person" required style="margin-bottom:10px;">
           <option value="">—</option>
-          {% for m in members %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
+          {% for p in people %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
         </select>
 
-        <label class="ch-label">Seat</label>
-        <select class="ch-select" name="seat" required style="margin-bottom:10px;">
-          {% for seat in seats %}<option value="{{ seat.code }}">{{ seat.label }}{% if seat.time %} ({{ seat.time }}){% endif %}</option>{% endfor %}
+        <label class="ch-label">{{ slot_label }}</label>
+        <select class="ch-select" name="slot" required style="margin-bottom:10px;">
+          {% for code, label in slots %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
         </select>
 
         <label class="ch-label">Pattern</label>
@@ -62,7 +62,7 @@
         </div>
 
         <label class="ch-label">Note (optional)</label>
-        <input class="ch-input" type="text" name="note" style="margin-bottom:12px;" placeholder="e.g. Kelly schedule group B">
+        <input class="ch-input" type="text" name="note" style="margin-bottom:12px;" placeholder="e.g. Group B rotation">
 
         <button type="submit" class="ch-btn ch-btn-primary">Add rotation</button>
       </form>
@@ -76,8 +76,13 @@
         <div style="border-bottom:1px solid #f0f0f0; padding:7px 0; {% if not r.active %}opacity:.55;{% endif %}">
           <div style="display:flex; align-items:center; gap:8px;">
             <div style="flex:1;">
-              <span style="font-size:12px; font-weight:bold; color:#052C47;">{{ r.member.name }}</span>
-              <span style="font-size:11px; color:#2A4492; font-weight:bold;"> · {{ r.get_seat_display }}</span>
+              {% if person_field == "member" %}
+                <span style="font-size:12px; font-weight:bold; color:#052C47;">{{ r.member.name }}</span>
+                <span style="font-size:11px; color:#2A4492; font-weight:bold;"> · {{ r.get_seat_display }}</span>
+              {% else %}
+                <span style="font-size:12px; font-weight:bold; color:#052C47;">{{ r.officer.name }}</span>
+                <span style="font-size:11px; color:#2A4492; font-weight:bold;"> · {{ r.get_role_display }}</span>
+              {% endif %}
               <div class="ch-note">{{ r.pattern_label }}{% if r.end_date %} · ends {{ r.end_date }}{% endif %}{% if r.note %} · {{ r.note }}{% endif %}</div>
             </div>
             <form method="post" data-no-loading>
@@ -98,7 +103,7 @@
         <span class="ch-note">No rotations yet. Add one on the left, then use “Apply rotations” on the month calendar.</span>
       {% endfor %}
       <div style="margin-top:12px;">
-        <a href="{% url 'crew_hub:comm_month' %}" style="font-size:12px; color:#2A4492;">← Back to the calendar</a>
+        <a href="{{ month_path }}" style="font-size:12px; color:#2A4492;">← Back to the calendar</a>
       </div>
     </div>
   </div>

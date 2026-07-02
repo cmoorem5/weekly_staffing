@@ -40,6 +40,7 @@
   .ch-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
 
   .ch-label { font-size: 10px; color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px; }
+  td.ch-label, th.ch-label { display: table-cell; }
   .ch-note { font-size: 11px; color: #5a6a7a; font-style: italic; }
   .ch-banner { border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.45; }
   .ch-banner.date { background: #E8EEF8; border: 1px solid #B8C9E8; color: #052C47; }
@@ -65,6 +66,7 @@
     <a href="{% url 'crew_hub:comm_month' %}" class="{% if url_name == 'comm_month' or url_name == 'comm_day' or url_name == 'comm_staff' %}active{% endif %}">Comm Center</a>
     <a href="{% url 'crew_hub:duty_month' %}" class="{% if url_name == 'duty_month' or url_name == 'duty_day' or url_name == 'duty_roster' %}active{% endif %}">Duty officers</a>
     <a href="{% url 'crew_hub:vehicle_board' %}" class="{% if url_name == 'vehicle_board' %}active{% endif %}">Vehicles</a>
+    <a href="{% url 'crew_hub:hours_report' %}" class="{% if url_name == 'hours_report' %}active{% endif %}">Hours / payroll</a>
     {% endwith %}
   </div>
 

@@ -1,4 +1,5 @@
 from .hub import hub_home
+from .payroll_views import hours_report, hours_report_csv
 from .report import (
     report_detail,
     report_html,
@@ -14,8 +15,13 @@ from .rotations import (
     api_comm_move,
     api_comm_remove,
     api_comm_work_type,
+    api_duty_move,
+    api_duty_remove,
+    api_duty_work_type,
     comm_rotations,
     comm_rotations_apply,
+    duty_rotations,
+    duty_rotations_apply,
 )
 from .schedulers import (
     comm_day,
@@ -31,11 +37,18 @@ __all__ = [
     "api_comm_move",
     "api_comm_remove",
     "api_comm_work_type",
+    "api_duty_move",
+    "api_duty_remove",
+    "api_duty_work_type",
     "comm_day",
     "comm_month",
     "comm_rotations",
     "comm_rotations_apply",
     "comm_staff",
+    "duty_rotations",
+    "duty_rotations_apply",
+    "hours_report",
+    "hours_report_csv",
     "duty_day",
     "duty_month",
     "duty_roster",

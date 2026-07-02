@@ -19,7 +19,8 @@
         <tr>
           <td class="ch-label" style="width:110px; padding:4px 8px 4px 0;">Role</td>
           <td class="ch-label" style="padding:4px 8px 4px 0;">Officer</td>
-          <td class="ch-label" style="padding:4px 0;">Second name (optional)</td>
+          <td class="ch-label" style="padding:4px 8px 4px 0;">Second name (optional)</td>
+          <td class="ch-label" style="width:110px; padding:4px 0;">Work type</td>
         </tr>
         {% for row in rows %}
         <tr>
@@ -32,8 +33,16 @@
               {% endfor %}
             </select>
           </td>
-          <td style="padding:4px 0;">
+          <td style="padding:4px 8px 4px 0;">
             <input class="ch-input" type="text" name="second_{{ row.role }}" value="{{ row.second_name }}" placeholder="Last name">
+          </td>
+          <td style="padding:4px 0;">
+            <select class="ch-select" name="wt_{{ row.role }}">
+              <option value="regular" {% if row.work_type == 'regular' %}selected{% endif %}>Regular</option>
+              <option value="sick" {% if row.work_type == 'sick' %}selected{% endif %}>Sick leave</option>
+              <option value="swap" {% if row.work_type == 'swap' %}selected{% endif %}>Swap</option>
+              <option value="overtime" {% if row.work_type == 'overtime' %}selected{% endif %}>Overtime</option>
+            </select>
           </td>
         </tr>
         {% endfor %}

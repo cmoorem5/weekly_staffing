@@ -173,10 +173,21 @@ See **`bmf_staffing/README.md`** for features and **`bmf_staffing/bmf_staffing/s
 Report workflow and adds real scheduling for the pieces we own:
 
 - **Comm Center schedule** (`/hub/comm/`) — month calendar; assign a person
-  to each seat (D, D-2, S, S-2, S-3, N, N-2, P, P-2, Orientee/Extra) per day,
-  with an optional repeat-through date for building rotations.
+  to each seat (D, D-2, S, S-2, S-3, N, N-2, P, P-2, Orientee/Extra) per day.
 - **Duty officer rotation** (`/hub/duty/`) — AOC, AAOC, MDOC, PediDOC, ITOC,
   BPM by date, same calendar treatment.
+- **Rotations** (`/hub/comm/rotations/`, `/hub/duty/rotations/`) — repeating
+  patterns per person (cycle N-on/M-off from an anchor date, or fixed
+  weekdays). "Apply rotations" on either month calendar auto-fills the month;
+  days already assigned are never overwritten, so manual edits always win.
+- **Calendar interactions** — drag a chip to another day to move it (dropping
+  on an occupied seat/role swaps the two days); right-click a chip to code the
+  day **Sick leave / Swap / Overtime** or remove it. Work types color-code on
+  the calendar and tag names on the AOC report (e.g. "Comms Test-Alpha (OT)").
+- **Hours / payroll report** (`/hub/reports/hours/`) — per-person totals for
+  any date range split by work type (regular / OT / swap / sick, plus duty-day
+  counts), with **Summary CSV** (per-employee totals for ADP upload) and
+  **Detail CSV** (one row per assignment) exports.
 - **Vehicle status board** (`/hub/vehicles/`) — live fleet status that
   carries forward day to day, with a change log. Keywords color the entry:
   `OOS` red, `INIS` orange, `Primary` green.
@@ -196,9 +207,23 @@ SMTP variables, and `AOC_REPORT_RECIPIENTS` (comma-separated). If a send
 fails the report stays submitted and a **Copy HTML** fallback lets you paste
 the report into Outlook.
 
-Crew Hub pages require sign-in (Django auth; create users with
-`python manage.py createsuperuser`). **Azure AD SSO and any deployment are
-deferred pending IT governance approval** — TODO stubs mark the swap points.
+**Users and permissions:** Crew Hub is multi-user via Django auth. Every
+page requires sign-in; viewing is open to any signed-in user. Editing
+schedules, rotations, rosters, and vehicle statuses requires the
+`crew_hub.manage_schedules` permission, and unlocking a submitted report
+requires `crew_hub.reopen_report`. A **"Crew Hub Managers"** group carrying
+both is created automatically by migrations — add users to it in Django
+admin (superusers pass all checks). Create accounts with
+`python manage.py createsuperuser` or in admin → Users. **Azure AD SSO and
+any deployment are deferred pending IT governance approval** — TODO stubs
+mark the swap points.
+
+**PostgreSQL (optional):** the default database is SQLite for zero-setup
+local use. To future-proof for multi-user/server use, set
+`DJANGO_DB_ENGINE=postgresql` plus the `DJANGO_DB_*` variables in `.env`
+(see `.env.example`), run `pip install "psycopg[binary]"`, then
+`python manage.py migrate`. The legacy `staffing.db` (SQLAlchemy, weekly
+KPI pipeline) intentionally stays on SQLite.
 
 ```bash
 # demo data with fake names (never touches submitted reports)

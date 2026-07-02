@@ -3,7 +3,7 @@
 import datetime as dt
 import json
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
@@ -89,6 +89,9 @@ class RotationPatternTests(TestCase):
 class CalendarApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("comm-test", password="pw")
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="manage_schedules")
+        )
         self.client.login(username="comm-test", password="pw")
         self.member = CommStaffMember.objects.create(name="Comms Test-Alpha")
         self.assignment = CommShiftAssignment.objects.create(
@@ -145,6 +148,37 @@ class CalendarApiTests(TestCase):
         url = reverse("crew_hub:api_comm_move", kwargs={"pk": self.assignment.pk})
         response = self._post_json(url, {"date": "2026-07-05"})
         self.assertEqual(response.status_code, 302)
+
+    def test_apis_require_manage_permission(self):
+        User.objects.create_user("viewer", password="pw")
+        self.client.login(username="viewer", password="pw")
+        url = reverse("crew_hub:api_comm_move", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"date": "2026-07-05"})
+        self.assertEqual(response.status_code, 403)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.date, JULY_1)
+
+    def test_scheduler_edit_requires_manage_permission(self):
+        User.objects.create_user("viewer", password="pw")
+        self.client.login(username="viewer", password="pw")
+        response = self.client.post(
+            reverse("crew_hub:comm_day", kwargs={"date_str": "2026-07-08"}),
+            {"name_D": "Should Not-Persist"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            CommShiftAssignment.objects.filter(date=dt.date(2026, 7, 8)).exists()
+        )
+
+    def test_managers_group_grants_schedule_access(self):
+        from django.contrib.auth.models import Group
+
+        viewer = User.objects.create_user("grouped", password="pw")
+        viewer.groups.add(Group.objects.get(name="Crew Hub Managers"))
+        self.client.login(username="grouped", password="pw")
+        url = reverse("crew_hub:api_comm_move", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"date": "2026-07-05"})
+        self.assertEqual(response.status_code, 200)
 
 
 class WorkTypeReportPullTests(TestCase):

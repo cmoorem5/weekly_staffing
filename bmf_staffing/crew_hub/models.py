@@ -36,8 +36,30 @@ class DutyOfficer(models.Model):
         return self.name
 
 
+# Work-type qualification shared by comm and duty assignments
+# (CrewSense-style day coding: how the person is working that day).
+WORK_REGULAR = "regular"
+WORK_SICK = "sick"
+WORK_SWAP = "swap"
+WORK_OT = "overtime"
+WORK_TYPE_CHOICES = [
+    (WORK_REGULAR, "Regular"),
+    (WORK_SICK, "Sick leave"),
+    (WORK_SWAP, "Swap"),
+    (WORK_OT, "Overtime"),
+]
+WORK_TYPE_TAGS = {WORK_SICK: "Sick", WORK_SWAP: "Swap", WORK_OT: "OT"}
+
+
 class DutyAssignment(models.Model):
     """One duty role seat on one date. MDOC may carry two rows (two names)."""
+
+    WORK_REGULAR = WORK_REGULAR
+    WORK_SICK = WORK_SICK
+    WORK_SWAP = WORK_SWAP
+    WORK_OT = WORK_OT
+    WORK_TYPE_CHOICES = WORK_TYPE_CHOICES
+    WORK_TYPE_TAGS = WORK_TYPE_TAGS
 
     date = models.DateField(db_index=True)
     role = models.CharField(max_length=16, choices=shifts.DUTY_ROLE_CHOICES)
@@ -49,6 +71,9 @@ class DutyAssignment(models.Model):
         blank=True,
         default="",
         help_text="Free-text name when the person is not in the roster.",
+    )
+    work_type = models.CharField(
+        max_length=16, choices=WORK_TYPE_CHOICES, default=WORK_REGULAR
     )
     note = models.CharField(max_length=256, blank=True, default="")
 
@@ -67,6 +92,14 @@ class DutyAssignment(models.Model):
     @property
     def name(self) -> str:
         return self.display_name or (self.officer.name if self.officer else "")
+
+    @property
+    def name_with_tag(self) -> str:
+        """Name plus a short work-type tag, e.g. 'Duty Test-Alpha (Swap)'."""
+        tag = WORK_TYPE_TAGS.get(self.work_type)
+        if self.name and tag:
+            return f"{self.name} ({tag})"
+        return self.name
 
 
 class CommStaffMember(models.Model):
@@ -87,17 +120,12 @@ class CommStaffMember(models.Model):
 class CommShiftAssignment(models.Model):
     """One Comm Center seat on one date."""
 
-    WORK_REGULAR = "regular"
-    WORK_SICK = "sick"
-    WORK_SWAP = "swap"
-    WORK_OT = "overtime"
-    WORK_TYPE_CHOICES = [
-        (WORK_REGULAR, "Regular"),
-        (WORK_SICK, "Sick leave"),
-        (WORK_SWAP, "Swap"),
-        (WORK_OT, "Overtime"),
-    ]
-    WORK_TYPE_TAGS = {WORK_SICK: "Sick", WORK_SWAP: "Swap", WORK_OT: "OT"}
+    WORK_REGULAR = WORK_REGULAR
+    WORK_SICK = WORK_SICK
+    WORK_SWAP = WORK_SWAP
+    WORK_OT = WORK_OT
+    WORK_TYPE_CHOICES = WORK_TYPE_CHOICES
+    WORK_TYPE_TAGS = WORK_TYPE_TAGS
 
     date = models.DateField(db_index=True)
     seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
@@ -137,16 +165,15 @@ class CommShiftAssignment(models.Model):
         return self.name
 
 
-class CommRotation(models.Model):
-    """A repeating work pattern that materializes seat assignments.
+class RotationPattern(models.Model):
+    """Abstract repeating work pattern (CrewSense-style rotation).
 
     Two pattern types:
     * cycle  — N days on / M days off, counted from ``anchor_date``.
     * weekly — fixed weekdays every week.
 
-    ``apply_rotations_for_range`` turns active rotations into
-    CommShiftAssignment rows, skipping any (date, seat) already filled so
-    manual edits always win.
+    Applying a rotation materializes assignment rows, skipping any slot
+    already filled so manual edits always win.
     """
 
     PATTERN_CYCLE = "cycle"
@@ -156,10 +183,6 @@ class CommRotation(models.Model):
         (PATTERN_WEEKLY, "Weekly (fixed weekdays)"),
     ]
 
-    member = models.ForeignKey(
-        CommStaffMember, on_delete=models.CASCADE, related_name="rotations"
-    )
-    seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
     pattern_type = models.CharField(
         max_length=8, choices=PATTERN_CHOICES, default=PATTERN_CYCLE
     )
@@ -177,10 +200,7 @@ class CommRotation(models.Model):
     note = models.CharField(max_length=256, blank=True, default="")
 
     class Meta:
-        ordering = ["member__name", "seat"]
-
-    def __str__(self) -> str:
-        return f"{self.member.name} — {self.get_seat_display()} ({self.pattern_label})"
+        abstract = True
 
     @property
     def weekday_set(self) -> set[int]:
@@ -195,7 +215,7 @@ class CommRotation(models.Model):
         return f"every {', '.join(picked) or '—'}"
 
     def works_on(self, date) -> bool:
-        """True when this rotation puts the member in the seat on ``date``."""
+        """True when this rotation schedules its person on ``date``."""
         if not self.active or date < self.anchor_date:
             return False
         if self.end_date and date > self.end_date:
@@ -206,6 +226,36 @@ class CommRotation(models.Model):
         if cycle_len == 0:
             return False
         return (date - self.anchor_date).days % cycle_len < self.days_on
+
+
+class CommRotation(RotationPattern):
+    """Rotation for a Comm Center specialist in a fixed seat."""
+
+    member = models.ForeignKey(
+        CommStaffMember, on_delete=models.CASCADE, related_name="rotations"
+    )
+    seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
+
+    class Meta:
+        ordering = ["member__name", "seat"]
+
+    def __str__(self) -> str:
+        return f"{self.member.name} — {self.get_seat_display()} ({self.pattern_label})"
+
+
+class DutyRotation(RotationPattern):
+    """Rotation for a duty officer in a fixed role (AOC, MDOC, ...)."""
+
+    officer = models.ForeignKey(
+        DutyOfficer, on_delete=models.CASCADE, related_name="rotations"
+    )
+    role = models.CharField(max_length=16, choices=shifts.DUTY_ROLE_CHOICES)
+
+    class Meta:
+        ordering = ["officer__name", "role"]
+
+    def __str__(self) -> str:
+        return f"{self.officer.name} — {self.get_role_display()} ({self.pattern_label})"
 
 
 class Vehicle(models.Model):
@@ -282,6 +332,10 @@ class DailyReport(models.Model):
         ordering = ["-report_date"]
         permissions = [
             ("reopen_report", "Can reopen a submitted AOC daily report"),
+            (
+                "manage_schedules",
+                "Can edit Crew Hub schedules, rotations, rosters, and vehicle statuses",
+            ),
         ]
 
     def __str__(self) -> str:
