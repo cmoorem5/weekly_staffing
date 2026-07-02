@@ -1,0 +1,40 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Sign in · Crew Hub{% endblock %}
+
+{% block content %}
+<div style="max-width: 420px; margin: 3rem auto; font-family: Arial, Helvetica, sans-serif;">
+  <div style="background: #fff; border: 1px solid #CBC7D1; border-radius: 6px; overflow: hidden;">
+    <div style="background: #052C47; color: #fff; padding: 10px 16px; font-size: 13px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase;">
+      Crew Hub sign in
+    </div>
+    <div style="padding: 18px 16px;">
+      {% if form.errors %}
+        <div style="background: #fbeced; border: 1px solid #C12126; color: #C12126; border-radius: 4px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px;">
+          Your username and password didn't match. Please try again.
+        </div>
+      {% endif %}
+      <form method="post" data-no-loading>
+        {% csrf_token %}
+        <label style="font-size: 10px; color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Username</label>
+        <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" required
+               style="width: 100%; border: 1px solid #CBC7D1; border-radius: 4px; padding: 7px 9px; font-size: 13px; margin-bottom: 12px;">
+        <label style="font-size: 10px; color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Password</label>
+        <input type="password" name="password" autocomplete="current-password" required
+               style="width: 100%; border: 1px solid #CBC7D1; border-radius: 4px; padding: 7px 9px; font-size: 13px; margin-bottom: 16px;">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" style="width: 100%; background: #052C47; color: #fff; border: none; border-radius: 4px; padding: 9px; font-size: 13px; font-weight: bold; cursor: pointer;">
+          Sign in
+        </button>
+      </form>
+      {# TODO: Replace this form with Azure AD SSO (MSAL) once IT governance
+         approves deployment. Views stay @login_required; only the auth
+         backend and these URLs change. #}
+      <p style="font-size: 11px; color: #5a6a7a; margin-top: 12px; margin-bottom: 0;">
+        Accounts are managed in Django admin for now. Azure AD single sign-on
+        will replace this screen pending IT approval.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

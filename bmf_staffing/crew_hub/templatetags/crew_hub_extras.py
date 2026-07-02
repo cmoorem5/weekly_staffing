@@ -45,6 +45,14 @@ def vehicle_status_class(value: str) -> str:
 
 
 @register.filter
+def get_item(mapping, key):
+    """Dictionary lookup by variable key (e.g. calendar day cells)."""
+    if mapping is None:
+        return None
+    return mapping.get(key)
+
+
+@register.filter
 def crew_display(entry) -> str:
     """Name cell text for a crew entry: the name, or OPEN when REF-flagged."""
     if entry.ref_flag:

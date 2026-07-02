@@ -1,0 +1,50 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Duty officers — {{ date|date:"l, F j, Y" }}{% endblock %}
+{% block page_subtitle %}Assign the rotation for this day. Second name is optional (e.g. split MDOC coverage).{% endblock %}
+
+{% block hub_content %}
+<div class="ch-cal-nav no-print" style="display:flex; gap:10px; margin-bottom:10px;">
+  <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_day' date_str=prev_day|date:'Y-m-d' %}">← {{ prev_day|date:"D n/j" }}</a>
+  <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_month' %}?month={{ date|date:'Y-m' }}">Month view</a>
+  <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_day' date_str=next_day|date:'Y-m-d' %}">{{ next_day|date:"D n/j" }} →</a>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="ch-card">
+    <div class="ch-card-header">Rotation for {{ date|date:"D, M j" }}</div>
+    <div class="ch-card-body">
+      <table style="width:100%;">
+        <tr>
+          <td class="ch-label" style="width:110px; padding:4px 8px 4px 0;">Role</td>
+          <td class="ch-label" style="padding:4px 8px 4px 0;">Officer</td>
+          <td class="ch-label" style="padding:4px 0;">Second name (optional)</td>
+        </tr>
+        {% for row in rows %}
+        <tr>
+          <td style="font-size:12px; font-weight:bold; color:#052C47; padding:4px 8px 4px 0;">{{ row.label }}</td>
+          <td style="padding:4px 8px 4px 0;">
+            <select class="ch-select" name="officer_{{ row.role }}">
+              <option value="">—</option>
+              {% for o in officers %}
+                <option value="{{ o.pk }}" {% if row.primary_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td style="padding:4px 0;">
+            <input class="ch-input" type="text" name="second_{{ row.role }}" value="{{ row.second_name }}" placeholder="Last name">
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <button type="submit" class="ch-btn ch-btn-primary">Save day</button>
+        <span class="ch-note">Repeat through
+          <input class="ch-input" style="width:140px; display:inline-block;" type="date" name="repeat_until" min="{{ date|date:'Y-m-d' }}">
+          (optional — copies this rotation to every day up to that date)</span>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

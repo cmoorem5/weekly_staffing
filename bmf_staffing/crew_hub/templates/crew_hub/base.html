@@ -1,0 +1,73 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{% block hub_title %}Crew Hub{% endblock %} · BMF{% endblock %}
+
+{% block content %}
+<style>
+  /* Crew Hub styles, scoped under .ch-page. Brand: Arial; Navy #052C47
+     headings, Blue #2A4492 subheadings, Red #C12126 / Orange #E8761A only
+     where the reference form uses them. */
+  .ch-page { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1a1a1a; max-width: 980px; margin: 0 auto; }
+  .ch-page h1 { font-size: 20px; color: #052C47; margin-bottom: 2px; font-weight: bold; }
+  .ch-subtitle { font-size: 12px; color: #5a6a7a; margin-bottom: 14px; }
+
+  .ch-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .ch-tabs a { font-size: 12px; font-weight: bold; color: #052C47; background: #fff; border: 1px solid #CBC7D1; border-radius: 999px; padding: 5px 14px; text-decoration: none; }
+  .ch-tabs a:hover { border-color: #2A4492; color: #2A4492; }
+  .ch-tabs a.active { background: #052C47; color: #fff; border-color: #052C47; }
+
+  .ch-card { background: #fff; border: 1px solid #CBC7D1; border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+  .ch-card-header { background: #052C47; color: #fff; padding: 8px 14px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase; }
+  .ch-card-header.blue { background: #2A4492; }
+  .ch-card-header.light { background: #F0EFF4; color: #052C47; border-bottom: 1px solid #CBC7D1; }
+  .ch-card-body { padding: 10px 14px; }
+
+  .ch-page table { border-collapse: collapse; }
+  .ch-page th, .ch-page td { border: none; }
+
+  .ch-input, .ch-select { border: 1px solid #CBC7D1; border-radius: 4px; padding: 5px 8px; font-size: 12px; font-family: Arial, sans-serif; width: 100%; background: #fff; }
+  .ch-input:focus, .ch-select:focus { outline: none; border-color: #2A4492; }
+
+  .ch-btn { display: inline-block; padding: 8px 18px; border-radius: 4px; border: none; font-size: 13px; font-family: Arial, sans-serif; cursor: pointer; font-weight: bold; text-decoration: none; }
+  .ch-btn-primary { background: #052C47; color: #fff; }
+  .ch-btn-primary:hover { background: #07406b; color: #fff; }
+  .ch-btn-secondary { background: #2A4492; color: #fff; }
+  .ch-btn-secondary:hover { background: #3355b0; color: #fff; }
+  .ch-btn-outline { background: #fff; color: #052C47; border: 1px solid #CBC7D1; }
+  .ch-btn-outline:hover { background: #F4F4F7; color: #052C47; }
+  .ch-btn-danger { background: #C12126; color: #fff; }
+  .ch-btn-danger:hover { background: #a01a1f; color: #fff; }
+  .ch-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+  .ch-label { font-size: 10px; color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px; }
+  .ch-note { font-size: 11px; color: #5a6a7a; font-style: italic; }
+  .ch-banner { border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.45; }
+  .ch-banner.date { background: #E8EEF8; border: 1px solid #B8C9E8; color: #052C47; }
+  .ch-banner.sent { background: #E8F6F1; border: 1px solid #9FD4C3; color: #0F6E56; }
+
+  .ch-status-oos { color: #C12126 !important; font-weight: bold; }
+  .ch-status-inis { color: #B85C00 !important; font-weight: bold; }
+  .ch-status-primary { color: #0F6E56 !important; }
+  input.st-oos { border-color: #C12126; background: #fbeced; color: #C12126; font-weight: bold; }
+  input.st-inis { border-color: #B85C00; background: #fdf3e7; color: #b35e00; font-weight: bold; }
+  input.st-primary { color: #0F6E56; }
+</style>
+
+<div class="ch-page">
+  <h1>{% block page_title %}Crew Hub{% endblock %}</h1>
+  <div class="ch-subtitle">{% block page_subtitle %}Boston MedFlight operations{% endblock %}</div>
+
+  <div class="ch-tabs no-print">
+    {% with url_name=request.resolver_match.url_name %}
+    <a href="{% url 'crew_hub:hub_home' %}" class="{% if url_name == 'hub_home' %}active{% endif %}">Today</a>
+    <a href="{% url 'crew_hub:report_today' %}" class="{% if url_name == 'report_detail' or url_name == 'report_today' %}active{% endif %}">AOC Report</a>
+    <a href="{% url 'crew_hub:report_list' %}" class="{% if url_name == 'report_list' %}active{% endif %}">Past reports</a>
+    <a href="{% url 'crew_hub:comm_month' %}" class="{% if url_name == 'comm_month' or url_name == 'comm_day' or url_name == 'comm_staff' %}active{% endif %}">Comm Center</a>
+    <a href="{% url 'crew_hub:duty_month' %}" class="{% if url_name == 'duty_month' or url_name == 'duty_day' or url_name == 'duty_roster' %}active{% endif %}">Duty officers</a>
+    <a href="{% url 'crew_hub:vehicle_board' %}" class="{% if url_name == 'vehicle_board' %}active{% endif %}">Vehicles</a>
+    {% endwith %}
+  </div>
+
+  {% block hub_content %}{% endblock %}
+</div>
+{% endblock %}

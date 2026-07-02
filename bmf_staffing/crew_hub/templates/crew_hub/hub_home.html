@@ -1,0 +1,66 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Crew Hub — Today{% endblock %}
+{% block page_subtitle %}{{ today|date:"l, F j, Y" }}{% endblock %}
+
+{% block hub_content %}
+{% if report and report.is_submitted %}
+  <div class="ch-banner sent"><strong>AOC report submitted</strong> — today's report was submitted at {{ report.submitted_at|date:"H:i" }}{% if report.submitted_by %} by {{ report.submitted_by.get_username }}{% endif %}.</div>
+{% else %}
+  <div class="ch-banner date">Today's AOC report is {% if report %}in draft{% else %}not started{% endif %}.
+    <a href="{% url 'crew_hub:report_today' %}" style="color:#2A4492; font-weight:bold;">Open today's report →</a>
+  </div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+  <div class="ch-card">
+    <div class="ch-card-header">Duty officers today</div>
+    <div class="ch-card-body">
+      <table style="width:100%;">
+        {% for row in duty_rows %}
+        <tr>
+          <td style="font-size:11px; color:#5a6a7a; padding:3px 8px 3px 0; width:90px;">{{ row.label }}</td>
+          <td style="font-size:12px; padding:3px 0;">{{ row.names }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <div style="margin-top:8px;"><a href="{% url 'crew_hub:duty_month' %}" style="font-size:12px; color:#2A4492;">Edit rotation →</a></div>
+    </div>
+  </div>
+
+  <div class="ch-card">
+    <div class="ch-card-header blue">Comm Center today <span style="font-weight:normal; opacity:.8;">({{ comm_filled }}/{{ comm_total }} seats named)</span></div>
+    <div class="ch-card-body">
+      <table style="width:100%;">
+        {% for row in comm_rows %}
+        <tr>
+          <td style="font-size:11px; color:#5a6a7a; padding:3px 8px 3px 0; width:110px;">{{ row.label }}</td>
+          <td style="font-size:12px; padding:3px 0;">{{ row.name }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <div style="margin-top:8px;"><a href="{% url 'crew_hub:comm_month' %}" style="font-size:12px; color:#2A4492;">Open schedule →</a></div>
+    </div>
+  </div>
+</div>
+
+<div class="ch-card">
+  <div class="ch-card-header light">Vehicle exceptions</div>
+  <div class="ch-card-body">
+    {% if vehicle_exceptions %}
+      {% load crew_hub_extras %}
+      <table style="width:100%;">
+        {% for v in vehicle_exceptions %}
+        <tr>
+          <td style="font-family:monospace; font-size:12px; color:#052C47; width:90px; padding:3px 8px 3px 0;">{{ v.identifier }}</td>
+          <td style="font-size:12px; padding:3px 0; color:{{ v.current_status|vehicle_status_color }}; font-weight:{{ v.current_status|vehicle_status_weight }};">{{ v.current_status }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <span class="ch-note">No vehicles OOS or INIS — all {{ vehicle_count }} in service.</span>
+    {% endif %}
+    <div style="margin-top:8px;"><a href="{% url 'crew_hub:vehicle_board' %}" style="font-size:12px; color:#2A4492;">Open vehicle board →</a></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Comm Center — {{ date|date:"l, F j, Y" }}{% endblock %}
+{% block page_subtitle %}Assign a person to each seat. Leave blank for open seats.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-cal-nav no-print" style="display:flex; gap:10px; margin-bottom:10px;">
+  <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_day' date_str=prev_day|date:'Y-m-d' %}">← {{ prev_day|date:"D n/j" }}</a>
+  <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_month' %}?month={{ date|date:'Y-m' }}">Month view</a>
+  <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_day' date_str=next_day|date:'Y-m-d' %}">{{ next_day|date:"D n/j" }} →</a>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="ch-card">
+    <div class="ch-card-header blue">Seats for {{ date|date:"D, M j" }}</div>
+    <div class="ch-card-body">
+      <table style="width:100%;">
+        <tr>
+          <td class="ch-label" style="width:130px; padding:4px 8px 4px 0;">Seat</td>
+          <td class="ch-label" style="padding:4px 8px 4px 0;">Roster member</td>
+          <td class="ch-label" style="padding:4px 8px 4px 0;">…or type a name</td>
+          <td class="ch-label" style="padding:4px 0;">Note</td>
+        </tr>
+        {% for row in rows %}
+        <tr>
+          <td style="font-size:11px; color:#5a6a7a; padding:4px 8px 4px 0;">
+            <strong style="color:#052C47;">{{ row.seat.label }}</strong>
+            {% if row.seat.time %}<span style="color:#999; font-size:10px;"> {{ row.seat.time }}</span>{% endif %}
+          </td>
+          <td style="padding:4px 8px 4px 0;">
+            <select class="ch-select" name="member_{{ row.seat.code }}">
+              <option value="">—</option>
+              {% for m in members %}
+                <option value="{{ m.pk }}" {% if row.assignment and row.assignment.member_id == m.pk %}selected{% endif %}>{{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td style="padding:4px 8px 4px 0;">
+            <input class="ch-input" type="text" name="name_{{ row.seat.code }}" value="{% if row.assignment %}{{ row.assignment.display_name }}{% endif %}" placeholder="Non-roster / orientee">
+          </td>
+          <td style="padding:4px 0;">
+            <input class="ch-input" type="text" name="note_{{ row.seat.code }}" value="{% if row.assignment %}{{ row.assignment.note }}{% endif %}">
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <button type="submit" class="ch-btn ch-btn-primary">Save day</button>
+        <span class="ch-note">Repeat through
+          <input class="ch-input" style="width:140px; display:inline-block;" type="date" name="repeat_until" min="{{ date|date:'Y-m-d' }}">
+          (optional — copies these seats to every day up to that date)</span>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

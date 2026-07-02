@@ -1,0 +1,81 @@
+{% extends "crew_hub/base.html" %}
+{% load crew_hub_extras %}
+
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a day to edit{% endblock %}
+
+{% block hub_content %}
+<style>
+  .ch-cal { width: 100%; table-layout: fixed; border: 1px solid #CBC7D1; background: #fff; border-radius: 6px; overflow: hidden; }
+  .ch-cal th { background: #052C47; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 4px; text-align: center; font-weight: bold; }
+  .ch-cal td { vertical-align: top; height: 92px; border: 1px solid #E6E6E6; padding: 0; }
+  .ch-cal td.empty { background: #F4F4F7; }
+  .ch-cal a.daycell { display: block; height: 100%; padding: 5px 7px; text-decoration: none; color: inherit; }
+  .ch-cal a.daycell:hover { background: #E8EEF8; }
+  .ch-daynum { font-size: 12px; font-weight: bold; color: #052C47; }
+  .ch-today .ch-daynum { color: #fff; background: #2A4492; border-radius: 999px; padding: 1px 7px; display: inline-block; }
+  .ch-fill { font-size: 10px; margin-top: 3px; display: inline-block; border-radius: 999px; padding: 1px 7px; font-weight: bold; }
+  .ch-fill.full { background: #E8F6F1; color: #0F6E56; border: 1px solid #9FD4C3; }
+  .ch-fill.partial { background: #fdf3e7; color: #b35e00; border: 1px solid #E8761A; }
+  .ch-fill.none { background: #F0EFF4; color: #5a6a7a; border: 1px solid #CBC7D1; }
+  .ch-names { font-size: 10px; color: #5a6a7a; margin-top: 3px; line-height: 1.35; overflow: hidden; }
+  .ch-mine { outline: 2px solid #2A4492; outline-offset: -2px; }
+  .ch-cal-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+</style>
+
+<div class="ch-cal-nav no-print">
+  <a class="ch-btn ch-btn-outline" href="?month={{ nav.prev }}{% if selected_member %}&member={{ selected_member }}{% endif %}">← {{ nav.prev }}</a>
+  <strong style="font-size:14px; color:#052C47;">{{ nav.current|date:"F Y" }}</strong>
+  <a class="ch-btn ch-btn-outline" href="?month={{ nav.next }}{% if selected_member %}&member={{ selected_member }}{% endif %}">{{ nav.next }} →</a>
+  <span style="flex:1;"></span>
+  {% if kind == "comm" %}
+    <form method="get" style="display:flex; gap:6px; align-items:center;" data-no-loading>
+      <input type="hidden" name="month" value="{{ nav.current|date:'Y-m' }}">
+      <label class="ch-label" style="margin:0;">Highlight my days</label>
+      <select name="member" class="ch-select" style="width:auto;" onchange="this.form.submit()">
+        <option value="">— everyone —</option>
+        {% for m in members %}
+          <option value="{{ m.pk }}" {% if selected_member == m.pk|stringformat:"s" %}selected{% endif %}>{{ m.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:comm_staff' %}">Manage roster</a>
+  {% else %}
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:duty_roster' %}">Manage roster</a>
+  {% endif %}
+</div>
+
+<table class="ch-cal">
+  <thead>
+    <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
+  </thead>
+  <tbody>
+    {% for week in weeks %}
+    <tr>
+      {% for day in week %}
+        {% if day %}
+          <td class="{% if day == today %}ch-today{% endif %}">
+            {% with info=cells|get_item:day %}
+            <a class="daycell {% if info.mine %}ch-mine{% endif %}" href="{% url day_url_name date_str=day|date:'Y-m-d' %}">
+              <span class="ch-daynum">{{ day.day }}</span>
+              {% if info %}
+                <span class="ch-fill {% if info.filled >= seat_total %}full{% elif info.filled > 0 %}partial{% else %}none{% endif %}">{{ info.filled }}/{{ seat_total }}</span>
+                <div class="ch-names">
+                  {% for n in info.names|slice:":4" %}{{ n }}<br>{% endfor %}
+                  {% if info.names|length > 4 %}…{% endif %}
+                </div>
+              {% else %}
+                <span class="ch-fill none">0/{{ seat_total }}</span>
+              {% endif %}
+            </a>
+            {% endwith %}
+          </td>
+        {% else %}
+          <td class="empty"></td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

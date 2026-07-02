@@ -1,0 +1,42 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_subtitle %}People available for scheduling. Deactivated people keep their history but leave the pickers.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card" style="max-width: 560px;">
+  <div class="ch-card-header light">{{ title }}</div>
+  <div class="ch-card-body">
+    <form method="post" style="display:flex; gap:8px; margin-bottom:12px;" data-no-loading>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add">
+      <input class="ch-input" type="text" name="name" placeholder="Add a name…" required>
+      <button type="submit" class="ch-btn ch-btn-secondary">Add</button>
+    </form>
+
+    <table style="width:100%;">
+      {% for person in people %}
+      <tr style="border-bottom: 1px solid #f0f0f0;">
+        <td style="font-size:12px; padding:5px 8px 5px 0; {% if not person.active %}color:#999; text-decoration:line-through;{% endif %}">{{ person.name }}</td>
+        <td style="width:110px; text-align:right; padding:3px 0;">
+          <form method="post" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="pk" value="{{ person.pk }}">
+            <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 10px; font-size:11px;">
+              {% if person.active %}Deactivate{% else %}Reactivate{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td class="ch-note" style="padding:6px 0;">No one on the roster yet — add names above.</td></tr>
+      {% endfor %}
+    </table>
+
+    <div style="margin-top:12px;">
+      <a href="{% url back_url_name %}" style="font-size:12px; color:#2A4492;">← Back to {{ back_label }}</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
