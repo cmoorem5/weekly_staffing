@@ -10,6 +10,15 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Parent of bmf_staffing/ = Weekly_staffing (staffing_tool + staffing.db)
 WEEKLY_STAFFING_ROOT = BASE_DIR.parent
+
+# Load a repo-root .env (gitignored) so secrets and email settings stay out
+# of code. See .env.example for the supported variables.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(WEEKLY_STAFFING_ROOT / ".env")
+except ImportError:  # dotenv optional: plain environment variables still work
+    pass
 STAFFING_DB_PATH = os.path.join(WEEKLY_STAFFING_ROOT, "staffing.db")
 
 # Set DJANGO_SECRET_KEY in production; never commit a real secret.
@@ -45,6 +54,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "dashboard.apps.DashboardConfig",
+    "crew_hub.apps.CrewHubConfig",
 ]
 
 MIDDLEWARE = [
@@ -124,3 +134,41 @@ STAFFING_UPLOAD_RETENTION_HOURS = 168
 # Auto-backups of staffing.db before destructive writes (import / week delete).
 # The most recent N are kept in archive/; manual backups are never pruned.
 STAFFING_BACKUP_KEEP = 30
+
+# --- Crew Hub (AOC Daily Report) ---------------------------------------
+# Authentication: Django's built-in auth for now.
+# TODO: Replace with Azure AD SSO (MSAL) once IT governance approves
+# deployment; swap LOGIN_URL and the accounts/ URLs, keep @login_required.
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "crew_hub:hub_home"
+LOGOUT_REDIRECT_URL = "login"
+
+# Email: console backend by default so no mail leaves a dev machine.
+# Configure SMTP entirely from environment variables for real sends.
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.environ.get("DJANGO_EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("DJANGO_EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("DJANGO_EMAIL_USE_TLS", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DJANGO_DEFAULT_FROM_EMAIL", "aoc-report@localhost"
+)
+
+# Comma-separated recipient list for the AOC Daily Report email.
+CREW_HUB_REPORT_RECIPIENTS = [
+    addr.strip()
+    for addr in os.environ.get("AOC_REPORT_RECIPIENTS", "").split(",")
+    if addr.strip()
+]
+
+# External Equipment OOS / MISS dashboard link shown on the report.
+CREW_HUB_EQUIPMENT_DASHBOARD_URL = os.environ.get(
+    "AOC_EQUIPMENT_DASHBOARD_URL", ""
+)
