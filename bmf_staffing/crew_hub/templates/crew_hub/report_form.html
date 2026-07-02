@@ -1,0 +1,377 @@
+{% extends "crew_hub/base.html" %}
+{% load crew_hub_extras %}
+
+{% block page_title %}AOC Daily Report{% endblock %}
+{% block page_subtitle %}{{ report.report_date|date:"l, F j, Y" }} — duty officers, Comm Center, and vehicles are pulled from the live schedules; everything stays editable here.{% endblock %}
+
+{% block hub_content %}
+<style>
+  .rf-duty-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rf-shift-row { display: grid; grid-template-columns: 130px 90px 1fr 52px; gap: 8px; align-items: center; margin-bottom: 4px; }
+  .rf-pos { font-size: 11px; color: #5a6a7a; text-align: right; }
+  .rf-ref { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #C12126; font-weight: bold; }
+  .rf-base-section { border-bottom: 1px solid #E6E6E6; padding: 8px 14px; }
+  .rf-base-section:last-child { border-bottom: none; }
+  .rf-base-name { font-size: 12px; font-weight: bold; color: #052C47; margin-bottom: 6px; }
+  .rf-shift-label { font-size: 11px; color: #5a6a7a; }
+  .rf-shift-time { font-size: 10px; color: #999; display: block; }
+  input.ref-open { border-color: #C12126; background: #fff8f8; }
+  .rf-comm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+  .rf-comm-row { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
+  .rf-comm-row:last-child { border-bottom: none; }
+  .rf-v-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+  .rf-v-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px solid #f0f0f0; }
+  .rf-v-row:last-child { border-bottom: none; }
+  .rf-vg-title { font-size: 11px; font-weight: bold; color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; padding-bottom: 3px; border-bottom: 1px solid #CBC7D1; }
+  .rf-v-id { font-family: monospace; font-size: 12px; color: #052C47; }
+  .rf-ta { border: 1px solid #CBC7D1; border-radius: 4px; padding: 6px 8px; font-size: 12px; font-family: Arial, sans-serif; width: 100%; resize: vertical; min-height: 40px; }
+  .rf-ta:focus { outline: none; border-color: #2A4492; }
+  .rf-bt-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }
+  .rf-bt-card { border: 1px solid #CBC7D1; border-radius: 4px; padding: 7px; }
+  .rf-bt-name { font-size: 10px; font-weight: bold; color: #052C47; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; }
+  .rf-bt-type { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+  .rf-bt-input { border: 1px solid #CBC7D1; border-radius: 3px; padding: 2px 5px; font-size: 12px; font-family: Arial, sans-serif; width: 52px; text-align: center; }
+  .rf-bt-total { font-size: 12px; font-weight: bold; color: #052C47; text-align: center; margin-top: 4px; border-top: 1px solid #E6E6E6; padding-top: 3px; }
+  .rf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .rf-table th { background: #F0EFF4; text-align: left; padding: 5px 8px; font-size: 11px; color: #5a6a7a; border-bottom: 1px solid #CBC7D1; }
+  .rf-table td { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; }
+  .rf-sec-title { font-size: 11px; font-weight: bold; color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  fieldset { border: none; padding: 0; margin: 0; min-width: 0; }
+  fieldset[disabled] input, fieldset[disabled] select, fieldset[disabled] textarea { background: #F4F4F7; color: #5a6a7a; }
+  .rf-actions { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+</style>
+
+{% if report.is_submitted %}
+  <div class="ch-banner sent">
+    <strong>Report submitted</strong>
+    Submitted {{ report.submitted_at|date:"M j, H:i" }}{% if report.submitted_by %} by {{ report.submitted_by.get_username }}{% endif %}. Fields are locked.
+    {% if can_reopen %}
+      <form method="post" action="{% url 'crew_hub:report_reopen' date_str=report.report_date|date:'Y-m-d' %}" style="display:inline;" data-no-loading>
+        {% csrf_token %}
+        <button type="submit" class="ch-btn ch-btn-outline" style="margin-left:10px; padding:4px 10px; font-size:11px;"
+                onclick="return confirm('Reopen this submitted report for editing? The event will be logged.');">Reopen report</button>
+      </form>
+    {% else %}
+      <span class="ch-note" style="margin-left:8px;">Only users with reopen permission can unlock it.</span>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="ch-banner date">
+    Editing <strong>{{ report.status }}</strong> report for {{ report.report_date|date:"l, F j, Y" }}.
+    <form method="post" action="{% url 'crew_hub:report_refresh' date_str=report.report_date|date:'Y-m-d' %}" style="display:inline;" data-no-loading>
+      {% csrf_token %}
+      <button type="submit" class="ch-btn ch-btn-outline" style="margin-left:10px; padding:4px 10px; font-size:11px;"
+              onclick="return confirm('Re-pull duty officers, Comm Center, and vehicle statuses from the live schedules? Manual edits to those three sections will be overwritten.');">↺ Re-pull from schedules</button>
+    </form>
+  </div>
+{% endif %}
+
+<form method="post" action="{% url 'crew_hub:report_save' date_str=report.report_date|date:'Y-m-d' %}" id="report_form">
+{% csrf_token %}
+<fieldset {% if report.is_submitted %}disabled{% endif %}>
+
+  <!-- Duty Officers -->
+  <div class="ch-card">
+    <div class="ch-card-header">Duty Officers</div>
+    <div class="ch-card-body">
+      <div class="rf-duty-grid">
+        {% for row in duty_roles %}
+        <div>
+          <label class="ch-label">{{ row.label }}</label>
+          <input class="ch-input" type="text" name="duty_{{ row.code }}" value="{{ row.entry.name }}" placeholder="Last name">
+        </div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:10px;">
+        <label class="ch-label">Weather</label>
+        <input class="ch-input" type="text" name="weather" value="{{ report.weather }}" placeholder="e.g. Mostly sunny. High 81°F. No weather impacts anticipated.">
+      </div>
+    </div>
+  </div>
+
+  <!-- Field Staffing -->
+  <div class="ch-card">
+    <div class="ch-card-header">Field Staffing</div>
+    {% for section in base_sections %}
+    <div class="rf-base-section">
+      <div class="rf-base-name">{{ section.header }}</div>
+      {% for row in section.rows %}
+        {% for entry in row.entries %}
+        <div class="rf-shift-row">
+          {% if forloop.first %}
+            <span class="rf-shift-label">{{ row.shift.label }} <span class="rf-shift-time">{{ row.shift.time }}</span></span>
+          {% else %}
+            <span></span>
+          {% endif %}
+          <span class="rf-pos">{{ entry.get_position_display }}</span>
+          <input class="ch-input {% if entry.ref_flag %}ref-open{% endif %}" type="text" name="crew_{{ entry.pk }}_name"
+                 value="{{ entry.name }}" placeholder="Name" data-ref-input="crew_{{ entry.pk }}_ref">
+          <label class="rf-ref" title="Confirmed open position — renders as OPEN on the report">
+            <input type="checkbox" name="crew_{{ entry.pk }}_ref" {% if entry.ref_flag %}checked{% endif %} onchange="refToggle(this)"> REF
+          </label>
+        </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    <!-- Extras -->
+    <div class="rf-base-section" style="background:#FAFAFC;">
+      <div class="rf-base-name">Extras — ride-alongs, orientees, PG bonus crew</div>
+      <div class="ch-note" style="margin-bottom:6px;">Bonus RN/EMTP on Plymouth Ground goes here, never as a PG crew row.</div>
+      <table class="rf-table" id="extras_table">
+        <thead>
+          <tr><th style="width:110px;">Base</th><th style="width:100px;">Shift</th><th style="width:90px;">Role</th><th>Name</th><th>Note (e.g. RAL, orientee)</th></tr>
+        </thead>
+        <tbody>
+          {% for extra in extras %}
+          <tr>
+            <td><select class="ch-select" name="extra_base"><option value="">—</option>{% for code, label in base_choices %}<option value="{{ code }}" {% if extra.base == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
+            <td><select class="ch-select" name="extra_shift"><option value="">—</option>{% for code, label in shift_choices %}<option value="{{ code }}" {% if extra.shift_code == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
+            <td><select class="ch-select" name="extra_role"><option value="">—</option>{% for code, label in position_choices %}<option value="{{ code }}" {% if extra.role == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
+            <td><input class="ch-input" type="text" name="extra_name" value="{{ extra.name }}"></td>
+            <td><input class="ch-input" type="text" name="extra_note" value="{{ extra.note }}"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not report.is_submitted %}
+      <button type="button" class="ch-btn ch-btn-outline" style="font-size:12px; padding:4px 12px; margin-top:6px;" onclick="addExtraRow()">+ Add extra</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Comm Center -->
+  <div class="ch-card">
+    <div class="ch-card-header blue">Comm Center</div>
+    <div class="ch-card-body">
+      <div class="rf-comm-grid">
+        {% for column in comm_columns %}
+        <div>
+          {% for cell in column %}
+          <div class="rf-comm-row">
+            <span class="rf-shift-label">{{ cell.seat.label }} {% if cell.seat.time %}<span class="rf-shift-time">{{ cell.seat.time }}</span>{% endif %}</span>
+            <input class="ch-input" type="text" name="comm_{{ cell.seat.code }}" value="{{ cell.entry.name }}" placeholder="{% if cell.seat.code == 'EXTRA' %}N/A or name{% else %}Name or OPEN{% endif %}">
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Vehicle Status -->
+  <div class="ch-card">
+    <div class="ch-card-header">Vehicle Status</div>
+    <div class="ch-card-body">
+      <div class="rf-v-grid">
+        <div>
+          <div class="rf-vg-title">Rotor Wing</div>
+          {% for entry in vehicles_rw %}
+          <div class="rf-v-row">
+            <span class="rf-v-id">{{ entry.vehicle_id }}</span>
+            <input class="ch-input v-input {{ entry.status|vehicle_status_class }}" type="text" name="vehicle_{{ entry.pk }}" value="{{ entry.status }}" oninput="vehicleColor(this)">
+          </div>
+          {% endfor %}
+        </div>
+        <div>
+          <div class="rf-vg-title">Ground Trucks</div>
+          {% for entry in vehicles_gr %}
+          <div class="rf-v-row">
+            <span class="rf-v-id">{{ entry.vehicle_id }}</span>
+            <input class="ch-input v-input {{ entry.status|vehicle_status_class }}" type="text" name="vehicle_{{ entry.pk }}" value="{{ entry.status }}" oninput="vehicleColor(this)">
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% if equipment_dashboard_url %}
+      <div style="margin-top:8px;">
+        <a href="{{ equipment_dashboard_url }}" target="_blank" rel="noopener" style="font-size:12px; color:#2A4492;">Equipment OOS / MISS Dashboard</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Sick Calls / Late Arrivals -->
+  <div class="ch-card">
+    <div class="ch-card-header light">Sick Calls / Late Arrivals</div>
+    <div class="ch-card-body">
+      <label class="ch-label">Sick calls</label>
+      <textarea class="rf-ta" name="sick_calls" placeholder="None, or list names and details">{{ sick_entries.0.text }}</textarea>
+      <label class="ch-label" style="margin-top:8px;">Late arrivals</label>
+      <textarea class="rf-ta" name="late_arrivals" placeholder="None, or list names and details">{{ late_entries.0.text }}</textarea>
+    </div>
+  </div>
+
+  <!-- Outreach (static) -->
+  <div class="ch-card">
+    <div class="ch-card-header light">Outreach Events / Visitors</div>
+    <div class="ch-card-body">
+      <span class="ch-note">{{ outreach_note }}</span>
+    </div>
+  </div>
+
+  <!-- Transports -->
+  <div class="ch-card">
+    <div class="ch-card-header">Transports</div>
+    <div class="ch-card-body">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+        <div>
+          <label class="ch-label">Pending count</label>
+          <input class="ch-input" type="number" min="0" name="pending_count" value="{{ summary.pending_count }}">
+        </div>
+        <div>
+          <label class="ch-label">Completed count (auto)</label>
+          <input class="ch-input" type="number" id="completed_total" value="{{ completed_total }}" readonly tabindex="-1" title="Auto-calculated from completed-by-base totals">
+        </div>
+      </div>
+
+      <div class="rf-sec-title">Pending transports</div>
+      <table class="rf-table" id="pending_table" style="margin-bottom:8px;">
+        <thead><tr><th style="width:26px;">#</th><th>Call Type</th><th>Asset</th><th>Status</th><th>Location</th></tr></thead>
+        <tbody>
+          {% for pt in pending_transports %}
+          <tr>
+            <td style="color:#888; font-size:11px;">{{ forloop.counter }}</td>
+            <td><input class="ch-input" type="text" name="pt_call_type" value="{{ pt.call_type }}" placeholder="e.g. CCT"></td>
+            <td><input class="ch-input" type="text" name="pt_asset" value="{{ pt.asset }}" placeholder="e.g. N142NE"></td>
+            <td><input class="ch-input" type="text" name="pt_status" value="{{ pt.status }}" placeholder="e.g. En route"></td>
+            <td><input class="ch-input" type="text" name="pt_location" value="{{ pt.location }}" placeholder="e.g. BWH"></td>
+          </tr>
+          {% empty %}
+          <tr id="pending_placeholder"><td colspan="5" class="ch-note" style="padding:6px 8px;">No pending transports — add rows if needed</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not report.is_submitted %}
+      <button type="button" class="ch-btn ch-btn-outline" style="font-size:12px; padding:4px 12px; margin-bottom:14px;" onclick="addPendingRow()">+ Add row</button>
+      {% endif %}
+
+      <div class="rf-sec-title">Completed by base</div>
+      <div class="rf-bt-grid">
+        {% for row in base_counts %}
+        <div class="rf-bt-card" data-base="{{ row.base }}">
+          <div class="rf-bt-name">{{ row.get_base_display }}</div>
+          <div class="rf-bt-type"><span style="font-size:10px; color:#5a6a7a;">GCCT</span>
+            <input class="rf-bt-input" type="number" min="0" name="tb_{{ row.base }}_gcct" value="{{ row.gcct }}" oninput="updateTotals()"></div>
+          <div class="rf-bt-type"><span style="font-size:10px; color:#5a6a7a;">RW</span>
+            <input class="rf-bt-input" type="number" min="0" name="tb_{{ row.base }}_rw" value="{{ row.rw }}" oninput="updateTotals()"></div>
+          <div class="rf-bt-total" data-total-for="{{ row.base }}">{{ row.total }}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="rf-sec-title">System misses</div>
+      <div class="ch-note" style="margin-bottom:6px;">Category labels are editable — overwrite any to match the actual reason.</div>
+      <table class="rf-table" id="miss_table">
+        <thead><tr><th>Category</th><th style="width:70px; text-align:right;">Count</th></tr></thead>
+        <tbody>
+          {% for row in miss_counts %}
+          <tr>
+            <td><input class="ch-input" type="text" name="miss_label" value="{{ row.label }}"></td>
+            <td style="text-align:right;"><input class="rf-bt-input" type="number" min="0" name="miss_count" value="{{ row.count }}" oninput="updateTotals()" style="width:55px;"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+        {% if not report.is_submitted %}
+        <button type="button" class="ch-btn ch-btn-outline" style="font-size:12px; padding:4px 12px;" onclick="addMissRow()">+ Add row</button>
+        {% else %}<span></span>{% endif %}
+        <div style="font-size:12px; color:#052C47; font-weight:bold;">Total misses: <span id="miss_total">{{ miss_total }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Complex Calls -->
+  <div class="ch-card">
+    <div class="ch-card-header light">Complex / Complicated Logistical Calls</div>
+    <div class="ch-card-body">
+      <textarea class="rf-ta" name="complex_calls" placeholder="None, or describe">{{ summary.complex_calls }}</textarea>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="rf-actions no-print">
+    <button type="submit" class="ch-btn ch-btn-primary" {% if report.is_submitted %}disabled{% endif %}>Save draft</button>
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:report_preview' date_str=report.report_date|date:'Y-m-d' %}" target="_blank" rel="noopener">Live preview</a>
+    <button type="submit" class="ch-btn ch-btn-secondary" {% if report.is_submitted %}disabled{% endif %}
+            formaction="{% url 'crew_hub:report_submit' date_str=report.report_date|date:'Y-m-d' %}"
+            onclick="return confirm('Submit and email this report? It will be locked afterwards.');">Submit &amp; email</button>
+    <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:report_html' date_str=report.report_date|date:'Y-m-d' %}">Copy HTML</a>
+  </div>
+</fieldset>
+</form>
+
+<script>
+function vehicleColor(el) {
+  var v = el.value.toUpperCase();
+  el.classList.remove('st-oos','st-inis','st-primary');
+  if (v.indexOf('OOS') !== -1) el.classList.add('st-oos');
+  else if (v.indexOf('INIS') !== -1) el.classList.add('st-inis');
+  else if (v.indexOf('PRIMARY') !== -1) el.classList.add('st-primary');
+}
+
+function refToggle(cb) {
+  var input = document.querySelector('input[data-ref-input="' + cb.name + '"]');
+  if (input) input.classList.toggle('ref-open', cb.checked);
+}
+
+function addExtraRow() {
+  var tbody = document.querySelector('#extras_table tbody');
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><select class="ch-select" name="extra_base"><option value="">—</option>{% for code, label in base_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></td>' +
+    '<td><select class="ch-select" name="extra_shift"><option value="">—</option>{% for code, label in shift_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></td>' +
+    '<td><select class="ch-select" name="extra_role"><option value="">—</option>{% for code, label in position_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></td>' +
+    '<td><input class="ch-input" type="text" name="extra_name"></td>' +
+    '<td><input class="ch-input" type="text" name="extra_note"></td>';
+  tbody.appendChild(tr);
+}
+
+function addPendingRow() {
+  var placeholder = document.getElementById('pending_placeholder');
+  if (placeholder) placeholder.remove();
+  var tbody = document.querySelector('#pending_table tbody');
+  var num = tbody.querySelectorAll('tr').length + 1;
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td style="color:#888; font-size:11px;">' + num + '</td>' +
+    '<td><input class="ch-input" type="text" name="pt_call_type" placeholder="e.g. CCT"></td>' +
+    '<td><input class="ch-input" type="text" name="pt_asset" placeholder="e.g. N142NE"></td>' +
+    '<td><input class="ch-input" type="text" name="pt_status" placeholder="e.g. En route"></td>' +
+    '<td><input class="ch-input" type="text" name="pt_location" placeholder="e.g. BWH"></td>';
+  tbody.appendChild(tr);
+}
+
+function addMissRow() {
+  var tbody = document.querySelector('#miss_table tbody');
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input class="ch-input" type="text" name="miss_label" placeholder="Category"></td>' +
+    '<td style="text-align:right;"><input class="rf-bt-input" type="number" min="0" name="miss_count" value="0" oninput="updateTotals()" style="width:55px;"></td>';
+  tbody.appendChild(tr);
+}
+
+function updateTotals() {
+  var grand = 0;
+  document.querySelectorAll('.rf-bt-card').forEach(function(card) {
+    var sum = 0;
+    card.querySelectorAll('input[type=number]').forEach(function(inp) {
+      sum += parseInt(inp.value, 10) || 0;
+    });
+    card.querySelector('.rf-bt-total').textContent = sum;
+    grand += sum;
+  });
+  var completed = document.getElementById('completed_total');
+  if (completed) completed.value = grand;
+
+  var misses = 0;
+  document.querySelectorAll('#miss_table input[name=miss_count]').forEach(function(inp) {
+    misses += parseInt(inp.value, 10) || 0;
+  });
+  var missEl = document.getElementById('miss_total');
+  if (missEl) missEl.textContent = misses;
+}
+</script>
+{% endblock %}

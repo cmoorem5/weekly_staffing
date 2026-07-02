@@ -1,0 +1,40 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Past AOC reports{% endblock %}
+{% block page_subtitle %}Most recent first. Open any date to view; drafts stay editable.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card" style="max-width: 640px;">
+  <div class="ch-card-header light">Reports</div>
+  <div class="ch-card-body">
+    {% if reports %}
+    <table style="width:100%;">
+      <tr>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Date</td>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Status</td>
+        <td class="ch-label" style="padding:4px 0;">Submitted</td>
+      </tr>
+      {% for r in reports %}
+      <tr style="border-bottom:1px solid #f0f0f0;">
+        <td style="padding:5px 8px 5px 0;">
+          <a href="{% url 'crew_hub:report_detail' date_str=r.report_date|date:'Y-m-d' %}" style="font-size:12px; color:#2A4492; font-weight:bold;">{{ r.report_date|date:"D, M j, Y" }}</a>
+        </td>
+        <td style="padding:5px 8px 5px 0;">
+          {% if r.is_submitted %}
+            <span style="font-size:11px; font-weight:bold; color:#0F6E56; background:#E8F6F1; border:1px solid #9FD4C3; border-radius:999px; padding:2px 10px;">Submitted</span>
+          {% else %}
+            <span style="font-size:11px; font-weight:bold; color:#b35e00; background:#fdf3e7; border:1px solid #E8761A; border-radius:999px; padding:2px 10px;">Draft</span>
+          {% endif %}
+        </td>
+        <td style="font-size:11px; color:#5a6a7a; padding:5px 0;">
+          {% if r.submitted_at %}{{ r.submitted_at|date:"M j, H:i" }}{% if r.submitted_by %} · {{ r.submitted_by.get_username }}{% endif %}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <span class="ch-note">No reports yet. <a href="{% url 'crew_hub:report_today' %}">Start today's report →</a></span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

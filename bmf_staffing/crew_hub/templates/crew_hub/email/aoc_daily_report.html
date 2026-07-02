@@ -1,0 +1,224 @@
+{% load crew_hub_extras %}<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;">
+
+  <!-- Header -->
+  <tr><td style="background-color:#052C47;padding:10px 14px;border-radius:6px 6px 0 0;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td width="48" style="vertical-align:middle;font-size:22px;font-weight:bold;color:#ffffff;line-height:1;">BMF</td>
+      <td style="color:#ffffff;font-size:15px;font-weight:bold;vertical-align:middle;padding-left:10px;">Boston MedFlight<br><span style="font-size:11px;font-weight:normal;color:#A8BCE8;">Daily AOC Report</span></td>
+      <td style="color:#A8BCE8;font-size:12px;text-align:right;vertical-align:middle;">{{ report.report_date|date:"l, F j, Y" }}</td>
+    </tr></table>
+  </td></tr>
+
+  <!-- Duty bar -->
+  <tr><td style="background-color:#2A4492;padding:7px 14px;">
+    <table cellpadding="0" cellspacing="0"><tr>
+      {% for row in duty_roles %}
+      <td style="color:#fff;font-size:12px;padding-right:16px;"><span style="color:#A8BCE8;">{{ row.label }}</span>&nbsp;{{ row.entry.name|default:"N/A" }}</td>
+      {% endfor %}
+    </tr></table>
+  </td></tr>
+
+  <!-- Weather -->
+  <tr><td style="background-color:#F0EFF4;padding:6px 14px;border-bottom:1px solid #CBC7D1;font-size:12px;color:#4a5a6a;"><b>Weather:</b> {{ report.weather|default:"N/A" }}</td></tr>
+
+  <!-- Field Staffing -->
+  <tr><td style="background-color:#052C47;padding:7px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#ffffff;text-transform:uppercase;letter-spacing:0.6px;">Field Staffing</span>
+  </td></tr>
+  <tr><td style="border:1px solid #CBC7D1;border-top:none;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      {% for section in base_sections %}
+      <tr><td style="padding:8px 14px 2px 14px;{% if not forloop.first %}border-top:1px solid #CBC7D1;{% endif %}">
+        <span style="font-size:12px;font-weight:bold;color:#052C47;">{{ section.header }}</span></td></tr>
+      <tr><td style="padding:1px 14px;"><table width="100%" cellpadding="0" cellspacing="0">
+        {% for row in section.rows %}
+        <tr style="background:{% cycle '#ffffff' '#E6E6E6' %};">
+          <td style="width:140px;font-size:11px;color:#5a6a7a;padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ row.shift.label }} <span style="color:#999;font-size:10px;">{{ row.shift.time }}</span></td>
+          <td style="font-size:12px;padding:3px 8px;border-bottom:1px solid #CBC7D1;">
+            {% for entry in row.entries %}{% if entry.ref_flag %}<span style="color:#C12126;font-weight:bold;">OPEN ({{ entry.get_position_display }})</span>{% elif entry.name %}{{ entry.name }} <span style="color:#5a6a7a;font-size:10px;">({{ entry.get_position_display }})</span>{% endif %}{% if not forloop.last %}{% if entry.name or entry.ref_flag %}, {% endif %}{% endif %}{% empty %}N/A{% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% resetcycle %}
+      </table></td></tr>
+      {% endfor %}
+      {% if extras %}
+      <tr><td style="padding:8px 14px 2px 14px;border-top:1px solid #CBC7D1;">
+        <span style="font-size:12px;font-weight:bold;color:#052C47;">Extras — ride-alongs / orientees / bonus crew</span></td></tr>
+      <tr><td style="padding:1px 14px 8px 14px;"><table width="100%" cellpadding="0" cellspacing="0">
+        {% for extra in extras %}
+        <tr style="background:{% cycle '#ffffff' '#E6E6E6' %};">
+          <td style="width:140px;font-size:11px;color:#5a6a7a;padding:3px 8px;border-bottom:1px solid #CBC7D1;">{% if extra.base %}{{ extra.get_base_display }}{% endif %}{% if extra.shift_code %} {{ extra.shift_code }}{% endif %}{% if extra.role %} · {{ extra.get_role_display }}{% endif %}</td>
+          <td style="font-size:12px;padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ extra.name }}{% if extra.note %} &nbsp;<span style="color:#2A4492;font-size:11px;">{{ extra.note }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% resetcycle %}
+      </table></td></tr>
+      {% endif %}
+    </table>
+  </td></tr>
+
+  <!-- Comm Center -->
+  <tr><td style="background-color:#052C47;padding:7px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#ffffff;text-transform:uppercase;letter-spacing:0.6px;">Comm Center</span>
+  </td></tr>
+  <tr><td style="border:1px solid #CBC7D1;border-top:none;padding:4px 14px 8px 14px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      {% for left, right in comm_pairs %}
+      <tr style="background:{% cycle '#E6E6E6' '#ffffff' %};">
+        <td style="width:26%;font-size:11px;color:#5a6a7a;padding:3px 8px;">{{ left.seat.label }} {% if left.seat.time %}<span style="color:#999;">{{ left.seat.time }}</span>{% endif %}</td>
+        <td style="width:24%;font-size:12px;padding:3px 8px;{% if left.entry.name|upper == 'OPEN' %}color:#C12126;font-weight:bold;{% endif %}">{{ left.entry.name|default:"N/A" }}</td>
+        <td style="width:26%;font-size:11px;color:#5a6a7a;padding:3px 8px;">{{ right.seat.label }} {% if right.seat.time %}<span style="color:#999;">{{ right.seat.time }}</span>{% endif %}</td>
+        <td style="width:24%;font-size:12px;padding:3px 8px;{% if right.entry.name|upper == 'OPEN' %}color:#C12126;font-weight:bold;{% endif %}">{{ right.entry.name|default:"N/A" }}</td>
+      </tr>
+      {% endfor %}
+      {% resetcycle %}
+    </table>
+  </td></tr>
+
+  <!-- Vehicle Status -->
+  <tr><td style="background-color:#052C47;padding:7px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#ffffff;text-transform:uppercase;letter-spacing:0.6px;">Vehicle Status</span>
+  </td></tr>
+  <tr><td style="border:1px solid #CBC7D1;border-top:none;padding:8px 14px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td width="50%" style="vertical-align:top;padding-right:10px;">
+        <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #CBC7D1;">Rotor Wing</span>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          {% for entry in vehicles_rw %}
+          <tr style="background:{% cycle '#ffffff' '#E6E6E6' %};">
+            <td style="width:70px;font-family:monospace;font-size:12px;color:#052C47;padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ entry.vehicle_id }}</td>
+            <td style="font-size:12px;color:{{ entry.status|vehicle_status_color }};font-weight:{{ entry.status|vehicle_status_weight }};padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ entry.status|default:"N/A" }}</td>
+          </tr>
+          {% endfor %}
+          {% resetcycle %}
+        </table>
+      </td>
+      <td width="50%" style="vertical-align:top;padding-left:10px;">
+        <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #CBC7D1;">Ground Trucks</span>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          {% for entry in vehicles_gr %}
+          <tr style="background:{% cycle '#ffffff' '#E6E6E6' %};">
+            <td style="width:70px;font-family:monospace;font-size:12px;color:#052C47;padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ entry.vehicle_id }}</td>
+            <td style="font-size:12px;color:{{ entry.status|vehicle_status_color }};font-weight:{{ entry.status|vehicle_status_weight }};padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ entry.status|default:"N/A" }}</td>
+          </tr>
+          {% endfor %}
+          {% resetcycle %}
+        </table>
+      </td>
+    </tr>
+    {% if equipment_dashboard_url %}
+    <tr><td colspan="2" style="padding-top:6px;font-size:12px;"><a href="{{ equipment_dashboard_url }}" style="color:#2A4492;">Equipment OOS / MISS Dashboard</a></td></tr>
+    {% endif %}
+    </table>
+  </td></tr>
+
+  <!-- Sick Calls / Late Arrivals -->
+  <tr><td style="padding:6px 14px;border:1px solid #CBC7D1;border-top:none;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;">Sick Calls</span><br>
+    <span style="font-size:12px;">{{ sick_entries.0.text|default:"None"|linebreaksbr }}</span>
+  </td></tr>
+  <tr><td style="padding:6px 14px;border:1px solid #CBC7D1;border-top:none;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;">Late Arrivals</span><br>
+    <span style="font-size:12px;">{{ late_entries.0.text|default:"None"|linebreaksbr }}</span>
+  </td></tr>
+
+  <!-- Outreach -->
+  <tr><td style="padding:6px 14px;border:1px solid #CBC7D1;border-top:none;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;">Outreach Events / Visitors</span><br>
+    <span style="font-size:12px;color:#5a6a7a;font-style:italic;">{{ outreach_note }}</span>
+  </td></tr>
+
+  <!-- Transports -->
+  <tr><td style="background-color:#052C47;padding:7px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#ffffff;text-transform:uppercase;letter-spacing:0.6px;">Transports &mdash; Pending: {{ summary.pending_count }} &nbsp;|&nbsp; Completed: {{ completed_total }} &nbsp;|&nbsp; System Misses: {{ miss_total }}</span>
+  </td></tr>
+
+  <!-- Pending -->
+  <tr><td style="border:1px solid #CBC7D1;border-top:none;padding:8px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Pending</span>
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;border-collapse:collapse;border:1px solid #CBC7D1;">
+      <tr style="background:#E6E6E6;">
+        <th style="text-align:center;padding:5px 8px;font-size:11px;color:#052C47;border:1px solid #CBC7D1;width:30px;">#</th>
+        <th style="text-align:left;padding:5px 8px;font-size:11px;color:#052C47;border:1px solid #CBC7D1;">Call Type</th>
+        <th style="text-align:left;padding:5px 8px;font-size:11px;color:#052C47;border:1px solid #CBC7D1;">Asset</th>
+        <th style="text-align:left;padding:5px 8px;font-size:11px;color:#052C47;border:1px solid #CBC7D1;">Status</th>
+        <th style="text-align:left;padding:5px 8px;font-size:11px;color:#052C47;border:1px solid #CBC7D1;">Location</th>
+      </tr>
+      {% for pt in pending_transports %}
+      <tr style="background:{% cycle '#ffffff' '#F8F8FA' %};">
+        <td style="padding:5px 8px;font-size:11px;color:#888;text-align:center;border:1px solid #CBC7D1;">{{ forloop.counter }}</td>
+        <td style="padding:5px 8px;font-size:12px;border:1px solid #CBC7D1;">{{ pt.call_type|default:"&mdash;" }}</td>
+        <td style="padding:5px 8px;font-size:12px;border:1px solid #CBC7D1;">{{ pt.asset|default:"&mdash;" }}</td>
+        <td style="padding:5px 8px;font-size:12px;border:1px solid #CBC7D1;">{{ pt.status|default:"&mdash;" }}</td>
+        <td style="padding:5px 8px;font-size:12px;border:1px solid #CBC7D1;">{{ pt.location|default:"&mdash;" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="font-size:11px;color:#888;font-style:italic;padding:6px 8px;border:1px solid #CBC7D1;">None</td></tr>
+      {% endfor %}
+      {% resetcycle %}
+    </table>
+  </td></tr>
+
+  <!-- Completed by base -->
+  <tr><td style="border:1px solid #CBC7D1;border-top:none;padding:8px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Completed by Base</span>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #CBC7D1;">
+      <tr>
+        <td style="border:1px solid #CBC7D1;background:#F8F8FA;padding:6px 8px;font-size:11px;font-weight:bold;color:#5a6a7a;text-align:left;width:52px;"></td>
+        {% for row in base_counts %}
+        <td style="border:1px solid #CBC7D1;background:#E6E6E6;padding:6px 4px;font-size:11px;color:#052C47;font-weight:bold;text-align:center;">{{ row.get_base_display }}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td style="border:1px solid #CBC7D1;background:#F8F8FA;padding:6px 8px;font-size:11px;font-weight:bold;color:#5a6a7a;text-align:left;">GCCT</td>
+        {% for row in base_counts %}
+        <td style="border:1px solid #CBC7D1;padding:6px 4px;font-size:12px;color:#5a6a7a;text-align:center;background:#ffffff;">{{ row.gcct }}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td style="border:1px solid #CBC7D1;background:#F8F8FA;padding:6px 8px;font-size:11px;font-weight:bold;color:#5a6a7a;text-align:left;">RW</td>
+        {% for row in base_counts %}
+        <td style="border:1px solid #CBC7D1;padding:6px 4px;font-size:12px;color:#5a6a7a;text-align:center;background:#ffffff;">{{ row.rw }}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td style="border:1px solid #CBC7D1;background:#F8F8FA;padding:6px 8px;font-size:11px;font-weight:bold;color:#052C47;text-align:left;">Total</td>
+        {% for row in base_counts %}
+        <td style="border:1px solid #CBC7D1;padding:6px 4px;font-size:13px;color:#052C47;font-weight:bold;text-align:center;background:#E6E6E6;">{{ row.total }}</td>
+        {% endfor %}
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- System Misses -->
+  <tr><td style="border:1px solid #CBC7D1;border-top:none;padding:8px 14px;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">System Misses</span>
+    <table width="60%" cellpadding="0" cellspacing="0">
+      {% for row in miss_counts %}
+      <tr style="background:{% cycle '#ffffff' '#E6E6E6' %};">
+        <td style="font-size:12px;color:#5a6a7a;padding:3px 8px;border-bottom:1px solid #CBC7D1;">{{ row.label|default:"Other" }}</td>
+        <td style="font-size:12px;font-weight:bold;padding:3px 8px;border-bottom:1px solid #CBC7D1;text-align:right;">{{ row.count }}</td>
+      </tr>
+      {% endfor %}
+      {% resetcycle %}
+      <tr style="font-weight:bold;border-top:1px solid #CBC7D1;">
+        <td style="font-size:12px;color:#052C47;padding:4px 8px;">Total</td>
+        <td style="font-size:12px;color:#052C47;padding:4px 8px;text-align:right;">{{ miss_total }}</td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Complex Calls -->
+  <tr><td style="padding:6px 14px;border:1px solid #CBC7D1;border-top:none;border-radius:0 0 6px 6px;">
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;">Complex / Complicated Logistical Calls</span><br>
+    <span style="font-size:12px;">{{ summary.complex_calls|default:"None"|linebreaksbr }}</span>
+  </td></tr>
+
+</table>
+</body>
+</html>

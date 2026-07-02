@@ -1,0 +1,31 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Copy report HTML — {{ report.report_date|date:"M j, Y" }}{% endblock %}
+{% block page_subtitle %}Fallback for manual sending: copy the HTML below and paste it into an Outlook message (Insert → attach as text, or paste into a signature-less HTML editor).{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card">
+  <div class="ch-card-header light">Email HTML</div>
+  <div class="ch-card-body">
+    <div style="display:flex; gap:10px; margin-bottom:8px;">
+      <button type="button" class="ch-btn ch-btn-secondary" onclick="copyHtml()">Copy to clipboard</button>
+      <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:report_preview' date_str=report.report_date|date:'Y-m-d' %}" target="_blank" rel="noopener">Open preview</a>
+      <a class="ch-btn ch-btn-outline" href="{% url 'crew_hub:report_detail' date_str=report.report_date|date:'Y-m-d' %}">← Back to report</a>
+    </div>
+    <div id="copy_status" class="ch-note" style="display:none; color:#0F6E56; margin-bottom:6px;">Copied.</div>
+    <textarea id="email_html" readonly style="width:100%; height:340px; font-family:monospace; font-size:11px; border:1px solid #CBC7D1; border-radius:4px; padding:8px;">{{ email_html }}</textarea>
+  </div>
+</div>
+
+<script>
+function copyHtml() {
+  var ta = document.getElementById('email_html');
+  ta.select();
+  navigator.clipboard.writeText(ta.value).then(function() {
+    var s = document.getElementById('copy_status');
+    s.style.display = 'block';
+    setTimeout(function(){ s.style.display = 'none'; }, 4000);
+  });
+}
+</script>
+{% endblock %}

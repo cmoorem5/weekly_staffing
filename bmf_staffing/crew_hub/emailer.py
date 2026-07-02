@@ -48,6 +48,8 @@ def build_report_context(report: DailyReport) -> dict:
         ]
         for column in shifts.COMM_SEAT_COLUMNS
     ]
+    # Email layout pairs the two columns row by row (D|N, D-2|N-2, ...).
+    comm_pairs = list(zip(*comm_columns))
 
     vehicles = {"RW": [], "GR": []}
     for entry in report.vehicle_entries.all():
@@ -81,6 +83,7 @@ def build_report_context(report: DailyReport) -> dict:
         "base_sections": base_sections,
         "extras": list(report.extra_entries.all()),
         "comm_columns": comm_columns,
+        "comm_pairs": comm_pairs,
         "vehicles_rw": vehicles.get("RW", []),
         "vehicles_gr": vehicles.get("GR", []),
         "sick_entries": sick,
