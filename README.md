@@ -167,6 +167,47 @@ See **`bmf_staffing/README.md`** for features and **`bmf_staffing/bmf_staffing/s
 
 **Manager report** (`/manager-shifts/`): line-shift counts vs the 52-shift FY minimum plus **AOC day** totals per manager. AOC cells on manager roster rows in the schedule Excel are stored on import (`event_type=aoc`) and excluded from CEO clinical aggregates. Re-import a week to backfill AOC history.
 
+## Crew Hub (AOC Daily Report + schedulers)
+
+**Crew Hub** (`/hub/`) replaces the SharePoint / Power Automate AOC Daily
+Report workflow and adds real scheduling for the pieces we own:
+
+- **Comm Center schedule** (`/hub/comm/`) — month calendar; assign a person
+  to each seat (D, D-2, S, S-2, S-3, N, N-2, P, P-2, Orientee/Extra) per day,
+  with an optional repeat-through date for building rotations.
+- **Duty officer rotation** (`/hub/duty/`) — AOC, AAOC, MDOC, PediDOC, ITOC,
+  BPM by date, same calendar treatment.
+- **Vehicle status board** (`/hub/vehicles/`) — live fleet status that
+  carries forward day to day, with a change log. Keywords color the entry:
+  `OOS` red, `INIS` orange, `Primary` green.
+- **AOC Daily Report** (`/hub/report/`) — one report per day. Opening a date
+  pre-fills duty officers, Comm Center, and vehicles from the schedules
+  above and seeds the full crew shift skeleton (names typed daily; the crew
+  schedule itself still lives in the SharePoint Excel and the weekly import
+  used for KPIs is unchanged). Save drafts, preview exactly what the email
+  will look like, then **Submit & email**. Submitted reports lock; reopening
+  requires the `crew_hub.reopen_report` permission and is audit-logged.
+
+**Setup:** copy `.env.example` to `.env` (gitignored) and adjust. With no
+`.env`, dev defaults apply and email uses the **console backend** (prints to
+the runserver terminal — nothing is sent). For real sends set
+`DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, the
+SMTP variables, and `AOC_REPORT_RECIPIENTS` (comma-separated). If a send
+fails the report stays submitted and a **Copy HTML** fallback lets you paste
+the report into Outlook.
+
+Crew Hub pages require sign-in (Django auth; create users with
+`python manage.py createsuperuser`). **Azure AD SSO and any deployment are
+deferred pending IT governance approval** — TODO stubs mark the swap points.
+
+```bash
+# demo data with fake names (never touches submitted reports)
+python manage.py seed_aoc_demo --date 2026-07-02
+
+# run the Crew Hub test suite
+python manage.py test crew_hub
+```
+
 ## GitHub
 
 **Clone and run:** create a virtual environment, install **`requirements.txt`**, and run **`python -m staffing_tool init-db`** (or copy an existing `staffing.db`) before using the CLI or dashboard.

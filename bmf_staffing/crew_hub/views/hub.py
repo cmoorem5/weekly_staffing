@@ -25,9 +25,7 @@ def hub_home(request):
 
     comm_by_seat = {
         a.seat: a.name
-        for a in CommShiftAssignment.objects.filter(date=today).select_related(
-            "member"
-        )
+        for a in CommShiftAssignment.objects.filter(date=today).select_related("member")
     }
     comm_filled = sum(1 for code in comm_by_seat.values() if code)
     comm_rows = [

@@ -157,9 +157,7 @@ EMAIL_USE_TLS = os.environ.get("DJANGO_EMAIL_USE_TLS", "true").lower() in (
     "true",
     "yes",
 )
-DEFAULT_FROM_EMAIL = os.environ.get(
-    "DJANGO_DEFAULT_FROM_EMAIL", "aoc-report@localhost"
-)
+DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL", "aoc-report@localhost")
 
 # Comma-separated recipient list for the AOC Daily Report email.
 CREW_HUB_REPORT_RECIPIENTS = [
@@ -169,6 +167,4 @@ CREW_HUB_REPORT_RECIPIENTS = [
 ]
 
 # External Equipment OOS / MISS dashboard link shown on the report.
-CREW_HUB_EQUIPMENT_DASHBOARD_URL = os.environ.get(
-    "AOC_EQUIPMENT_DASHBOARD_URL", ""
-)
+CREW_HUB_EQUIPMENT_DASHBOARD_URL = os.environ.get("AOC_EQUIPMENT_DASHBOARD_URL", "")

@@ -118,9 +118,7 @@ class Vehicle(models.Model):
     """Fleet vehicle with its live status (carries forward day to day)."""
 
     identifier = models.CharField(max_length=16, unique=True)
-    category = models.CharField(
-        max_length=2, choices=shifts.VEHICLE_CATEGORY_CHOICES
-    )
+    category = models.CharField(max_length=2, choices=shifts.VEHICLE_CATEGORY_CHOICES)
     display_order = models.PositiveSmallIntegerField(default=0)
     active = models.BooleanField(default=True)
     current_status = models.CharField(max_length=128, blank=True, default="")
@@ -329,9 +327,7 @@ class VehicleStatusEntry(models.Model):
         DailyReport, on_delete=models.CASCADE, related_name="vehicle_entries"
     )
     vehicle_id = models.CharField(max_length=16)
-    category = models.CharField(
-        max_length=2, choices=shifts.VEHICLE_CATEGORY_CHOICES
-    )
+    category = models.CharField(max_length=2, choices=shifts.VEHICLE_CATEGORY_CHOICES)
     status = models.CharField(max_length=128, blank=True, default="")
 
     class Meta:
@@ -366,9 +362,7 @@ class TransportSummary(models.Model):
 
     @property
     def completed_total(self) -> int:
-        return sum(
-            row.gcct + row.rw for row in self.report.transport_base_counts.all()
-        )
+        return sum(row.gcct + row.rw for row in self.report.transport_base_counts.all())
 
 
 class TransportBaseCount(models.Model):
@@ -462,4 +456,6 @@ class ReportAuditLog(models.Model):
         ordering = ["-timestamp"]
 
     def __str__(self) -> str:
-        return f"{self.report.report_date} {self.action} @ {self.timestamp:%Y-%m-%d %H:%M}"
+        return (
+            f"{self.report.report_date} {self.action} @ {self.timestamp:%Y-%m-%d %H:%M}"
+        )

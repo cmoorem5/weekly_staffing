@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db import transaction
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from .. import shifts
@@ -247,8 +247,7 @@ def report_reopen(request, date_str):
         reopen_report(report, request.user)
         messages.success(
             request,
-            f"Report for {report.report_date} reopened for editing "
-            "(event logged).",
+            f"Report for {report.report_date} reopened for editing (event logged).",
         )
     return redirect("crew_hub:report_detail", date_str=date_str)
 

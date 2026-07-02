@@ -382,7 +382,7 @@
       <div class="container-fluid">
         <a class="navbar-brand fw-semibold" href="{% url 'home' %}">
           <img src="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}" alt="Boston MedFlight" class="bmf-logo-nav">
-          <span>Staffing</span>
+          <span>Crew Hub</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
                 aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
@@ -392,6 +392,21 @@
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
             <li class="nav-item">
               <a class="nav-link{% if request.resolver_match.url_name == 'home' %} active{% endif %}" href="{% url 'home' %}">Home</a>
+            </li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle{% if request.path|slice:':5' == '/hub/' %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Crew Hub
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item fw-semibold" href="{% url 'crew_hub:hub_home' %}">Today at a glance</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'crew_hub:report_today' %}">AOC daily report</a></li>
+                <li><a class="dropdown-item" href="{% url 'crew_hub:report_list' %}">Past reports</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'crew_hub:comm_month' %}">Comm Center schedule</a></li>
+                <li><a class="dropdown-item" href="{% url 'crew_hub:duty_month' %}">Duty officer rotation</a></li>
+                <li><a class="dropdown-item" href="{% url 'crew_hub:vehicle_board' %}">Vehicle status board</a></li>
+              </ul>
             </li>
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle{% if request.path == '/weeks/' or '/week/' in request.path or '/import-schedule/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">

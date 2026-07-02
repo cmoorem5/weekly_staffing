@@ -31,9 +31,7 @@ def vehicle_board(request):
             messages.info(request, "No vehicle status changes.")
         return redirect("crew_hub:vehicle_board")
 
-    recent_logs = VehicleStatusLog.objects.select_related(
-        "vehicle", "changed_by"
-    )[:15]
+    recent_logs = VehicleStatusLog.objects.select_related("vehicle", "changed_by")[:15]
     return render(
         request,
         "crew_hub/vehicle_board.html",

@@ -78,9 +78,7 @@ def comm_month(request):
             "cells": day_cells,
             "nav": month_nav(year, month),
             "today": local_today(),
-            "seat_total": len(
-                [s for s in shifts.COMM_SEATS if s.code != "EXTRA"]
-            ),
+            "seat_total": len([s for s in shifts.COMM_SEATS if s.code != "EXTRA"]),
             "members": CommStaffMember.objects.filter(active=True),
             "selected_member": member_id,
         },
@@ -156,7 +154,9 @@ def comm_staff(request):
             if name:
                 _, created = CommStaffMember.objects.get_or_create(name=name)
                 if created:
-                    messages.success(request, f"Added {name} to the Comm Center roster.")
+                    messages.success(
+                        request, f"Added {name} to the Comm Center roster."
+                    )
                 else:
                     messages.info(request, f"{name} is already on the roster.")
         elif action == "toggle":
@@ -204,9 +204,7 @@ def duty_month(request):
         roles = {a.role for a in filled}
         day_cells[day] = {
             "filled": len(roles),
-            "names": [
-                f"{shifts.DUTY_ROLE_LABELS[a.role]}: {a.name}" for a in filled
-            ],
+            "names": [f"{shifts.DUTY_ROLE_LABELS[a.role]}: {a.name}" for a in filled],
             "mine": False,
         }
 

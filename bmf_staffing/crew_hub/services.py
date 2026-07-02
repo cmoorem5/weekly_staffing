@@ -77,7 +77,9 @@ def seed_report(report: DailyReport) -> None:
 
     comm_names = _comm_names_for(report.report_date)
     CommCenterEntry.objects.bulk_create(
-        CommCenterEntry(report=report, seat=seat.code, name=comm_names.get(seat.code, ""))
+        CommCenterEntry(
+            report=report, seat=seat.code, name=comm_names.get(seat.code, "")
+        )
         for seat in shifts.COMM_SEATS
     )
 
