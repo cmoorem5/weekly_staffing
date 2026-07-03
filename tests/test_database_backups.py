@@ -54,9 +54,7 @@ class BackupHelperTests(unittest.TestCase):
             good = archive / "staffing_backup_20250101T000000Z.db"
             good.write_text("data")
             self.assertIsNotNone(_safe_archive_backup_path(archive, good.name))
-            self.assertIsNone(
-                _safe_archive_backup_path(archive, "../staffing.db")
-            )
+            self.assertIsNone(_safe_archive_backup_path(archive, "../staffing.db"))
             self.assertIsNone(_safe_archive_backup_path(archive, "missing.db"))
 
 

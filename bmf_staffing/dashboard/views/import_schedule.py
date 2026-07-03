@@ -174,7 +174,7 @@ def import_schedule(request):
                 messages.info(
                     request,
                     format_html(
-                        'Safety backup created before this import. '
+                        "Safety backup created before this import. "
                         '<a class="alert-link" href="{}">View backups</a>.',
                         reverse("database_backups"),
                     ),
