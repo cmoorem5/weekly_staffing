@@ -28,6 +28,15 @@ class DutyOfficer(models.Model):
     name = models.CharField(max_length=128, unique=True)
     active = models.BooleanField(default=True)
     notes = models.CharField(max_length=256, blank=True, default="")
+    # Linked login: unlocks "My schedule", time-off requests, and
+    # notifications for this person.
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="duty_profile",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -108,6 +117,15 @@ class CommStaffMember(models.Model):
     name = models.CharField(max_length=128, unique=True)
     active = models.BooleanField(default=True)
     notes = models.CharField(max_length=256, blank=True, default="")
+    # Linked login: unlocks "My schedule", time-off requests, and
+    # notifications for this person.
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="comm_profile",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -607,3 +625,87 @@ class ReportAuditLog(models.Model):
         return (
             f"{self.report.report_date} {self.action} @ {self.timestamp:%Y-%m-%d %H:%M}"
         )
+
+
+# ---------------------------------------------------------------------
+# Self-service: time off and notifications
+# ---------------------------------------------------------------------
+
+
+class TimeOffRequest(models.Model):
+    """Staff-submitted time-off request with manager approval workflow."""
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_DENIED = "denied"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_DENIED, "Denied"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="time_off_requests",
+    )
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.CharField(max_length=256, blank=True, default="")
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="decided_time_off_requests",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    manager_note = models.CharField(max_length=256, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.user.get_username()} {self.start_date}–{self.end_date} "
+            f"({self.status})"
+        )
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status == self.STATUS_PENDING
+
+    def person_names(self) -> list[str]:
+        """Display names of linked comm/duty profiles (for conflict checks)."""
+        names = []
+        comm = getattr(self.user, "comm_profile", None)
+        duty = getattr(self.user, "duty_profile", None)
+        if comm:
+            names.append(comm.name)
+        if duty:
+            names.append(duty.name)
+        return names or [self.user.get_username()]
+
+
+class Notification(models.Model):
+    """In-app notification shown under the bell in the Crew Hub nav."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="crew_hub_notifications",
+    )
+    message = models.CharField(max_length=256)
+    url = models.CharField(max_length=256, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    read = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"→ {self.user.get_username()}: {self.message[:50]}"

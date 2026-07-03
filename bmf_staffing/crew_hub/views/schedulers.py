@@ -178,11 +178,53 @@ def comm_day(request, date_str):
     )
 
 
+def _linkable_users():
+    from django.contrib.auth.models import User
+
+    return User.objects.filter(is_active=True).order_by("username")
+
+
+def _link_user(request, person) -> None:
+    """Attach/detach a login to a roster person (action == 'link')."""
+    from django.contrib.auth.models import User
+
+    user_raw = request.POST.get("user", "").strip()
+    if not user_raw:
+        person.user = None
+        person.save(update_fields=["user"])
+        messages.success(request, f"Unlinked login from {person.name}.")
+        return
+    user = User.objects.filter(pk=user_raw if user_raw.isdigit() else None).first()
+    if user is None:
+        messages.error(request, "Unknown user.")
+        return
+    already = type(person).objects.filter(user=user).exclude(pk=person.pk).first()
+    if already:
+        messages.error(
+            request, f"{user.get_username()} is already linked to {already.name}."
+        )
+        return
+    person.user = user
+    person.save(update_fields=["user"])
+    messages.success(
+        request,
+        f"Linked {person.name} to login “{user.get_username()}” — they now "
+        "get My Schedule, time-off requests, and notifications.",
+    )
+
+
 @login_required
 def comm_staff(request):
     if request.method == "POST":
         if not can_manage_schedules(request.user):
             messages.error(request, PERM_DENIED_MSG)
+            return redirect("crew_hub:comm_staff")
+        if request.POST.get("action") == "link":
+            member = CommStaffMember.objects.filter(
+                pk=request.POST.get("pk") or None
+            ).first()
+            if member:
+                _link_user(request, member)
             return redirect("crew_hub:comm_staff")
         action = request.POST.get("action", "add")
         if action == "add":
@@ -210,9 +252,11 @@ def comm_staff(request):
         "crew_hub/roster.html",
         {
             "title": "Comm Center roster",
-            "people": CommStaffMember.objects.all(),
+            "people": CommStaffMember.objects.select_related("user"),
             "back_url_name": "crew_hub:comm_month",
             "back_label": "Comm Center schedule",
+            "users": _linkable_users(),
+            "can_manage": can_manage_schedules(request.user),
         },
     )
 
@@ -357,6 +401,13 @@ def duty_roster(request):
         if not can_manage_schedules(request.user):
             messages.error(request, PERM_DENIED_MSG)
             return redirect("crew_hub:duty_roster")
+        if request.POST.get("action") == "link":
+            officer = DutyOfficer.objects.filter(
+                pk=request.POST.get("pk") or None
+            ).first()
+            if officer:
+                _link_user(request, officer)
+            return redirect("crew_hub:duty_roster")
         action = request.POST.get("action", "add")
         if action == "add":
             name = request.POST.get("name", "").strip()
@@ -381,8 +432,10 @@ def duty_roster(request):
         "crew_hub/roster.html",
         {
             "title": "Duty officer roster",
-            "people": DutyOfficer.objects.all(),
+            "people": DutyOfficer.objects.select_related("user"),
             "back_url_name": "crew_hub:duty_month",
             "back_label": "Duty rotation",
+            "users": _linkable_users(),
+            "can_manage": can_manage_schedules(request.user),
         },
     )

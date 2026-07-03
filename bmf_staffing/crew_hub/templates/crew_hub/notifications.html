@@ -1,0 +1,32 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Notifications{% endblock %}
+{% block page_subtitle %}Schedule changes and time-off updates that concern you.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card" style="max-width:680px;">
+  <div class="ch-card-header light">
+    Latest
+    {% if crew_hub_unread %}<span style="color:#C12126;">({{ crew_hub_unread }} unread)</span>{% endif %}
+  </div>
+  <div class="ch-card-body">
+    {% if items %}
+    <form method="post" action="{% url 'crew_hub:notifications_read' %}" style="margin-bottom:10px;" data-no-loading>
+      {% csrf_token %}
+      <button type="submit" class="ch-btn ch-btn-outline" style="font-size:12px; padding:4px 12px;">Mark all read</button>
+    </form>
+    {% for n in items %}
+    <div style="border-bottom:1px solid #f0f0f0; padding:7px 0; {% if not n.read %}background:#F7FAFF;{% endif %}">
+      <div style="font-size:12px; {% if not n.read %}font-weight:bold; color:#052C47;{% endif %}">
+        {% if not n.read %}<span style="color:#2A4492;">●</span>{% endif %}
+        {{ n.message }}
+      </div>
+      <div class="ch-note">{{ n.created_at|date:"D, M j, H:i" }}{% if n.url %} · <a href="{{ n.url }}" style="color:#2A4492;">open →</a>{% endif %}</div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <span class="ch-note">Nothing yet — you'll see schedule changes and time-off decisions here.</span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -4,7 +4,7 @@
 {% block page_subtitle %}People available for scheduling. Deactivated people keep their history but leave the pickers.{% endblock %}
 
 {% block hub_content %}
-<div class="ch-card" style="max-width: 560px;">
+<div class="ch-card" style="max-width: 720px;">
   <div class="ch-card-header light">{{ title }}</div>
   <div class="ch-card-body">
     <form method="post" style="display:flex; gap:8px; margin-bottom:12px;" data-no-loading>
@@ -15,9 +15,32 @@
     </form>
 
     <table style="width:100%;">
+      <tr>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Name</td>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Linked login</td>
+        <td></td>
+      </tr>
       {% for person in people %}
       <tr style="border-bottom: 1px solid #f0f0f0;">
         <td style="font-size:12px; padding:5px 8px 5px 0; {% if not person.active %}color:#999; text-decoration:line-through;{% endif %}">{{ person.name }}</td>
+        <td style="padding:3px 8px 3px 0;">
+          {% if can_manage %}
+          <form method="post" style="display:flex; gap:4px;" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="link">
+            <input type="hidden" name="pk" value="{{ person.pk }}">
+            <select class="ch-select" name="user" style="font-size:11px;">
+              <option value="">— no login —</option>
+              {% for u in users %}
+                <option value="{{ u.pk }}" {% if person.user_id == u.pk %}selected{% endif %}>{{ u.get_username }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 8px; font-size:11px;">Save</button>
+          </form>
+          {% else %}
+          <span class="ch-note">{% if person.user %}{{ person.user.get_username }}{% else %}—{% endif %}</span>
+          {% endif %}
+        </td>
         <td style="width:110px; text-align:right; padding:3px 0;">
           <form method="post" data-no-loading>
             {% csrf_token %}
@@ -30,9 +53,12 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td class="ch-note" style="padding:6px 0;">No one on the roster yet — add names above.</td></tr>
+      <tr><td class="ch-note" style="padding:6px 0;" colspan="3">No one on the roster yet — add names above.</td></tr>
       {% endfor %}
     </table>
+    {% if can_manage %}
+    <div class="ch-note" style="margin-top:8px;">Linking a login gives that person “My schedule”, self-service time-off requests, and notifications.</div>
+    {% endif %}
 
     <div style="margin-top:12px;">
       <a href="{% url back_url_name %}" style="font-size:12px; color:#2A4492;">← Back to {{ back_label }}</a>

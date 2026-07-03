@@ -28,8 +28,17 @@ from ..models import (
     DutyOfficer,
     DutyRotation,
 )
+from ..notify import assignment_owner, notify
 from ..services import apply_duty_rotations_for_range, apply_rotations_for_range
 from .helpers import can_manage_schedules
+
+
+def _notify_owner(request, assignment, message: str) -> None:
+    """Tell the linked login about a change a manager made to their day."""
+    owner = assignment_owner(assignment)
+    if owner is not None and owner.pk != request.user.pk:
+        notify(owner, message, url="/hub/me/")
+
 
 PERM_DENIED_MSG = (
     "You need schedule-manager access to make changes. Ask an admin to add "
@@ -278,6 +287,12 @@ def _set_work_type(request, model, pk):
         return JsonResponse({"ok": False, "error": "Unknown work type."}, status=400)
     assignment.work_type = work_type
     assignment.save(update_fields=["work_type"])
+    _notify_owner(
+        request,
+        assignment,
+        f"Your {assignment.date} shift was marked "
+        f"{assignment.get_work_type_display()} by {request.user.get_username()}.",
+    )
     return JsonResponse(
         {"ok": True, "work_type": work_type, "label": assignment.name_with_tag}
     )
@@ -287,6 +302,12 @@ def _remove(request, model, pk):
     assignment, error = _get_or_404_json(model, pk, request)
     if error:
         return error
+    _notify_owner(
+        request,
+        assignment,
+        f"Your {assignment.date} shift was removed from the schedule "
+        f"by {request.user.get_username()}.",
+    )
     assignment.delete()
     return JsonResponse({"ok": True})
 
@@ -332,9 +353,28 @@ def _move(request, model, pk, slot_field: str):
             assignment.save(update_fields=["date"])
             occupant.date = source_date
             occupant.save(update_fields=["date"])
+            actor = request.user.get_username()
+            _notify_owner(
+                request,
+                assignment,
+                f"Your shift moved from {source_date} to {target} "
+                f"(swap made by {actor}).",
+            )
+            _notify_owner(
+                request,
+                occupant,
+                f"Your shift moved from {target} to {source_date} "
+                f"(swap made by {actor}).",
+            )
             return JsonResponse({"ok": True, "result": "swapped"})
         assignment.date = target
         assignment.save(update_fields=["date"])
+        _notify_owner(
+            request,
+            assignment,
+            f"Your shift moved from {source_date} to {target} "
+            f"by {request.user.get_username()}.",
+        )
     return JsonResponse({"ok": True, "result": "moved"})
 
 

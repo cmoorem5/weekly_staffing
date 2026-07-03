@@ -67,6 +67,10 @@
     <a href="{% url 'crew_hub:duty_month' %}" class="{% if url_name == 'duty_month' or url_name == 'duty_day' or url_name == 'duty_roster' %}active{% endif %}">Duty officers</a>
     <a href="{% url 'crew_hub:vehicle_board' %}" class="{% if url_name == 'vehicle_board' %}active{% endif %}">Vehicles</a>
     <a href="{% url 'crew_hub:hours_report' %}" class="{% if url_name == 'hours_report' %}active{% endif %}">Hours / payroll</a>
+    <a href="{% url 'crew_hub:my_schedule' %}" class="{% if url_name == 'my_schedule' %}active{% endif %}">My schedule</a>
+    <a href="{% url 'crew_hub:notifications' %}" class="{% if url_name == 'notifications' %}active{% endif %}" title="Notifications" style="position:relative;">
+      🔔{% if crew_hub_unread %}<span style="background:#C12126; color:#fff; border-radius:999px; font-size:9px; padding:1px 5px; margin-left:3px; vertical-align:top;">{{ crew_hub_unread }}</span>{% endif %}
+    </a>
     {% endwith %}
   </div>
 

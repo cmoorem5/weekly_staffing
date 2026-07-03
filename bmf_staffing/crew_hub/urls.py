@@ -22,6 +22,9 @@ from .views import (
     hours_report,
     hours_report_csv,
     hub_home,
+    my_schedule,
+    notifications,
+    notifications_read,
     report_detail,
     report_html,
     report_list,
@@ -31,6 +34,9 @@ from .views import (
     report_save,
     report_submit,
     report_today,
+    time_off_decide,
+    time_off_manage,
+    time_off_submit,
     vehicle_board,
 )
 
@@ -74,6 +80,13 @@ urlpatterns = [
     # Hours / payroll reporting
     path("reports/hours/", hours_report, name="hours_report"),
     path("reports/hours/csv/", hours_report_csv, name="hours_report_csv"),
+    # Self-service: my schedule, time off, notifications
+    path("me/", my_schedule, name="my_schedule"),
+    path("me/time-off/", time_off_submit, name="time_off_submit"),
+    path("timeoff/", time_off_manage, name="time_off_manage"),
+    path("timeoff/<int:pk>/decide/", time_off_decide, name="time_off_decide"),
+    path("notifications/", notifications, name="notifications"),
+    path("notifications/read/", notifications_read, name="notifications_read"),
     path("duty/<str:date_str>/", duty_day, name="duty_day"),
     # Vehicle status board
     path("vehicles/", vehicle_board, name="vehicle_board"),

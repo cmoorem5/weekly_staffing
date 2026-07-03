@@ -1,4 +1,12 @@
 from .hub import hub_home
+from .me import (
+    my_schedule,
+    notifications,
+    notifications_read,
+    time_off_decide,
+    time_off_manage,
+    time_off_submit,
+)
 from .payroll_views import hours_report, hours_report_csv
 from .report import (
     report_detail,
@@ -49,6 +57,12 @@ __all__ = [
     "duty_rotations_apply",
     "hours_report",
     "hours_report_csv",
+    "my_schedule",
+    "notifications",
+    "notifications_read",
+    "time_off_decide",
+    "time_off_manage",
+    "time_off_submit",
     "duty_day",
     "duty_month",
     "duty_roster",

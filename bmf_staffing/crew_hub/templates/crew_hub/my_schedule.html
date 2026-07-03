@@ -1,0 +1,93 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}My schedule{% endblock %}
+{% block page_subtitle %}Your upcoming shifts through {{ end|date:"F j" }} and your time-off requests.{% endblock %}
+
+{% block hub_content %}
+{% if not linked %}
+  <div class="ch-banner date">
+    Your login isn't linked to a Comm Center or duty officer profile yet, so
+    there's no schedule to show. Ask a schedule manager to link you from the
+    roster page (or Django admin).
+  </div>
+{% else %}
+  <div class="ch-banner date">
+    Signed in as <strong>{{ request.user.get_username }}</strong>
+    {% if comm_profile %} · Comm Center: <strong>{{ comm_profile.name }}</strong>{% endif %}
+    {% if duty_profile %} · Duty officer: <strong>{{ duty_profile.name }}</strong>{% endif %}
+  </div>
+{% endif %}
+
+<div style="display:grid; grid-template-columns: 3fr 2fr; gap:14px; align-items:start;">
+  <div class="ch-card">
+    <div class="ch-card-header">Upcoming shifts ({{ assignments|length }})</div>
+    <div class="ch-card-body">
+      {% if assignments %}
+      <table style="width:100%;">
+        <tr>
+          <td class="ch-label" style="padding:4px 8px 4px 0;">Date</td>
+          <td class="ch-label" style="padding:4px 8px;">Assignment</td>
+          <td class="ch-label" style="padding:4px 8px;">Hours</td>
+          <td class="ch-label" style="padding:4px 0;">Work type</td>
+        </tr>
+        {% for row in assignments %}
+        <tr style="border-bottom:1px solid #f0f0f0; {% if row.date == today %}background:#E8EEF8;{% endif %}">
+          <td style="font-size:12px; padding:5px 8px 5px 0; white-space:nowrap; font-weight:{% if row.date == today %}bold{% else %}normal{% endif %};">{{ row.date|date:"D, M j" }}</td>
+          <td style="font-size:12px; padding:5px 8px; color:#052C47; font-weight:bold;">{{ row.what }}</td>
+          <td style="font-size:11px; color:#5a6a7a; padding:5px 8px;">{{ row.time }}</td>
+          <td style="font-size:12px; padding:5px 0; {% if row.work_type_code == 'sick' %}color:#C12126;{% elif row.work_type_code == 'overtime' %}color:#b35e00;{% elif row.work_type_code == 'swap' %}color:#2A4492;{% endif %}">{{ row.work_type }}{% if row.note %} <span class="ch-note">· {{ row.note }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <span class="ch-note">No upcoming shifts in the next six weeks{% if linked %} — check the month calendars or ask a manager{% endif %}.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="ch-card">
+      <div class="ch-card-header blue">Request time off</div>
+      <div class="ch-card-body">
+        <form method="post" action="{% url 'crew_hub:time_off_submit' %}" data-no-loading>
+          {% csrf_token %}
+          <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <div style="flex:1;">
+              <label class="ch-label">First day</label>
+              <input class="ch-input" type="date" name="start_date" required min="{{ today|date:'Y-m-d' }}">
+            </div>
+            <div style="flex:1;">
+              <label class="ch-label">Last day</label>
+              <input class="ch-input" type="date" name="end_date" required min="{{ today|date:'Y-m-d' }}">
+            </div>
+          </div>
+          <label class="ch-label">Reason (optional)</label>
+          <input class="ch-input" type="text" name="reason" style="margin-bottom:12px;" placeholder="e.g. vacation">
+          <button type="submit" class="ch-btn ch-btn-primary">Submit request</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="ch-card">
+      <div class="ch-card-header light">My requests</div>
+      <div class="ch-card-body">
+        {% for r in my_requests %}
+        <div style="border-bottom:1px solid #f0f0f0; padding:6px 0;">
+          <span style="font-size:12px; font-weight:bold; color:#052C47;">{{ r.start_date|date:"M j" }} – {{ r.end_date|date:"M j, Y" }}</span>
+          {% if r.status == 'pending' %}
+            <span style="font-size:10px; font-weight:bold; color:#b35e00; background:#fdf3e7; border:1px solid #E8761A; border-radius:999px; padding:1px 8px;">Pending</span>
+          {% elif r.status == 'approved' %}
+            <span style="font-size:10px; font-weight:bold; color:#0F6E56; background:#E8F6F1; border:1px solid #9FD4C3; border-radius:999px; padding:1px 8px;">Approved</span>
+          {% else %}
+            <span style="font-size:10px; font-weight:bold; color:#8c1418; background:#fbeced; border:1px solid #C12126; border-radius:999px; padding:1px 8px;">Denied</span>
+          {% endif %}
+          <div class="ch-note">{{ r.reason|default:"—" }}{% if r.manager_note %} · Manager: {{ r.manager_note }}{% endif %}</div>
+        </div>
+        {% empty %}
+        <span class="ch-note">No requests yet.</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

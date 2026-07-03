@@ -188,6 +188,15 @@ Report workflow and adds real scheduling for the pieces we own:
   any date range split by work type (regular / OT / swap / sick, plus duty-day
   counts), with **Summary CSV** (per-employee totals for ADP upload) and
   **Detail CSV** (one row per assignment) exports.
+- **My schedule** (`/hub/me/`) — staff whose login is linked to a roster
+  person (link from the roster pages or admin) see their own upcoming comm
+  and duty shifts and can submit **time-off requests**. Managers review them
+  at `/hub/timeoff/` — approving/denying notifies the requester, and any
+  already-scheduled days inside the window are flagged as conflicts to fix
+  on the calendars (never auto-deleted).
+- **Notifications** (`/hub/notifications/`, bell in the tab bar) — in-app
+  alerts when a manager moves/swaps/re-codes/removes one of your shifts and
+  for time-off submissions and decisions.
 - **Vehicle status board** (`/hub/vehicles/`) — live fleet status that
   carries forward day to day, with a change log. Keywords color the entry:
   `OOS` red, `INIS` orange, `Primary` green.

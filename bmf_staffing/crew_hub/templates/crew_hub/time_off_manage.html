@@ -1,0 +1,57 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Time-off requests{% endblock %}
+{% block page_subtitle %}Approve or deny staff requests. Approving does not change the calendars — conflicts are listed so you can adjust them deliberately.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card">
+  <div class="ch-card-header">Pending ({{ pending|length }})</div>
+  <div class="ch-card-body">
+    {% for item in pending %}
+    <div style="border-bottom:1px solid #f0f0f0; padding:10px 0;">
+      <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:1; min-width:240px;">
+          <span style="font-size:13px; font-weight:bold; color:#052C47;">{{ item.req.user.get_username }}</span>
+          <span style="font-size:12px;"> — {{ item.req.start_date|date:"D, M j" }} to {{ item.req.end_date|date:"D, M j, Y" }}</span>
+          <div class="ch-note">{{ item.req.reason|default:"No reason given" }} · requested {{ item.req.created_at|date:"M j, H:i" }}</div>
+          {% if item.conflicts %}
+          <div style="font-size:11px; color:#C12126; margin-top:4px;">
+            ⚠ {{ item.conflicts|length }} scheduled day(s) in this window:
+            {{ item.conflicts|join:"; " }}
+          </div>
+          {% else %}
+          <div style="font-size:11px; color:#0F6E56; margin-top:4px;">No schedule conflicts.</div>
+          {% endif %}
+        </div>
+        <form method="post" action="{% url 'crew_hub:time_off_decide' pk=item.req.pk %}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;" data-no-loading>
+          {% csrf_token %}
+          <input class="ch-input" type="text" name="manager_note" placeholder="Note to requester (optional)" style="width:220px;">
+          <button type="submit" name="decision" value="approved" class="ch-btn ch-btn-primary" style="padding:5px 14px;">Approve</button>
+          <button type="submit" name="decision" value="denied" class="ch-btn ch-btn-danger" style="padding:5px 14px;"
+                  onclick="return confirm('Deny this request?');">Deny</button>
+        </form>
+      </div>
+    </div>
+    {% empty %}
+    <span class="ch-note">Nothing pending. 🎉</span>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="ch-card">
+  <div class="ch-card-header light">Recently decided</div>
+  <div class="ch-card-body">
+    {% for r in decided %}
+    <div style="border-bottom:1px solid #f0f0f0; padding:6px 0; font-size:12px;">
+      <strong style="color:#052C47;">{{ r.user.get_username }}</strong>
+      {{ r.start_date|date:"M j" }} – {{ r.end_date|date:"M j" }} ·
+      {% if r.status == 'approved' %}<span style="color:#0F6E56; font-weight:bold;">Approved</span>{% else %}<span style="color:#C12126; font-weight:bold;">Denied</span>{% endif %}
+      {% if r.decided_by %} by {{ r.decided_by.get_username }}{% endif %}
+      {% if r.manager_note %}<span class="ch-note"> · {{ r.manager_note }}</span>{% endif %}
+    </div>
+    {% empty %}
+    <span class="ch-note">No decided requests yet.</span>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

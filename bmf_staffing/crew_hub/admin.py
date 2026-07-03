@@ -13,9 +13,11 @@ from .models import (
     DutyRotation,
     ExtraEntry,
     MissCategoryCount,
+    Notification,
     PendingTransport,
     ReportAuditLog,
     SickLateEntry,
+    TimeOffRequest,
     TransportBaseCount,
     TransportSummary,
     Vehicle,
@@ -26,7 +28,7 @@ from .models import (
 
 @admin.register(DutyOfficer)
 class DutyOfficerAdmin(admin.ModelAdmin):
-    list_display = ("name", "active", "notes")
+    list_display = ("name", "user", "active", "notes")
     list_filter = ("active",)
     search_fields = ("name",)
 
@@ -53,9 +55,22 @@ class DutyRotationAdmin(admin.ModelAdmin):
 
 @admin.register(CommStaffMember)
 class CommStaffMemberAdmin(admin.ModelAdmin):
-    list_display = ("name", "active", "notes")
+    list_display = ("name", "user", "active", "notes")
     list_filter = ("active",)
     search_fields = ("name",)
+
+
+@admin.register(TimeOffRequest)
+class TimeOffRequestAdmin(admin.ModelAdmin):
+    list_display = ("user", "start_date", "end_date", "status", "decided_by")
+    list_filter = ("status",)
+    date_hierarchy = "start_date"
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ("user", "message", "read", "created_at")
+    list_filter = ("read",)
 
 
 @admin.register(CommShiftAssignment)
