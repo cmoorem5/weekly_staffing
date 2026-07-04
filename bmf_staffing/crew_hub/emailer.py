@@ -55,16 +55,9 @@ def build_report_context(report: DailyReport) -> dict:
     for entry in report.vehicle_entries.all():
         vehicles.setdefault(entry.category, []).append(entry)
 
-    sick = [
-        e
-        for e in report.sick_late_entries.all()
-        if e.entry_type == e.TYPE_SICK and e.text.strip()
-    ]
-    late = [
-        e
-        for e in report.sick_late_entries.all()
-        if e.entry_type == e.TYPE_LATE and e.text.strip()
-    ]
+    sick_late = [e for e in report.sick_late_entries.all() if e.text.strip()]
+    sick = [e for e in sick_late if e.entry_type == e.TYPE_SICK]
+    late = [e for e in sick_late if e.entry_type == e.TYPE_LATE]
 
     summary = getattr(report, "transport_summary", None)
     base_counts = list(report.transport_base_counts.all())

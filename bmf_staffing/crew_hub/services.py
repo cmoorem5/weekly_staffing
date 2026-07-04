@@ -50,62 +50,27 @@ def _comm_names_for(date: dt.date) -> dict[str, str]:
     }
 
 
-def apply_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
-    """Materialize active Comm rotations into seat assignments.
+def _apply_rotations(
+    rotation_model,
+    assignment_model,
+    person_field: str,
+    slot_field: str,
+    first: dt.date,
+    last: dt.date,
+) -> tuple[int, int]:
+    """Materialize active rotations into assignments for one scheduler.
 
     Returns (created, skipped). Existing assignments always win — a
     rotation never overwrites a manual entry or another rotation's row,
     so re-applying after edits is safe (CrewSense-style behavior).
     """
-    from .models import CommRotation
-
-    rotations = list(CommRotation.objects.filter(active=True).select_related("member"))
+    rotations = list(
+        rotation_model.objects.filter(active=True).select_related(person_field)
+    )
     existing = {
-        (a.date, a.seat)
-        for a in CommShiftAssignment.objects.filter(
-            date__gte=first, date__lte=last
-        ).only("date", "seat")
-    }
-    created = 0
-    skipped = 0
-    to_create = []
-    day = first
-    while day <= last:
-        for rotation in rotations:
-            if not rotation.works_on(day):
-                continue
-            key = (day, rotation.seat)
-            if key in existing:
-                skipped += 1
-                continue
-            existing.add(key)
-            to_create.append(
-                CommShiftAssignment(
-                    date=day,
-                    seat=rotation.seat,
-                    member=rotation.member,
-                    note=rotation.note,
-                )
-            )
-            created += 1
-        day += dt.timedelta(days=1)
-    CommShiftAssignment.objects.bulk_create(to_create)
-    return created, skipped
-
-
-def apply_duty_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
-    """Materialize active duty rotations into role assignments.
-
-    Returns (created, skipped). A day where the role already has any
-    assignment is skipped entirely — existing coverage always wins.
-    """
-    from .models import DutyRotation
-
-    rotations = list(DutyRotation.objects.filter(active=True).select_related("officer"))
-    existing = {
-        (a.date, a.role)
-        for a in DutyAssignment.objects.filter(date__gte=first, date__lte=last).only(
-            "date", "role"
+        (a.date, getattr(a, slot_field))
+        for a in assignment_model.objects.filter(date__gte=first, date__lte=last).only(
+            "date", slot_field
         )
     }
     created = 0
@@ -116,23 +81,44 @@ def apply_duty_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, 
         for rotation in rotations:
             if not rotation.works_on(day):
                 continue
-            key = (day, rotation.role)
+            slot = getattr(rotation, slot_field)
+            key = (day, slot)
             if key in existing:
                 skipped += 1
                 continue
             existing.add(key)
             to_create.append(
-                DutyAssignment(
+                assignment_model(
                     date=day,
-                    role=rotation.role,
-                    officer=rotation.officer,
                     note=rotation.note,
+                    **{
+                        slot_field: slot,
+                        person_field: getattr(rotation, person_field),
+                    },
                 )
             )
             created += 1
         day += dt.timedelta(days=1)
-    DutyAssignment.objects.bulk_create(to_create)
+    assignment_model.objects.bulk_create(to_create)
     return created, skipped
+
+
+def apply_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
+    """Comm Center: rotations -> seat assignments (existing days win)."""
+    from .models import CommRotation
+
+    return _apply_rotations(
+        CommRotation, CommShiftAssignment, "member", "seat", first, last
+    )
+
+
+def apply_duty_rotations_for_range(first: dt.date, last: dt.date) -> tuple[int, int]:
+    """Duty officers: rotations -> role assignments (existing days win)."""
+    from .models import DutyRotation
+
+    return _apply_rotations(
+        DutyRotation, DutyAssignment, "officer", "role", first, last
+    )
 
 
 @transaction.atomic
@@ -198,20 +184,23 @@ def refresh_from_sources(report: DailyReport) -> None:
     or free-text sections. Overwrites the three pulled sections wholesale.
     """
     duty_names = _duty_names_for(report.report_date)
-    for entry in report.duty_entries.all():
+    duty_entries = list(report.duty_entries.all())
+    for entry in duty_entries:
         entry.name = duty_names.get(entry.role, "")
-        entry.save(update_fields=["name"])
+    DutyRosterEntry.objects.bulk_update(duty_entries, ["name"])
 
     comm_names = _comm_names_for(report.report_date)
-    for entry in report.comm_entries.all():
+    comm_entries = list(report.comm_entries.all())
+    for entry in comm_entries:
         entry.name = comm_names.get(entry.seat, "")
-        entry.save(update_fields=["name"])
+    CommCenterEntry.objects.bulk_update(comm_entries, ["name"])
 
     Vehicle.ensure_fleet()
     statuses = {v.identifier: v.current_status for v in Vehicle.objects.all()}
-    for entry in report.vehicle_entries.all():
+    vehicle_entries = list(report.vehicle_entries.all())
+    for entry in vehicle_entries:
         entry.status = statuses.get(entry.vehicle_id, entry.status)
-        entry.save(update_fields=["status"])
+    VehicleStatusEntry.objects.bulk_update(vehicle_entries, ["status"])
 
 
 def submit_report(report: DailyReport, user) -> None:

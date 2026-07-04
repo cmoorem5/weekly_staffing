@@ -26,7 +26,6 @@
   .ch-chip.wt-overtime { background: #fdf3e7; border-color: #E8761A; color: #8a4a05; }
   .ch-chip.mine { outline: 2px solid #2A4492; outline-offset: -2px; }
   .ch-chip.dragging { opacity: .4; }
-  .ch-names { font-size: 10px; color: #5a6a7a; margin-top: 3px; line-height: 1.35; }
   .ch-cal-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
   .ch-legend { display: flex; gap: 10px; align-items: center; font-size: 10px; color: #5a6a7a; margin: 8px 0 0; flex-wrap: wrap; }
   .ch-legend .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 3px; border: 1px solid #CBC7D1; }
@@ -87,11 +86,6 @@
                     <span class="seat">{{ chip.seat }}</span>{{ chip.name }}
                   </div>
                 {% endfor %}
-              {% elif info.names %}
-                <div class="ch-names">
-                  {% for n in info.names|slice:":5" %}{{ n }}<br>{% endfor %}
-                  {% if info.names|length > 5 %}…{% endif %}
-                </div>
               {% endif %}
             </div>
             {% endwith %}

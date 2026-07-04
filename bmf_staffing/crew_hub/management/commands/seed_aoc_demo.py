@@ -16,6 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from crew_hub.models import (
     CommShiftAssignment,
     CommStaffMember,
+    CrewEntry,
     DutyAssignment,
     DutyOfficer,
     MissCategoryCount,
@@ -105,10 +106,8 @@ class Command(BaseCommand):
         except ValueError as exc:
             raise CommandError(f"Invalid --date: {options['date']}") from exc
 
-        for name in DUTY_DEMO.values():
-            DutyOfficer.objects.get_or_create(name=name)
         for role, name in DUTY_DEMO.items():
-            officer = DutyOfficer.objects.get(name=name)
+            officer, _ = DutyOfficer.objects.get_or_create(name=name)
             DutyAssignment.objects.update_or_create(
                 date=date,
                 role=role,
@@ -141,12 +140,11 @@ class Command(BaseCommand):
         if not created:
             refresh_from_sources(report)
 
-        tag_index = 0
-        for entry in report.crew_entries.all():
+        crew_entries = list(report.crew_entries.all())
+        for tag_index, entry in enumerate(crew_entries):
             tag = TAGS[tag_index % len(TAGS)]
-            tag_index += 1
             entry.name = CREW_NAME_BY_POSITION[entry.position].format(tag=tag)
-            entry.save(update_fields=["name"])
+        CrewEntry.objects.bulk_update(crew_entries, ["name"])
         # One confirmed open position to demo the REF flag.
         ref_entry = report.crew_entries.filter(
             base="PYM", shift_code="PG", position="EMT"

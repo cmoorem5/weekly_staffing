@@ -46,9 +46,6 @@
   .ch-banner.date { background: #E8EEF8; border: 1px solid #B8C9E8; color: #052C47; }
   .ch-banner.sent { background: #E8F6F1; border: 1px solid #9FD4C3; color: #0F6E56; }
 
-  .ch-status-oos { color: #C12126 !important; font-weight: bold; }
-  .ch-status-inis { color: #B85C00 !important; font-weight: bold; }
-  .ch-status-primary { color: #0F6E56 !important; }
   input.st-oos { border-color: #C12126; background: #fbeced; color: #C12126; font-weight: bold; }
   input.st-inis { border-color: #B85C00; background: #fdf3e7; color: #b35e00; font-weight: bold; }
   input.st-primary { color: #0F6E56; }
@@ -68,6 +65,9 @@
     <a href="{% url 'crew_hub:vehicle_board' %}" class="{% if url_name == 'vehicle_board' %}active{% endif %}">Vehicles</a>
     <a href="{% url 'crew_hub:hours_report' %}" class="{% if url_name == 'hours_report' %}active{% endif %}">Hours / payroll</a>
     <a href="{% url 'crew_hub:my_schedule' %}" class="{% if url_name == 'my_schedule' %}active{% endif %}">My schedule</a>
+    {% if perms.crew_hub.manage_schedules %}
+    <a href="{% url 'crew_hub:time_off_manage' %}" class="{% if url_name == 'time_off_manage' %}active{% endif %}">Time off</a>
+    {% endif %}
     <a href="{% url 'crew_hub:notifications' %}" class="{% if url_name == 'notifications' %}active{% endif %}" title="Notifications" style="position:relative;">
       🔔{% if crew_hub_unread %}<span style="background:#C12126; color:#fff; border-radius:999px; font-size:9px; padding:1px 5px; margin-left:3px; vertical-align:top;">{{ crew_hub_unread }}</span>{% endif %}
     </a>
@@ -76,4 +76,15 @@
 
   {% block hub_content %}{% endblock %}
 </div>
+
+<script>
+/* Shared keyword coloring for vehicle status inputs (OOS/INIS/Primary). */
+function vehicleColor(el) {
+  var v = el.value.toUpperCase();
+  el.classList.remove('st-oos', 'st-inis', 'st-primary');
+  if (v.indexOf('OOS') !== -1) el.classList.add('st-oos');
+  else if (v.indexOf('INIS') !== -1) el.classList.add('st-inis');
+  else if (v.indexOf('PRIMARY') !== -1) el.classList.add('st-primary');
+}
+</script>
 {% endblock %}

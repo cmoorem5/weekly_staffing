@@ -1,4 +1,5 @@
 {% extends "crew_hub/base.html" %}
+{% load crew_hub_extras %}
 
 {% block page_title %}Hours &amp; payroll report{% endblock %}
 {% block page_subtitle %}Per-person hours from the Comm Center schedule plus duty-day counts, ready to export as CSV for payroll (e.g. ADP upload). Sick days are tracked separately and excluded from worked hours.{% endblock %}
@@ -85,7 +86,7 @@
         <td style="font-size:12px; padding:4px 8px 4px 0; white-space:nowrap;">{{ row.date|date:"D, M j" }}</td>
         <td style="font-size:12px; padding:4px 8px;">{{ row.person }}</td>
         <td style="font-size:12px; padding:4px 8px;">{{ row.assignment }}</td>
-        <td style="font-size:12px; padding:4px 8px; {% if row.work_type == 'Sick leave' %}color:#C12126;{% elif row.work_type == 'Overtime' %}color:#b35e00;{% elif row.work_type == 'Swap' %}color:#2A4492;{% endif %}">{{ row.work_type }}</td>
+        <td style="font-size:12px; padding:4px 8px; {% with c=row.work_type_code|work_type_color %}{% if c %}color:{{ c }};{% endif %}{% endwith %}">{{ row.work_type }}</td>
         <td style="font-size:12px; text-align:right; padding:4px 0;">{{ row.hours|floatformat:2 }}</td>
       </tr>
       {% endfor %}

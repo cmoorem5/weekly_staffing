@@ -185,8 +185,6 @@ FLEET: tuple[tuple[str, str], ...] = (
     ("Med 20", VEHICLE_CATEGORY_GR),
 )
 
-VEHICLE_IDS = [identifier for identifier, _ in FLEET]
-
 
 # --- Transports --------------------------------------------------------
 

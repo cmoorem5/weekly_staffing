@@ -10,10 +10,30 @@ from django.utils import timezone
 
 SCHEDULE_PERM = "crew_hub.manage_schedules"
 
+PERM_DENIED_MSG = (
+    "You need schedule-manager access to make changes. Ask an admin to add "
+    "you to the “Crew Hub Managers” group."
+)
+
 
 def can_manage_schedules(user) -> bool:
     """Schedule-edit gate: superusers and 'Crew Hub Managers' members pass."""
     return user.has_perm(SCHEDULE_PERM)
+
+
+def clamp_int(value, default: int = 0) -> int:
+    """Parse a form value to a non-negative int, falling back on junk."""
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
+    """(first day, last day) of a month."""
+    first = dt.date(year, month, 1)
+    last = (first + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
+    return first, last
 
 
 def parse_date_or_404(date_str: str) -> dt.date:

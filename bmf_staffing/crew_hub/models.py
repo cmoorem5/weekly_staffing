@@ -58,10 +58,12 @@ WORK_TYPE_CHOICES = [
     (WORK_OT, "Overtime"),
 ]
 WORK_TYPE_TAGS = {WORK_SICK: "Sick", WORK_SWAP: "Swap", WORK_OT: "OT"}
+VALID_WORK_TYPES = {code for code, _ in WORK_TYPE_CHOICES}
 
 
-class DutyAssignment(models.Model):
-    """One duty role seat on one date. MDOC may carry two rows (two names)."""
+class AssignmentBase(models.Model):
+    """Shared shape of a scheduled day: free-text fallback name, work-type
+    coding, and note. Subclasses add the date/slot/person fields."""
 
     WORK_REGULAR = WORK_REGULAR
     WORK_SICK = WORK_SICK
@@ -70,11 +72,6 @@ class DutyAssignment(models.Model):
     WORK_TYPE_CHOICES = WORK_TYPE_CHOICES
     WORK_TYPE_TAGS = WORK_TYPE_TAGS
 
-    date = models.DateField(db_index=True)
-    role = models.CharField(max_length=16, choices=shifts.DUTY_ROLE_CHOICES)
-    officer = models.ForeignKey(
-        DutyOfficer, null=True, blank=True, on_delete=models.CASCADE
-    )
     display_name = models.CharField(
         max_length=128,
         blank=True,
@@ -85,6 +82,27 @@ class DutyAssignment(models.Model):
         max_length=16, choices=WORK_TYPE_CHOICES, default=WORK_REGULAR
     )
     note = models.CharField(max_length=256, blank=True, default="")
+
+    class Meta:
+        abstract = True
+
+    @property
+    def name_with_tag(self) -> str:
+        """Name plus a short work-type tag, e.g. 'Comms Test-Alpha (OT)'."""
+        tag = WORK_TYPE_TAGS.get(self.work_type)
+        if self.name and tag:
+            return f"{self.name} ({tag})"
+        return self.name
+
+
+class DutyAssignment(AssignmentBase):
+    """One duty role seat on one date. MDOC may carry two rows (two names)."""
+
+    date = models.DateField(db_index=True)
+    role = models.CharField(max_length=16, choices=shifts.DUTY_ROLE_CHOICES)
+    officer = models.ForeignKey(
+        DutyOfficer, null=True, blank=True, on_delete=models.CASCADE
+    )
 
     class Meta:
         ordering = ["date", "role", "id"]
@@ -101,14 +119,6 @@ class DutyAssignment(models.Model):
     @property
     def name(self) -> str:
         return self.display_name or (self.officer.name if self.officer else "")
-
-    @property
-    def name_with_tag(self) -> str:
-        """Name plus a short work-type tag, e.g. 'Duty Test-Alpha (Swap)'."""
-        tag = WORK_TYPE_TAGS.get(self.work_type)
-        if self.name and tag:
-            return f"{self.name} ({tag})"
-        return self.name
 
 
 class CommStaffMember(models.Model):
@@ -135,31 +145,14 @@ class CommStaffMember(models.Model):
         return self.name
 
 
-class CommShiftAssignment(models.Model):
+class CommShiftAssignment(AssignmentBase):
     """One Comm Center seat on one date."""
-
-    WORK_REGULAR = WORK_REGULAR
-    WORK_SICK = WORK_SICK
-    WORK_SWAP = WORK_SWAP
-    WORK_OT = WORK_OT
-    WORK_TYPE_CHOICES = WORK_TYPE_CHOICES
-    WORK_TYPE_TAGS = WORK_TYPE_TAGS
 
     date = models.DateField(db_index=True)
     seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
     member = models.ForeignKey(
         CommStaffMember, null=True, blank=True, on_delete=models.CASCADE
     )
-    display_name = models.CharField(
-        max_length=128,
-        blank=True,
-        default="",
-        help_text="Free-text name when the person is not in the roster.",
-    )
-    work_type = models.CharField(
-        max_length=16, choices=WORK_TYPE_CHOICES, default=WORK_REGULAR
-    )
-    note = models.CharField(max_length=256, blank=True, default="")
 
     class Meta:
         ordering = ["date", "seat"]
@@ -173,14 +166,6 @@ class CommShiftAssignment(models.Model):
     @property
     def name(self) -> str:
         return self.display_name or (self.member.name if self.member else "")
-
-    @property
-    def name_with_tag(self) -> str:
-        """Name plus a short work-type tag, e.g. 'Comms Test-Alpha (OT)'."""
-        tag = self.WORK_TYPE_TAGS.get(self.work_type)
-        if self.name and tag:
-            return f"{self.name} ({tag})"
-        return self.name
 
 
 class RotationPattern(models.Model):

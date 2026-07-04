@@ -304,14 +304,6 @@
 </form>
 
 <script>
-function vehicleColor(el) {
-  var v = el.value.toUpperCase();
-  el.classList.remove('st-oos','st-inis','st-primary');
-  if (v.indexOf('OOS') !== -1) el.classList.add('st-oos');
-  else if (v.indexOf('INIS') !== -1) el.classList.add('st-inis');
-  else if (v.indexOf('PRIMARY') !== -1) el.classList.add('st-primary');
-}
-
 function refToggle(cb) {
   var input = document.querySelector('input[data-ref-input="' + cb.name + '"]');
   if (input) input.classList.toggle('ref-open', cb.checked);

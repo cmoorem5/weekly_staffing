@@ -11,14 +11,18 @@ from django.shortcuts import redirect, render
 
 from .. import shifts
 from ..models import (
+    VALID_WORK_TYPES,
+    WORK_TYPE_CHOICES,
     CommShiftAssignment,
     CommStaffMember,
     DutyAssignment,
     DutyOfficer,
 )
 from .helpers import (
+    PERM_DENIED_MSG,
     can_manage_schedules,
     local_today,
+    month_bounds,
     month_nav,
     month_weeks,
     parse_date_or_404,
@@ -26,11 +30,6 @@ from .helpers import (
 )
 
 MAX_REPEAT_DAYS = 62  # Guardrail for "apply through" ranges.
-
-PERM_DENIED_MSG = (
-    "You need schedule-manager access to make changes. Ask an admin to add "
-    "you to the “Crew Hub Managers” group."
-)
 
 
 def _repeat_dates(start: dt.date, repeat_until_raw: str) -> list[dt.date]:
@@ -55,8 +54,7 @@ def _repeat_dates(start: dt.date, repeat_until_raw: str) -> list[dt.date]:
 def comm_month(request):
     year, month = parse_month(request)
     weeks = month_weeks(year, month)
-    first = dt.date(year, month, 1)
-    last = (first + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
+    first, last = month_bounds(year, month)
 
     member_id = request.GET.get("member", "")
     assignments = CommShiftAssignment.objects.filter(
@@ -72,24 +70,21 @@ def comm_month(request):
     for day, items in by_day.items():
         filled = [a for a in items if a.name]
         filled.sort(key=lambda a: seat_order.get(a.seat, 99))
-        mine = member_id and any(
-            a.member_id == int(member_id) for a in filled if a.member_id
-        )
+        selected_pk = int(member_id) if member_id.isdigit() else None
+        chips = [
+            {
+                "pk": a.pk,
+                "seat": a.get_seat_display(),
+                "name": a.name,
+                "work_type": a.work_type,
+                "mine": bool(selected_pk and a.member_id == selected_pk),
+            }
+            for a in filled
+        ]
         day_cells[day] = {
             "filled": len([a for a in filled if a.seat != "EXTRA"]),
-            "chips": [
-                {
-                    "pk": a.pk,
-                    "seat": a.get_seat_display(),
-                    "name": a.name,
-                    "work_type": a.work_type,
-                    "mine": bool(
-                        member_id and a.member_id and a.member_id == int(member_id)
-                    ),
-                }
-                for a in filled
-            ],
-            "mine": bool(mine),
+            "chips": chips,
+            "mine": any(chip["mine"] for chip in chips),
         }
 
     return render(
@@ -120,7 +115,7 @@ def comm_day(request, date_str):
             messages.error(request, PERM_DENIED_MSG)
             return redirect("crew_hub:comm_day", date_str=date_str)
         dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
-        valid_work_types = {c for c, _ in CommShiftAssignment.WORK_TYPE_CHOICES}
+        valid_work_types = VALID_WORK_TYPES
         with transaction.atomic():
             for target in dates:
                 for seat in shifts.COMM_SEATS:
@@ -172,6 +167,7 @@ def comm_day(request, date_str):
             "date": date,
             "rows": rows,
             "members": members,
+            "work_type_choices": WORK_TYPE_CHOICES,
             "prev_day": date - dt.timedelta(days=1),
             "next_day": date + dt.timedelta(days=1),
         },
@@ -268,8 +264,7 @@ def comm_staff(request):
 def duty_month(request):
     year, month = parse_month(request)
     weeks = month_weeks(year, month)
-    first = dt.date(year, month, 1)
-    last = (first + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
+    first, last = month_bounds(year, month)
 
     assignments = DutyAssignment.objects.filter(
         date__gte=first, date__lte=last
@@ -327,7 +322,7 @@ def duty_day(request, date_str):
             messages.error(request, PERM_DENIED_MSG)
             return redirect("crew_hub:duty_day", date_str=date_str)
         dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
-        valid_work_types = {c for c, _ in DutyAssignment.WORK_TYPE_CHOICES}
+        valid_work_types = VALID_WORK_TYPES
         with transaction.atomic():
             for target in dates:
                 for role in shifts.DUTY_ROLE_ORDER:
@@ -389,6 +384,7 @@ def duty_day(request, date_str):
             "date": date,
             "rows": rows,
             "officers": officers,
+            "work_type_choices": WORK_TYPE_CHOICES,
             "prev_day": date - dt.timedelta(days=1),
             "next_day": date + dt.timedelta(days=1),
         },

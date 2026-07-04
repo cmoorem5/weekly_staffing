@@ -15,19 +15,14 @@ from dataclasses import dataclass, field
 from . import shifts
 from .models import (
     WORK_OT,
-    WORK_REGULAR,
     WORK_SICK,
     WORK_SWAP,
+    WORK_TYPE_CHOICES,
     CommShiftAssignment,
     DutyAssignment,
 )
 
-WORK_TYPE_LABELS = {
-    WORK_REGULAR: "Regular",
-    WORK_SICK: "Sick leave",
-    WORK_SWAP: "Swap",
-    WORK_OT: "Overtime",
-}
+WORK_TYPE_LABELS = dict(WORK_TYPE_CHOICES)
 
 
 @dataclass
@@ -112,6 +107,7 @@ def build_hours_report(
                 "work_type": WORK_TYPE_LABELS.get(
                     assignment.work_type, assignment.work_type
                 ),
+                "work_type_code": assignment.work_type,
                 "hours": hours if assignment.work_type != WORK_SICK else 0.0,
             }
         )
@@ -137,6 +133,7 @@ def build_hours_report(
                 "work_type": WORK_TYPE_LABELS.get(
                     assignment.work_type, assignment.work_type
                 ),
+                "work_type_code": assignment.work_type,
                 "hours": 0.0,
             }
         )

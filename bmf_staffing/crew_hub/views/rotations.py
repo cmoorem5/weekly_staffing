@@ -16,11 +16,12 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from .. import shifts
 from ..models import (
-    WORK_TYPE_CHOICES,
+    VALID_WORK_TYPES,
     CommRotation,
     CommShiftAssignment,
     CommStaffMember,
@@ -30,20 +31,15 @@ from ..models import (
 )
 from ..notify import assignment_owner, notify
 from ..services import apply_duty_rotations_for_range, apply_rotations_for_range
-from .helpers import can_manage_schedules
+from .helpers import PERM_DENIED_MSG, can_manage_schedules, month_bounds
 
 
 def _notify_owner(request, assignment, message: str) -> None:
     """Tell the linked login about a change a manager made to their day."""
     owner = assignment_owner(assignment)
     if owner is not None and owner.pk != request.user.pk:
-        notify(owner, message, url="/hub/me/")
+        notify(owner, message, url=reverse("crew_hub:my_schedule"))
 
-
-PERM_DENIED_MSG = (
-    "You need schedule-manager access to make changes. Ask an admin to add "
-    "you to the “Crew Hub Managers” group."
-)
 
 WEEKDAY_OPTIONS = [
     (6, "Sun"),
@@ -54,8 +50,6 @@ WEEKDAY_OPTIONS = [
     (4, "Fri"),
     (5, "Sat"),
 ]
-
-VALID_WORK_TYPES = {code for code, _ in WORK_TYPE_CHOICES}
 
 # Everything that differs between the two schedulers, in one place.
 ROTATION_KINDS = {
@@ -73,7 +67,6 @@ ROTATION_KINDS = {
         "title": "Comm Center rotations",
         "person_label": "Staff member",
         "manage_url": "crew_hub:comm_rotations",
-        "apply_url": "crew_hub:comm_rotations_apply",
         "month_path": "/hub/comm/",
         "apply_range": apply_rotations_for_range,
     },
@@ -88,7 +81,6 @@ ROTATION_KINDS = {
         "title": "Duty officer rotations",
         "person_label": "Duty officer",
         "manage_url": "crew_hub:duty_rotations",
-        "apply_url": "crew_hub:duty_rotations_apply",
         "month_path": "/hub/duty/",
         "apply_range": apply_duty_rotations_for_range,
     },
@@ -218,7 +210,7 @@ def _rotation_apply(request, kind: str):
     except ValueError:
         messages.error(request, "Invalid month.")
         return redirect(cfg["month_path"])
-    last = (first + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
+    _, last = month_bounds(first.year, first.month)
 
     created, skipped = cfg["apply_range"](first, last)
     if created:

@@ -44,17 +44,24 @@ def vehicle_status_class(value: str) -> str:
     return f"st-{key}" if key else ""
 
 
+# Work-type accent colors (sick red, overtime orange, swap blue), shared by
+# the hours report, my-schedule, and anywhere else that prints a work type.
+WORK_TYPE_COLORS = {
+    "sick": "#C12126",
+    "overtime": "#b35e00",
+    "swap": "#2A4492",
+}
+
+
+@register.filter
+def work_type_color(code: str) -> str:
+    """Inline color for a work-type code; empty string for regular."""
+    return WORK_TYPE_COLORS.get(code, "")
+
+
 @register.filter
 def get_item(mapping, key):
     """Dictionary lookup by variable key (e.g. calendar day cells)."""
     if mapping is None:
         return None
     return mapping.get(key)
-
-
-@register.filter
-def crew_display(entry) -> str:
-    """Name cell text for a crew entry: the name, or OPEN when REF-flagged."""
-    if entry.ref_flag:
-        return "OPEN"
-    return entry.name or ""

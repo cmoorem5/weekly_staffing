@@ -38,10 +38,9 @@
           </td>
           <td style="padding:4px 0;">
             <select class="ch-select" name="wt_{{ row.role }}">
-              <option value="regular" {% if row.work_type == 'regular' %}selected{% endif %}>Regular</option>
-              <option value="sick" {% if row.work_type == 'sick' %}selected{% endif %}>Sick leave</option>
-              <option value="swap" {% if row.work_type == 'swap' %}selected{% endif %}>Swap</option>
-              <option value="overtime" {% if row.work_type == 'overtime' %}selected{% endif %}>Overtime</option>
+              {% for code, label in work_type_choices %}
+                <option value="{{ code }}" {% if row.work_type == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
             </select>
           </td>
         </tr>

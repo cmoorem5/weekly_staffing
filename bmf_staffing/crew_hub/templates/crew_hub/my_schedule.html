@@ -1,4 +1,5 @@
 {% extends "crew_hub/base.html" %}
+{% load crew_hub_extras %}
 
 {% block page_title %}My schedule{% endblock %}
 {% block page_subtitle %}Your upcoming shifts through {{ end|date:"F j" }} and your time-off requests.{% endblock %}
@@ -35,7 +36,7 @@
           <td style="font-size:12px; padding:5px 8px 5px 0; white-space:nowrap; font-weight:{% if row.date == today %}bold{% else %}normal{% endif %};">{{ row.date|date:"D, M j" }}</td>
           <td style="font-size:12px; padding:5px 8px; color:#052C47; font-weight:bold;">{{ row.what }}</td>
           <td style="font-size:11px; color:#5a6a7a; padding:5px 8px;">{{ row.time }}</td>
-          <td style="font-size:12px; padding:5px 0; {% if row.work_type_code == 'sick' %}color:#C12126;{% elif row.work_type_code == 'overtime' %}color:#b35e00;{% elif row.work_type_code == 'swap' %}color:#2A4492;{% endif %}">{{ row.work_type }}{% if row.note %} <span class="ch-note">· {{ row.note }}</span>{% endif %}</td>
+          <td style="font-size:12px; padding:5px 0; {% with c=row.work_type_code|work_type_color %}{% if c %}color:{{ c }};{% endif %}{% endwith %}">{{ row.work_type }}{% if row.note %} <span class="ch-note">· {{ row.note }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </table>

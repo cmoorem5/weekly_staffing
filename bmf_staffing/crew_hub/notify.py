@@ -18,19 +18,18 @@ def notify(user, message: str, url: str = "") -> None:
 
 def notify_managers(message: str, url: str = "", exclude=None) -> int:
     """Notify everyone in the managers group (and superusers)."""
-    users = (
-        get_user_model()
-        .objects.filter(is_active=True)
-        .filter(groups__name=MANAGER_GROUP)
-        .union(get_user_model().objects.filter(is_active=True, is_superuser=True))
+    from django.db.models import Q
+
+    users = get_user_model().objects.filter(
+        Q(groups__name=MANAGER_GROUP) | Q(is_superuser=True), is_active=True
     )
-    count = 0
-    for user in users:
-        if exclude is not None and user.pk == exclude.pk:
-            continue
-        Notification.objects.create(user=user, message=message, url=url)
-        count += 1
-    return count
+    if exclude is not None:
+        users = users.exclude(pk=exclude.pk)
+    notifications = [
+        Notification(user=user, message=message, url=url) for user in users.distinct()
+    ]
+    Notification.objects.bulk_create(notifications)
+    return len(notifications)
 
 
 def assignment_owner(assignment):

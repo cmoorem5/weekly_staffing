@@ -12,11 +12,16 @@ from django.views.decorators.http import require_POST
 from .. import shifts
 from ..emailer import build_report_context, render_report_email, send_report_email
 from ..models import (
+    CommCenterEntry,
+    CrewEntry,
     DailyReport,
+    DutyRosterEntry,
     ExtraEntry,
     MissCategoryCount,
     PendingTransport,
     SickLateEntry,
+    TransportBaseCount,
+    VehicleStatusEntry,
 )
 from ..services import (
     get_or_create_report,
@@ -24,6 +29,7 @@ from ..services import (
     reopen_report,
     submit_report,
 )
+from .helpers import clamp_int as _int
 from .helpers import local_today, parse_date_or_404
 
 
@@ -33,27 +39,22 @@ def _report_for(date_str: str) -> DailyReport:
     return report
 
 
-def _int(value: str) -> int:
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        return 0
-
-
 @transaction.atomic
 def _apply_post(report: DailyReport, post) -> None:
     """Persist the entry form. Drafts only; completeness is never enforced."""
     report.weather = post.get("weather", "").strip()
     report.save(update_fields=["weather", "updated_at"])
 
-    for entry in report.duty_entries.all():
+    duty_entries = list(report.duty_entries.all())
+    for entry in duty_entries:
         entry.name = post.get(f"duty_{entry.role}", "").strip()
-        entry.save(update_fields=["name"])
+    DutyRosterEntry.objects.bulk_update(duty_entries, ["name"])
 
-    for entry in report.crew_entries.all():
+    crew_entries = list(report.crew_entries.all())
+    for entry in crew_entries:
         entry.name = post.get(f"crew_{entry.pk}_name", "").strip()
         entry.ref_flag = f"crew_{entry.pk}_ref" in post
-        entry.save(update_fields=["name", "ref_flag"])
+    CrewEntry.objects.bulk_update(crew_entries, ["name", "ref_flag"])
 
     report.extra_entries.all().delete()
     extras = zip(
@@ -74,13 +75,15 @@ def _apply_post(report: DailyReport, post) -> None:
                 note=note.strip(),
             )
 
-    for entry in report.comm_entries.all():
+    comm_entries = list(report.comm_entries.all())
+    for entry in comm_entries:
         entry.name = post.get(f"comm_{entry.seat}", "").strip()
-        entry.save(update_fields=["name"])
+    CommCenterEntry.objects.bulk_update(comm_entries, ["name"])
 
-    for entry in report.vehicle_entries.all():
+    vehicle_entries = list(report.vehicle_entries.all())
+    for entry in vehicle_entries:
         entry.status = post.get(f"vehicle_{entry.pk}", "").strip()
-        entry.save(update_fields=["status"])
+    VehicleStatusEntry.objects.bulk_update(vehicle_entries, ["status"])
 
     report.sick_late_entries.all().delete()
     sick_text = post.get("sick_calls", "").strip()
@@ -99,10 +102,11 @@ def _apply_post(report: DailyReport, post) -> None:
     summary.complex_calls = post.get("complex_calls", "").strip()
     summary.save(update_fields=["pending_count", "complex_calls"])
 
-    for row in report.transport_base_counts.all():
+    base_counts = list(report.transport_base_counts.all())
+    for row in base_counts:
         row.gcct = _int(post.get(f"tb_{row.base}_gcct"))
         row.rw = _int(post.get(f"tb_{row.base}_rw"))
-        row.save(update_fields=["gcct", "rw"])
+    TransportBaseCount.objects.bulk_update(base_counts, ["gcct", "rw"])
 
     report.pending_transports.all().delete()
     pending = zip(
