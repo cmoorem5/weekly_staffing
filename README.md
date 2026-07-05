@@ -1,4 +1,4 @@
-# Weekly staffing (BMF)
+# Crew Hub (BMF)
 
 Board-level staffing KPI tooling: a **`staffing_tool`** Python package (CLI + Excel reports) and an optional **Django dashboard** under **`bmf_staffing/`**. Data is stored in a local SQLite file **`staffing.db`** next to this README.
 
@@ -263,7 +263,7 @@ git init
 git add .
 git commit -m "Initial commit: weekly staffing tool and dashboard"
 git branch -M main
-git remote add origin https://github.com/cmoorem5/weekly-staffing.git
+git remote add origin https://github.com/cmoorem5/crew-hub.git
 git push -u origin main
 ```
 

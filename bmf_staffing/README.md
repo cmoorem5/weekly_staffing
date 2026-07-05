@@ -4,7 +4,7 @@ Web UI for the Boston MedFlight board staffing KPI workflow. Uses the same `staf
 
 ## Run locally
 
-1. From the **`Weekly_staffing`** folder (repository root), install dependencies:
+1. From the **`crew_hub`** folder (repository root), install dependencies:
 
    ```bash
    pip install -r requirements.txt
@@ -13,7 +13,7 @@ Web UI for the Boston MedFlight board staffing KPI workflow. Uses the same `staf
 2. Start the server:
 
    - **Desktop:** double-click **`BMF Staffing`** (run **`Create Desktop Shortcut.bat`** once to install the BMF logo shortcut), or  
-   - Double-click **`Run_Staffing_Django.bat`** (in `Weekly_staffing`), or **`Open_Staffing_Dashboard.bat`** (opens staffing dashboard directly), or  
+   - Double-click **`Run_Staffing_Django.bat`** (in `crew_hub`), or **`Open_Staffing_Dashboard.bat`** (opens staffing dashboard directly), or  
    - In a terminal:
 
      ```bash
@@ -33,13 +33,13 @@ Web UI for the Boston MedFlight board staffing KPI workflow. Uses the same `staf
 - **Monthly report** – Pick a date range and download the aggregated Excel workbook.
 - **Export Excel** (from a week) – Downloads the board pack for that week (`staffing_tool.report`).
 
-Data lives in **`staffing.db`** in the parent **`Weekly_staffing`** folder. Exports go to the **`output`** folder there (created as needed).
+Data lives in **`staffing.db`** in the parent **`crew_hub`** folder. Exports go to the **`output`** folder there (created as needed).
 
 ## Staffing by position (CEO grid)
 
 For each week, the **Position grid** has one row per vehicle slot (e.g. BR-D, BG-N), columns RN / Medic / Pilot / EMT. Enter **1** when filled, or a reason (**sick**, **LOA**, **AT**, **LT**, **vacant**, etc.). The Excel export includes a **Staffing_By_Position** sheet. From **Weeks**, use **Position grid** for that week.
 
-If the database predates this feature, from **`Weekly_staffing`** run:
+If the database predates this feature, from **`crew_hub`** run:
 
 ```bash
 python -m staffing_tool init-db
