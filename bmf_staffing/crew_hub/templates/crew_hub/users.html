@@ -1,0 +1,118 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}Users &amp; permissions{% endblock %}
+{% block page_subtitle %}Create logins and set each person's permission level. Levels: Admin manages everything, Manager edits schedules and reviews time off, Reviewer only reviews time off, Member views and requests.{% endblock %}
+
+{% block hub_content %}
+<div class="ch-card" style="max-width: 860px;">
+  <div class="ch-card-header light">Add a login</div>
+  <div class="ch-card-body">
+    <form method="post" data-no-loading>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
+        <div>
+          <span class="ch-label">Username *</span>
+          <input class="ch-input" type="text" name="username" required>
+        </div>
+        <div>
+          <span class="ch-label">First name</span>
+          <input class="ch-input" type="text" name="first_name">
+        </div>
+        <div>
+          <span class="ch-label">Last name</span>
+          <input class="ch-input" type="text" name="last_name">
+        </div>
+        <div>
+          <span class="ch-label">Email</span>
+          <input class="ch-input" type="email" name="email">
+        </div>
+        <div>
+          <span class="ch-label">Permission level</span>
+          <select class="ch-select" name="level">
+            {% for code, label in level_choices %}
+            <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <span class="ch-label">Password (blank = generate one)</span>
+          <input class="ch-input" type="text" name="password" autocomplete="new-password">
+        </div>
+      </div>
+      <button type="submit" class="ch-btn ch-btn-secondary">Create login</button>
+      <span class="ch-note" style="margin-left:8px;">A generated temporary password is shown once — pass it on and have them change it.</span>
+    </form>
+  </div>
+</div>
+
+<div class="ch-card" style="max-width: 860px;">
+  <div class="ch-card-header light">Logins</div>
+  <div class="ch-card-body">
+    <table style="width:100%;">
+      <tr>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Login</td>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Roster person</td>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Level</td>
+        <td class="ch-label" style="padding:4px 8px 4px 0;">Password</td>
+        <td></td>
+      </tr>
+      {% for row in rows %}
+      <tr style="border-bottom: 1px solid #f0f0f0;">
+        <td style="font-size:12px; padding:5px 8px 5px 0; {% if not row.user.is_active %}color:#999; text-decoration:line-through;{% endif %}">
+          <strong>{{ row.user.get_username }}</strong>
+          {% if row.user.get_full_name %}<span class="ch-note"> — {{ row.user.get_full_name }}</span>{% endif %}
+          {% if row.user.is_superuser %}<span class="ch-note"> (superuser)</span>{% endif %}
+        </td>
+        <td style="font-size:12px; padding:5px 8px 5px 0;">{{ row.linked|default:"—" }}</td>
+        <td style="padding:3px 8px 3px 0;">
+          {% if row.editable and not row.user.is_superuser %}
+          <form method="post" style="display:flex; gap:4px;" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="level">
+            <input type="hidden" name="pk" value="{{ row.user.pk }}">
+            <select class="ch-select" name="level" style="font-size:11px;">
+              {% for code, label in level_choices %}
+              <option value="{{ code }}" {% if row.level == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 8px; font-size:11px;">Save</button>
+          </form>
+          {% else %}
+          <span class="ch-note">{{ row.level_label }}</span>
+          {% endif %}
+        </td>
+        <td style="padding:3px 8px 3px 0; width:90px;">
+          {% if row.editable %}
+          <form method="post" data-no-loading onsubmit="return confirm('Reset the password for {{ row.user.get_username }}? A new temporary password will be shown once.');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="password">
+            <input type="hidden" name="pk" value="{{ row.user.pk }}">
+            <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 8px; font-size:11px;">Reset</button>
+          </form>
+          {% endif %}
+        </td>
+        <td style="width:110px; text-align:right; padding:3px 0;">
+          {% if row.editable %}
+          <form method="post" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="pk" value="{{ row.user.pk }}">
+            <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 10px; font-size:11px;">
+              {% if row.user.is_active %}Deactivate{% else %}Reactivate{% endif %}
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <div class="ch-note" style="margin-top:8px;">
+      Deactivating keeps history but blocks sign-in. To give a login access to
+      “My schedule”, link it to a person on the
+      <a href="{% url 'crew_hub:comm_staff' %}" style="color:#2A4492;">Comm Center</a> or
+      <a href="{% url 'crew_hub:duty_roster' %}" style="color:#2A4492;">Duty officer</a> roster.
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -190,7 +190,8 @@ Report workflow and adds real scheduling for the pieces we own:
   **Detail CSV** (one row per assignment) exports.
 - **My schedule** (`/hub/me/`) — staff whose login is linked to a roster
   person (link from the roster pages or admin) see their own upcoming comm
-  and duty shifts and can submit **time-off requests**. Managers review them
+  and duty shifts and can submit **time-off requests**. Managers and
+  Reviewers decide them
   at `/hub/timeoff/` — approving/denying notifies the requester, and any
   already-scheduled days inside the window are flagged as conflicts to fix
   on the calendars (never auto-deleted).
@@ -226,16 +227,43 @@ SMTP variables, and `AOC_REPORT_RECIPIENTS` (comma-separated). If a send
 fails the report stays submitted and a **Copy HTML** fallback lets you paste
 the report into Outlook.
 
-**Users and permissions:** Crew Hub is multi-user via Django auth. Every
-page requires sign-in; viewing is open to any signed-in user. Editing
-schedules, rotations, rosters, and vehicle statuses requires the
-`crew_hub.manage_schedules` permission, and unlocking a submitted report
-requires `crew_hub.reopen_report`. A **"Crew Hub Managers"** group carrying
-both is created automatically by migrations — add users to it in Django
-admin (superusers pass all checks). Create accounts with
-`python manage.py createsuperuser` or in admin → Users. **Azure AD SSO and
-any deployment are deferred pending IT governance approval** — TODO stubs
-mark the swap points.
+**Sending through your Outlook account:** set the SMTP variables in `.env`
+to Outlook's servers — `smtp.office365.com` for a work/Microsoft 365
+mailbox or `smtp-mail.outlook.com` for a personal Outlook.com/Hotmail
+account, port 587 with TLS, your full email address as
+`DJANGO_EMAIL_HOST_USER` **and** as `DJANGO_DEFAULT_FROM_EMAIL` (Outlook
+refuses to send "from" a different address). If sign-in fails, use an
+**app password** (account.microsoft.com → Security → App passwords;
+requires two-step verification) instead of your normal password; on work
+accounts IT may also need to enable *Authenticated SMTP* for the mailbox.
+The exact lines to copy are in `.env.example`, and
+`python manage.py send_test_email you@example.org` verifies the setup
+end-to-end.
+
+**Users, logins, and permission levels:** Crew Hub is multi-user via
+Django auth. Every page requires sign-in; viewing is open to any signed-in
+user. Beyond that there are four levels, managed on the in-app
+**Permissions** page (`/hub/users/`, visible to Admins):
+
+- **Admin** — everything, including creating logins, resetting passwords,
+  and setting permission levels (`crew_hub.manage_users`). Superusers are
+  always Admins.
+- **Manager** — edit schedules, rotations, rosters, and vehicle statuses
+  (`crew_hub.manage_schedules`), reopen submitted reports
+  (`crew_hub.reopen_report`), and review time off.
+- **Reviewer** — review and approve/deny time-off requests only
+  (`crew_hub.review_time_off`).
+- **Member** — view schedules, see My Schedule, submit time-off requests.
+
+The three level groups (**Crew Hub Admins / Managers / Reviewers**) are
+created automatically by migrations. Logins can be created on the
+Permissions page, or **directly from a roster page** when adding a person —
+fill in the optional username to create and link their login in one step
+(a temporary password is shown once). Managers can create Member logins;
+raising levels is Admin-only. The first account still comes from
+`python manage.py createsuperuser`. **Azure AD SSO and any deployment are
+deferred pending IT governance approval** — TODO stubs mark the swap
+points.
 
 **PostgreSQL (optional):** the default database is SQLite for zero-setup
 local use. To future-proof for multi-user/server use, set

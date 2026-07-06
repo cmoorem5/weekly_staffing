@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import redirect, render
 
-from .. import shifts
+from .. import roles, shifts
 from ..models import (
     VALID_WORK_TYPES,
     WORK_TYPE_CHOICES,
@@ -21,6 +21,7 @@ from ..models import (
 from .helpers import (
     PERM_DENIED_MSG,
     can_manage_schedules,
+    can_manage_users,
     local_today,
     month_bounds,
     month_nav,
@@ -209,6 +210,60 @@ def _link_user(request, person) -> None:
     )
 
 
+def _add_person(request, model, roster_label: str) -> None:
+    """Roster ``add`` action: create the person, optionally with a new login.
+
+    Filling in the optional username creates a login and links it in one
+    step. Levels above Member require ``manage_users`` (Admin) — otherwise
+    the login is created as Member and a note says so.
+    """
+    name = request.POST.get("name", "").strip()
+    if not name:
+        return
+    person, created = model.objects.get_or_create(name=name)
+    if not created:
+        messages.info(request, f"{name} is already on the roster.")
+        return
+    messages.success(request, f"Added {name} to the {roster_label}.")
+
+    username = request.POST.get("username", "").strip()
+    if not username:
+        return
+    level = request.POST.get("level") or roles.LEVEL_MEMBER
+    if level not in roles.VALID_LEVELS:
+        level = roles.LEVEL_MEMBER
+    if level != roles.LEVEL_MEMBER and not can_manage_users(request.user):
+        level = roles.LEVEL_MEMBER
+        messages.info(
+            request,
+            "Only an Admin can grant levels above Member — the login was "
+            "created as Member.",
+        )
+    first, _, last = name.partition(" ")
+    user, temp_password, error = roles.create_login(
+        username,
+        email=request.POST.get("email", ""),
+        first_name=first,
+        last_name=last,
+        level=level,
+    )
+    if error:
+        messages.error(
+            request,
+            f"{name} was added, but the login was not created: {error} "
+            "You can link or create one later.",
+        )
+        return
+    person.user = user
+    person.save(update_fields=["user"])
+    messages.success(
+        request,
+        f"Created login “{username}” ({roles.LEVEL_LABELS[level]}) for "
+        f"{name}. Temporary password: {temp_password} — shown once; have "
+        "them change it after signing in.",
+    )
+
+
 @login_required
 def comm_staff(request):
     if request.method == "POST":
@@ -224,15 +279,7 @@ def comm_staff(request):
             return redirect("crew_hub:comm_staff")
         action = request.POST.get("action", "add")
         if action == "add":
-            name = request.POST.get("name", "").strip()
-            if name:
-                _, created = CommStaffMember.objects.get_or_create(name=name)
-                if created:
-                    messages.success(
-                        request, f"Added {name} to the Comm Center roster."
-                    )
-                else:
-                    messages.info(request, f"{name} is already on the roster.")
+            _add_person(request, CommStaffMember, "Comm Center roster")
         elif action == "toggle":
             pk = request.POST.get("pk", "")
             member = CommStaffMember.objects.filter(pk=pk or None).first()
@@ -253,6 +300,8 @@ def comm_staff(request):
             "back_label": "Comm Center schedule",
             "users": _linkable_users(),
             "can_manage": can_manage_schedules(request.user),
+            "can_set_levels": can_manage_users(request.user),
+            "level_choices": roles.LEVEL_CHOICES,
         },
     )
 
@@ -406,13 +455,7 @@ def duty_roster(request):
             return redirect("crew_hub:duty_roster")
         action = request.POST.get("action", "add")
         if action == "add":
-            name = request.POST.get("name", "").strip()
-            if name:
-                _, created = DutyOfficer.objects.get_or_create(name=name)
-                if created:
-                    messages.success(request, f"Added {name} to the duty roster.")
-                else:
-                    messages.info(request, f"{name} is already on the roster.")
+            _add_person(request, DutyOfficer, "duty roster")
         elif action == "toggle":
             pk = request.POST.get("pk", "")
             officer = DutyOfficer.objects.filter(pk=pk or None).first()
@@ -433,5 +476,7 @@ def duty_roster(request):
             "back_label": "Duty rotation",
             "users": _linkable_users(),
             "can_manage": can_manage_schedules(request.user),
+            "can_set_levels": can_manage_users(request.user),
+            "level_choices": roles.LEVEL_CHOICES,
         },
     )

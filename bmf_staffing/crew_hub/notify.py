@@ -6,7 +6,8 @@ from django.contrib.auth import get_user_model
 
 from .models import Notification
 
-MANAGER_GROUP = "Crew Hub Managers"
+# Everyone who can act on a time-off request (see crew_hub/roles.py).
+APPROVER_GROUPS = ["Crew Hub Admins", "Crew Hub Managers", "Crew Hub Reviewers"]
 
 
 def notify(user, message: str, url: str = "") -> None:
@@ -17,11 +18,11 @@ def notify(user, message: str, url: str = "") -> None:
 
 
 def notify_managers(message: str, url: str = "", exclude=None) -> int:
-    """Notify everyone in the managers group (and superusers)."""
+    """Notify everyone in an approver-level group (and superusers)."""
     from django.db.models import Q
 
     users = get_user_model().objects.filter(
-        Q(groups__name=MANAGER_GROUP) | Q(is_superuser=True), is_active=True
+        Q(groups__name__in=APPROVER_GROUPS) | Q(is_superuser=True), is_active=True
     )
     if exclude is not None:
         users = users.exclude(pk=exclude.pk)

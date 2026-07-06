@@ -37,6 +37,7 @@ from .views import (
     time_off_decide,
     time_off_manage,
     time_off_submit,
+    user_admin,
     vehicle_board,
 )
 
@@ -86,6 +87,8 @@ urlpatterns = [
     path("timeoff/", time_off_manage, name="time_off_manage"),
     path("timeoff/<int:pk>/decide/", time_off_decide, name="time_off_decide"),
     path("notifications/", notifications, name="notifications"),
+    # Users & permission levels
+    path("users/", user_admin, name="user_admin"),
     path("notifications/read/", notifications_read, name="notifications_read"),
     path("duty/<str:date_str>/", duty_day, name="duty_day"),
     # Vehicle status board

@@ -1,3 +1,4 @@
+from .accounts import user_admin
 from .hub import hub_home
 from .me import (
     my_schedule,
@@ -76,5 +77,6 @@ __all__ = [
     "report_save",
     "report_submit",
     "report_today",
+    "user_admin",
     "vehicle_board",
 ]

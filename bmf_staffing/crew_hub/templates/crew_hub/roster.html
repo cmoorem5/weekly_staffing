@@ -7,11 +7,36 @@
 <div class="ch-card" style="max-width: 720px;">
   <div class="ch-card-header light">{{ title }}</div>
   <div class="ch-card-body">
-    <form method="post" style="display:flex; gap:8px; margin-bottom:12px;" data-no-loading>
+    <form method="post" style="margin-bottom:12px;" data-no-loading>
       {% csrf_token %}
       <input type="hidden" name="action" value="add">
-      <input class="ch-input" type="text" name="name" placeholder="Add a name…" required>
-      <button type="submit" class="ch-btn ch-btn-secondary">Add</button>
+      <div style="display:flex; gap:8px;">
+        <input class="ch-input" type="text" name="name" placeholder="Add a name…" required>
+        <button type="submit" class="ch-btn ch-btn-secondary">Add</button>
+      </div>
+      {% if can_manage %}
+      <div style="display:flex; gap:8px; margin-top:6px; align-items:flex-end;">
+        <div style="flex:1;">
+          <span class="ch-label">Login username (optional — creates their login)</span>
+          <input class="ch-input" type="text" name="username" autocomplete="off">
+        </div>
+        <div style="flex:1;">
+          <span class="ch-label">Email</span>
+          <input class="ch-input" type="email" name="email">
+        </div>
+        {% if can_set_levels %}
+        <div style="flex:1;">
+          <span class="ch-label">Permission level</span>
+          <select class="ch-select" name="level">
+            {% for code, label in level_choices %}
+            <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+      </div>
+      <div class="ch-note" style="margin-top:4px;">Fill in a username to create and link a login in one step — a temporary password is shown once.{% if not can_set_levels %} New logins are Members; an Admin can raise levels on the Permissions page.{% endif %}</div>
+      {% endif %}
     </form>
 
     <table style="width:100%;">

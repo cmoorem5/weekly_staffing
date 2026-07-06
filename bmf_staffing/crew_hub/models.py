@@ -339,6 +339,8 @@ class DailyReport(models.Model):
                 "manage_schedules",
                 "Can edit Crew Hub schedules, rotations, rosters, and vehicle statuses",
             ),
+            ("review_time_off", "Can review and decide time-off requests"),
+            ("manage_users", "Can manage Crew Hub logins and permission levels"),
         ]
 
     def __str__(self) -> str:

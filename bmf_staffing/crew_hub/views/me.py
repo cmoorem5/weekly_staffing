@@ -19,7 +19,7 @@ from ..models import (
     TimeOffRequest,
 )
 from ..notify import notify, notify_managers
-from .helpers import PERM_DENIED_MSG, can_manage_schedules, local_today
+from .helpers import REVIEW_DENIED_MSG, can_review_time_off, local_today
 
 UPCOMING_DAYS = 42  # My-schedule lookahead window.
 MAX_TIME_OFF_DAYS = 92
@@ -149,8 +149,8 @@ def _conflicts_for(time_off: TimeOffRequest) -> list[str]:
 
 @login_required
 def time_off_manage(request):
-    if not can_manage_schedules(request.user):
-        messages.error(request, PERM_DENIED_MSG)
+    if not can_review_time_off(request.user):
+        messages.error(request, REVIEW_DENIED_MSG)
         return redirect("crew_hub:my_schedule")
 
     pending = [
@@ -172,8 +172,8 @@ def time_off_manage(request):
 @login_required
 @require_POST
 def time_off_decide(request, pk):
-    if not can_manage_schedules(request.user):
-        messages.error(request, PERM_DENIED_MSG)
+    if not can_review_time_off(request.user):
+        messages.error(request, REVIEW_DENIED_MSG)
         return redirect("crew_hub:my_schedule")
 
     time_off = get_object_or_404(TimeOffRequest, pk=pk)

@@ -9,16 +9,33 @@ from django.http import Http404
 from django.utils import timezone
 
 SCHEDULE_PERM = "crew_hub.manage_schedules"
+REVIEW_PERM = "crew_hub.review_time_off"
+USERS_PERM = "crew_hub.manage_users"
 
 PERM_DENIED_MSG = (
-    "You need schedule-manager access to make changes. Ask an admin to add "
-    "you to the “Crew Hub Managers” group."
+    "You need Manager access to make changes. Ask an admin to raise your "
+    "permission level on the Permissions page."
 )
+REVIEW_DENIED_MSG = (
+    "You need Reviewer access (or higher) to review time-off requests. Ask "
+    "an admin to raise your permission level on the Permissions page."
+)
+USERS_DENIED_MSG = "You need Admin access to manage logins and permission levels."
 
 
 def can_manage_schedules(user) -> bool:
-    """Schedule-edit gate: superusers and 'Crew Hub Managers' members pass."""
+    """Schedule-edit gate: superusers, Admins, and Managers pass."""
     return user.has_perm(SCHEDULE_PERM)
+
+
+def can_review_time_off(user) -> bool:
+    """Time-off review gate: superusers, Admins, Managers, Reviewers pass."""
+    return user.has_perm(REVIEW_PERM)
+
+
+def can_manage_users(user) -> bool:
+    """User-management gate: superusers and Admins pass."""
+    return user.has_perm(USERS_PERM)
 
 
 def clamp_int(value, default: int = 0) -> int:
