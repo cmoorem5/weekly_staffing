@@ -26,6 +26,11 @@ class DutyOfficer(models.Model):
     """A person who can appear in the duty officer rotation."""
 
     name = models.CharField(max_length=128, unique=True)
+    # The duty seat this person works (AOC, AAOC, MDOC, PediDOC, ITOC, BPM).
+    # Blank = not yet assigned; such people appear in every role picker.
+    role = models.CharField(
+        max_length=16, choices=shifts.DUTY_ROLE_CHOICES, blank=True, default=""
+    )
     active = models.BooleanField(default=True)
     notes = models.CharField(max_length=256, blank=True, default="")
     # Linked login: unlocks "My schedule", time-off requests, and
@@ -43,6 +48,10 @@ class DutyOfficer(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def role_label(self) -> str:
+        return shifts.DUTY_ROLE_LABELS.get(self.role, "")
 
 
 # Work-type qualification shared by comm and duty assignments

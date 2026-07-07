@@ -31,14 +31,29 @@ def monthly_report(request):
     if request.method == "POST":
         start = (request.POST.get("date_start") or "").strip()
         end = (request.POST.get("date_end") or "").strip()
+        fmt = (request.POST.get("format") or "xlsx").strip().lower()
         try:
-            path = export_monthly_report(
-                DB_PATH, start, end, output_dir=_resolve_output_dir()
-            )
+            if fmt == "html":
+                from staffing_tool.monthly_html_report import (
+                    export_monthly_report_html,
+                )
+
+                path = export_monthly_report_html(
+                    DB_PATH, start, end, _resolve_output_dir()
+                )
+                content_type = "text/html; charset=utf-8"
+            else:
+                path = export_monthly_report(
+                    DB_PATH, start, end, output_dir=_resolve_output_dir()
+                )
+                content_type = None
             if not path or not os.path.isfile(path):
                 raise Http404("Export file not found")
             return FileResponse(
-                open(path, "rb"), as_attachment=True, filename=os.path.basename(path)
+                open(path, "rb"),
+                as_attachment=True,
+                filename=os.path.basename(path),
+                content_type=content_type,
             )
         except ValueError as exc:
             messages.error(request, str(exc))

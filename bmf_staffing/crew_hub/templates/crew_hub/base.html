@@ -4,17 +4,13 @@
 
 {% block content %}
 <style>
-  /* Crew Hub styles, scoped under .ch-page. Brand: Arial; Navy #052C47
-     headings, Blue #2A4492 subheadings, Red #C12126 / Orange #E8761A only
-     where the reference form uses them. */
-  .ch-page { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1a1a1a; max-width: 980px; margin: 0 auto; }
+  /* Crew Hub styles, scoped under .ch-page. Brand: Barlow (inherited from
+     the app shell); Navy #052C47 headings, Blue #2A4492 subheadings, Red
+     #C12126 / Orange #E8761A only where the reference form uses them.
+     Navigation lives in the app sidebar (dashboard/base.html). */
+  .ch-page { font-size: 13px; color: #1a1a1a; max-width: 980px; margin: 0 auto; }
   .ch-page h1 { font-size: 20px; color: #052C47; margin-bottom: 2px; font-weight: bold; }
   .ch-subtitle { font-size: 12px; color: #5a6a7a; margin-bottom: 14px; }
-
-  .ch-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
-  .ch-tabs a { font-size: 12px; font-weight: bold; color: #052C47; background: #fff; border: 1px solid #CBC7D1; border-radius: 999px; padding: 5px 14px; text-decoration: none; }
-  .ch-tabs a:hover { border-color: #2A4492; color: #2A4492; }
-  .ch-tabs a.active { background: #052C47; color: #fff; border-color: #052C47; }
 
   .ch-card { background: #fff; border: 1px solid #CBC7D1; border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
   .ch-card-header { background: #052C47; color: #fff; padding: 8px 14px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase; }
@@ -54,28 +50,6 @@
 <div class="ch-page">
   <h1>{% block page_title %}Crew Hub{% endblock %}</h1>
   <div class="ch-subtitle">{% block page_subtitle %}Boston MedFlight operations{% endblock %}</div>
-
-  <div class="ch-tabs no-print">
-    {% with url_name=request.resolver_match.url_name %}
-    <a href="{% url 'crew_hub:hub_home' %}" class="{% if url_name == 'hub_home' %}active{% endif %}">Today</a>
-    <a href="{% url 'crew_hub:report_today' %}" class="{% if url_name == 'report_detail' or url_name == 'report_today' %}active{% endif %}">AOC Report</a>
-    <a href="{% url 'crew_hub:report_list' %}" class="{% if url_name == 'report_list' %}active{% endif %}">Past reports</a>
-    <a href="{% url 'crew_hub:comm_month' %}" class="{% if url_name == 'comm_month' or url_name == 'comm_day' or url_name == 'comm_staff' %}active{% endif %}">Comm Center</a>
-    <a href="{% url 'crew_hub:duty_month' %}" class="{% if url_name == 'duty_month' or url_name == 'duty_day' or url_name == 'duty_roster' %}active{% endif %}">Duty officers</a>
-    <a href="{% url 'crew_hub:vehicle_board' %}" class="{% if url_name == 'vehicle_board' %}active{% endif %}">Vehicles</a>
-    <a href="{% url 'crew_hub:hours_report' %}" class="{% if url_name == 'hours_report' %}active{% endif %}">Hours / payroll</a>
-    <a href="{% url 'crew_hub:my_schedule' %}" class="{% if url_name == 'my_schedule' %}active{% endif %}">My schedule</a>
-    {% if perms.crew_hub.review_time_off %}
-    <a href="{% url 'crew_hub:time_off_manage' %}" class="{% if url_name == 'time_off_manage' %}active{% endif %}">Time off</a>
-    {% endif %}
-    {% if perms.crew_hub.manage_users %}
-    <a href="{% url 'crew_hub:user_admin' %}" class="{% if url_name == 'user_admin' %}active{% endif %}">Permissions</a>
-    {% endif %}
-    <a href="{% url 'crew_hub:notifications' %}" class="{% if url_name == 'notifications' %}active{% endif %}" title="Notifications" style="position:relative;">
-      🔔{% if crew_hub_unread %}<span style="background:#C12126; color:#fff; border-radius:999px; font-size:9px; padding:1px 5px; margin-left:3px; vertical-align:top;">{{ crew_hub_unread }}</span>{% endif %}
-    </a>
-    {% endwith %}
-  </div>
 
   {% block hub_content %}{% endblock %}
 </div>

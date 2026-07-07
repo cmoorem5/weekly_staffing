@@ -4,7 +4,7 @@
 {% block page_subtitle %}People available for scheduling. Deactivated people keep their history but leave the pickers.{% endblock %}
 
 {% block hub_content %}
-<div class="ch-card" style="max-width: 720px;">
+<div class="ch-card" style="max-width: {% if duty_role_choices %}860px{% else %}720px{% endif %};">
   <div class="ch-card-header light">{{ title }}</div>
   <div class="ch-card-body">
     <form method="post" style="margin-bottom:12px;" data-no-loading>
@@ -12,6 +12,14 @@
       <input type="hidden" name="action" value="add">
       <div style="display:flex; gap:8px;">
         <input class="ch-input" type="text" name="name" placeholder="Add a name…" required>
+        {% if duty_role_choices %}
+        <select class="ch-select" name="duty_role" style="max-width:150px;">
+          <option value="">Role…</option>
+          {% for code, label in duty_role_choices %}
+          <option value="{{ code }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
         <button type="submit" class="ch-btn ch-btn-secondary">Add</button>
       </div>
       {% if can_manage %}
@@ -39,15 +47,50 @@
       {% endif %}
     </form>
 
+    {% if duty_role_choices and can_manage %}
+    <details style="margin-bottom:12px;">
+      <summary style="font-size:12px; font-weight:bold; color:#2A4492; cursor:pointer;">Bulk add — paste several people at once</summary>
+      <form method="post" style="margin-top:8px;" data-no-loading>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="bulk">
+        <textarea class="ch-input" name="people" rows="6" placeholder="One per line with their role, e.g.&#10;Jane Smith, AOC&#10;John Doe — MDOC&#10;Alex Rivera ITC&#10;Sam Blood, BPM"></textarea>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:6px;">
+          <button type="submit" class="ch-btn ch-btn-secondary">Add all</button>
+          <span class="ch-note">Roles: AOC, AAOC, MDOC, PediDOC, ITOC (or ITC), BPM (or Blood). Existing names get their role updated.</span>
+        </div>
+      </form>
+    </details>
+    {% endif %}
+
     <table style="width:100%;">
       <tr>
         <td class="ch-label" style="padding:4px 8px 4px 0;">Name</td>
+        {% if duty_role_choices %}<td class="ch-label" style="padding:4px 8px 4px 0;">Role</td>{% endif %}
         <td class="ch-label" style="padding:4px 8px 4px 0;">Linked login</td>
         <td></td>
       </tr>
       {% for person in people %}
       <tr style="border-bottom: 1px solid #f0f0f0;">
         <td style="font-size:12px; padding:5px 8px 5px 0; {% if not person.active %}color:#999; text-decoration:line-through;{% endif %}">{{ person.name }}</td>
+        {% if duty_role_choices %}
+        <td style="padding:3px 8px 3px 0; width:170px;">
+          {% if can_manage %}
+          <form method="post" style="display:flex; gap:4px;" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="set_role">
+            <input type="hidden" name="pk" value="{{ person.pk }}">
+            <select class="ch-select" name="duty_role" style="font-size:11px;" onchange="this.form.submit()">
+              <option value="">— no role —</option>
+              {% for code, label in duty_role_choices %}
+              <option value="{{ code }}" {% if person.role == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% else %}
+          <span class="ch-note">{{ person.role_label|default:"—" }}</span>
+          {% endif %}
+        </td>
+        {% endif %}
         <td style="padding:3px 8px 3px 0;">
           {% if can_manage %}
           <form method="post" style="display:flex; gap:4px;" data-no-loading>
@@ -78,11 +121,11 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td class="ch-note" style="padding:6px 0;" colspan="3">No one on the roster yet — add names above.</td></tr>
+      <tr><td class="ch-note" style="padding:6px 0;" colspan="4">No one on the roster yet — add names above.</td></tr>
       {% endfor %}
     </table>
     {% if can_manage %}
-    <div class="ch-note" style="margin-top:8px;">Linking a login gives that person “My schedule”, self-service time-off requests, and notifications.</div>
+    <div class="ch-note" style="margin-top:8px;">Linking a login gives that person “My schedule”, self-service time-off requests, and notifications.{% if duty_role_choices %} A person's role filters which seat pickers they appear in — people without a role appear in all of them.{% endif %}</div>
     {% endif %}
 
     <div style="margin-top:12px;">

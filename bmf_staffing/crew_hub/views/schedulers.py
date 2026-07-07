@@ -210,6 +210,89 @@ def _link_user(request, person) -> None:
     )
 
 
+# Bulk-add role tokens people are likely to type (ITC and "blood" included).
+DUTY_ROLE_ALIASES = {
+    "AOC": "AOC",
+    "AAOC": "AAOC",
+    "MDOC": "MDOC",
+    "PEDIDOC": "PEDIDOC",
+    "PEDI": "PEDIDOC",
+    "PEDS": "PEDIDOC",
+    "ITOC": "ITOC",
+    "ITC": "ITOC",
+    "BPM": "BPM",
+    "BLOOD": "BPM",
+}
+_BULK_SEPARATORS = ("—", "–", ",", ";", "\t", " - ")
+
+
+def _parse_bulk_roster(text: str) -> tuple[list[tuple[str, str]], list[str]]:
+    """Parse 'Name, ROLE' lines into (name, role) pairs.
+
+    Accepts comma / dash / semicolon / tab separators or a trailing role
+    word ('Jane Smith AOC'). Lines whose role part isn't recognized keep
+    the whole line as the name (no role) and are reported back.
+    """
+    people: list[tuple[str, str]] = []
+    no_role: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip().strip(",")
+        if not line:
+            continue
+        name, role = line, ""
+        for sep in _BULK_SEPARATORS:
+            if sep in line:
+                left, _, right = line.rpartition(sep)
+                token = right.strip().upper().replace("-", "").replace(" ", "")
+                if left.strip() and token in DUTY_ROLE_ALIASES:
+                    name, role = left.strip(), DUTY_ROLE_ALIASES[token]
+                else:
+                    no_role.append(line)
+                break
+        else:
+            words = line.split()
+            token = words[-1].upper() if len(words) > 1 else ""
+            if token in DUTY_ROLE_ALIASES:
+                name, role = " ".join(words[:-1]), DUTY_ROLE_ALIASES[token]
+        people.append((name, role))
+    return people, no_role
+
+
+def _bulk_add_officers(request) -> None:
+    """Roster ``bulk`` action: add several duty officers with roles at once."""
+    people, no_role = _parse_bulk_roster(request.POST.get("people", ""))
+    if not people:
+        messages.error(request, "Paste one person per line, e.g. “Jane Smith, AOC”.")
+        return
+    added = updated = skipped = 0
+    for name, role in people:
+        person, created = DutyOfficer.objects.get_or_create(
+            name=name, defaults={"role": role}
+        )
+        if created:
+            added += 1
+        elif role and person.role != role:
+            person.role = role
+            person.save(update_fields=["role"])
+            updated += 1
+        else:
+            skipped += 1
+    summary = f"Bulk add: {added} added"
+    if updated:
+        summary += f", {updated} role(s) updated"
+    if skipped:
+        summary += f", {skipped} already on the roster"
+    messages.success(request, summary + ".")
+    if no_role:
+        messages.warning(
+            request,
+            "No role recognized on: "
+            + "; ".join(f"“{line}”" for line in no_role[:5])
+            + " — added without a role (valid roles: AOC, AAOC, MDOC, "
+            "PediDOC, ITOC/ITC, BPM/Blood).",
+        )
+
+
 def _add_person(request, model, roster_label: str) -> None:
     """Roster ``add`` action: create the person, optionally with a new login.
 
@@ -220,7 +303,11 @@ def _add_person(request, model, roster_label: str) -> None:
     name = request.POST.get("name", "").strip()
     if not name:
         return
-    person, created = model.objects.get_or_create(name=name)
+    defaults = {}
+    duty_role = request.POST.get("duty_role", "").strip()
+    if model is DutyOfficer and duty_role in shifts.DUTY_ROLE_LABELS:
+        defaults["role"] = duty_role
+    person, created = model.objects.get_or_create(name=name, defaults=defaults)
     if not created:
         messages.info(request, f"{name} is already on the roster.")
         return
@@ -414,11 +501,18 @@ def duty_day(request, date_str):
         items = existing.get(code, [])
         primary = next((a for a in items if a.officer_id), None)
         second = next((a for a in items if not a.officer_id and a.display_name), None)
+        primary_id = primary.officer_id if primary else None
+        # Picker: people assigned this role, people with no role yet, and
+        # whoever currently holds the seat (even after a role change).
+        options = [
+            o for o in officers if o.role == code or not o.role or o.pk == primary_id
+        ]
         rows.append(
             {
                 "role": code,
                 "label": label,
-                "primary_id": primary.officer_id if primary else None,
+                "primary_id": primary_id,
+                "options": options,
                 "second_name": second.display_name if second else "",
                 "work_type": (primary or second).work_type
                 if (primary or second)
@@ -432,7 +526,6 @@ def duty_day(request, date_str):
         {
             "date": date,
             "rows": rows,
-            "officers": officers,
             "work_type_choices": WORK_TYPE_CHOICES,
             "prev_day": date - dt.timedelta(days=1),
             "next_day": date + dt.timedelta(days=1),
@@ -456,6 +549,20 @@ def duty_roster(request):
         action = request.POST.get("action", "add")
         if action == "add":
             _add_person(request, DutyOfficer, "duty roster")
+        elif action == "bulk":
+            _bulk_add_officers(request)
+        elif action == "set_role":
+            officer = DutyOfficer.objects.filter(
+                pk=request.POST.get("pk") or None
+            ).first()
+            duty_role = request.POST.get("duty_role", "").strip()
+            if officer and (duty_role in shifts.DUTY_ROLE_LABELS or duty_role == ""):
+                officer.role = duty_role
+                officer.save(update_fields=["role"])
+                messages.success(
+                    request,
+                    f"{officer.name} is now {officer.role_label or 'unassigned'}.",
+                )
         elif action == "toggle":
             pk = request.POST.get("pk", "")
             officer = DutyOfficer.objects.filter(pk=pk or None).first()
@@ -478,5 +585,6 @@ def duty_roster(request):
             "can_manage": can_manage_schedules(request.user),
             "can_set_levels": can_manage_users(request.user),
             "level_choices": roles.LEVEL_CHOICES,
+            "duty_role_choices": shifts.DUTY_ROLE_CHOICES,
         },
     )

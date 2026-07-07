@@ -5,6 +5,7 @@ so that 'add' is not captured as a week_start slug.
 """
 
 from django.urls import path
+from django.views.generic import RedirectView
 
 from .views import (
     backup_db,
@@ -39,7 +40,14 @@ from .views import (
 )
 
 urlpatterns = [
-    path("", home, name="home"),
+    # Schedule-first: the app lands on today's schedule board (Crew Hub).
+    path(
+        "",
+        RedirectView.as_view(pattern_name="crew_hub:hub_home"),
+        name="root",
+    ),
+    # KPI overview (the former home page) stays available in the sidebar.
+    path("overview/", home, name="home"),
     path("reports/", reports_index, name="reports_index"),
     path("settings/", settings_index, name="settings_index"),
     path(

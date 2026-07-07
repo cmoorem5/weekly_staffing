@@ -2,7 +2,7 @@
 {% block title %}Monthly report{% endblock %}
 {% block content %}
 <h1>Monthly staffing report</h1>
-<p class="text-muted">Choose a date range. All <strong>Sunday week starts</strong> with <code>week_start</code> between the two dates (inclusive) are included and aggregated. Export uses the same Boston MedFlight layout as the weekly board pack.</p>
+<p class="text-muted">Choose a date range. All <strong>Sunday week starts</strong> with <code>week_start</code> between the two dates (inclusive) are included and aggregated. The <strong>board report (HTML)</strong> is the polished summary — KPI averages with change vs the prior period, trend and exception charts — styled like the weekly staffing report. <strong>Excel</strong> is the working format with the full data sheets.</p>
 
 <form method="post" class="mt-3" style="max-width: 28rem;" autocomplete="off">
   {% csrf_token %}
@@ -14,7 +14,18 @@
     <label class="form-label" for="id_date_end">End date</label>
     <input type="date" name="date_end" id="id_date_end" class="form-control" required value="{{ date_end }}">
   </div>
-  <button type="submit" class="btn btn-primary">Download Excel</button>
+  <div class="mb-3">
+    <label class="form-label d-block">Format</label>
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="radio" name="format" id="fmt_html" value="html" checked>
+      <label class="form-check-label" for="fmt_html">Board report (HTML)</label>
+    </div>
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="radio" name="format" id="fmt_xlsx" value="xlsx">
+      <label class="form-check-label" for="fmt_xlsx">Excel workbook</label>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Download</button>
   <a href="{% url 'week_list' %}" class="btn btn-secondary">Cancel</a>
 </form>
 

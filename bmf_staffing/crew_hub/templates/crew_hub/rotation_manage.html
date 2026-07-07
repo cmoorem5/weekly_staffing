@@ -14,15 +14,24 @@
         <input type="hidden" name="action" value="add">
 
         <label class="ch-label">{{ person_label }}</label>
-        <select class="ch-select" name="person" required style="margin-bottom:10px;">
+        <select class="ch-select" name="person" id="rot-person" required style="margin-bottom:10px;">
           <option value="">—</option>
-          {% for p in people %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+          {% for p in people %}<option value="{{ p.pk }}"{% if kind == "duty" and p.role %} data-role="{{ p.role }}"{% endif %}>{{ p.name }}{% if kind == "duty" and p.role %} — {{ p.role_label }}{% endif %}</option>{% endfor %}
         </select>
 
         <label class="ch-label">{{ slot_label }}</label>
-        <select class="ch-select" name="slot" required style="margin-bottom:10px;">
+        <select class="ch-select" name="slot" id="rot-slot" required style="margin-bottom:10px;">
           {% for code, label in slots %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
         </select>
+        {% if kind == "duty" %}
+        <script>
+          /* Picking an officer pre-selects their roster role. */
+          document.getElementById('rot-person').addEventListener('change', function () {
+            var role = this.options[this.selectedIndex].getAttribute('data-role');
+            if (role) document.getElementById('rot-slot').value = role;
+          });
+        </script>
+        {% endif %}
 
         <label class="ch-label">Pattern</label>
         <select class="ch-select" name="pattern_type" style="margin-bottom:10px;" onchange="patternSwap(this.value)">

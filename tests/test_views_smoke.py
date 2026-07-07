@@ -100,6 +100,12 @@ class DashboardSmokeTests(unittest.TestCase):
                         f"{name} returned {resp.status_code}",
                     )
 
+    def test_root_redirects_to_schedule_board(self):
+        client = Client(HTTP_HOST="localhost")
+        resp = client.get("/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "/hub/")
+
 
 if __name__ == "__main__":
     unittest.main()

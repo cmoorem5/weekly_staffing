@@ -28,8 +28,15 @@
       background-color: var(--bmf-gray);
       color: var(--bmf-black);
     }
+    /* App shell: fixed left sidebar (scheduling-app style) + fluid main. */
     .app-shell {
       min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+    }
+    .bmf-main {
+      flex: 1 1 auto;
+      min-width: 0;
       display: flex;
       flex-direction: column;
     }
@@ -39,26 +46,111 @@
     footer {
       flex-shrink: 0;
     }
-    /* Nav: BMF Navy background, BMF Blue for brand highlight */
-    .navbar.bmf-nav {
-      background-color: var(--bmf-navy) !important;
+
+    /* Sidebar: BMF Navy, grouped nav, sticky on desktop */
+    .bmf-sidebar {
+      flex: 0 0 232px;
+      width: 232px;
+      background: var(--bmf-navy);
+      color: var(--bmf-gray);
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      z-index: 1040;
     }
-    .navbar.bmf-nav .navbar-brand {
-      color: var(--bmf-white) !important;
-      font-weight: 600;
-      display: inline-flex;
+    .bmf-sidebar .bmf-side-brand {
+      display: flex;
       align-items: center;
+      gap: 0.55rem;
+      padding: 0.9rem 1rem;
+      color: var(--bmf-white);
+      text-decoration: none;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .bmf-sidebar .bmf-side-brand img { height: 34px; width: auto; }
+    .bmf-side-nav { padding: 0.6rem 0.6rem 1rem; flex: 1 1 auto; }
+    .bmf-side-group {
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 0.66rem;
+      font-weight: 600;
+      color: #8fa3b3;
+      margin: 0.9rem 0.5rem 0.25rem;
+    }
+    .bmf-side-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 0.5rem;
+      color: var(--bmf-gray);
+      text-decoration: none;
+      font-size: 0.88rem;
+      padding: 0.34rem 0.6rem;
+      border-radius: 0.4rem;
+      margin-bottom: 1px;
     }
-    .navbar.bmf-nav .navbar-brand img.bmf-logo-nav {
-      height: 36px;
-      width: auto;
+    .bmf-side-link:hover { color: var(--bmf-white); background: rgba(255, 255, 255, 0.08); }
+    .bmf-side-link.active {
+      color: var(--bmf-white);
+      background: var(--bmf-blue);
+      font-weight: 600;
     }
-    .navbar.bmf-nav .nav-link {
-      color: var(--bmf-gray) !important;
+    .bmf-side-badge {
+      background: var(--bmf-red);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 0.66rem;
+      font-weight: 700;
+      padding: 0.05rem 0.45rem;
     }
-    .navbar.bmf-nav .nav-link:hover {
-      color: var(--bmf-white) !important;
+    .bmf-side-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 0.75rem 1rem;
+      font-size: 0.78rem;
+      color: #8fa3b3;
+    }
+    .bmf-side-footer .bmf-side-user { color: var(--bmf-white); font-weight: 600; }
+    .bmf-side-footer form { display: inline; }
+    .bmf-side-footer button, .bmf-side-footer a {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #b9c6d1;
+      text-decoration: underline;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    /* Slim top bar: hamburger on small screens */
+    .bmf-topbar {
+      display: none;
+      background: var(--bmf-navy);
+      color: var(--bmf-white);
+      padding: 0.5rem 1rem;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .bmf-topbar .bmf-burger {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      color: var(--bmf-white);
+      border-radius: 0.35rem;
+      padding: 0.25rem 0.55rem;
+      font-size: 1rem;
+    }
+    @media (max-width: 991.98px) {
+      .bmf-sidebar {
+        position: fixed;
+        left: -250px;
+        transition: left 0.18s ease;
+        height: 100vh;
+      }
+      body.bmf-sidebar-open .bmf-sidebar { left: 0; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.35); }
+      .bmf-topbar { display: flex; }
     }
     .btn-primary {
       background-color: var(--bmf-blue);
@@ -324,13 +416,14 @@
         background: #fff !important;
         color: #000 !important;
       }
-      nav.navbar,
+      .bmf-sidebar,
+      .bmf-topbar,
       footer,
       .no-print,
-      .btn,
-      .navbar-toggler {
+      .btn {
         display: none !important;
       }
+      .app-shell { display: block; }
       main.container {
         margin: 0 !important;
         max-width: none !important;
@@ -378,83 +471,69 @@
 </head>
 <body>
   <div class="app-shell">
-    <nav class="navbar navbar-expand-lg navbar-dark bmf-nav">
-      <div class="container-fluid">
-        <a class="navbar-brand fw-semibold" href="{% url 'home' %}">
-          <img src="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}" alt="Boston MedFlight" class="bmf-logo-nav">
-          <span>Crew Hub</span>
+    {% with url_name=request.resolver_match.url_name %}
+    <aside class="bmf-sidebar no-print" id="bmfSidebar">
+      <a class="bmf-side-brand" href="{% url 'crew_hub:hub_home' %}">
+        <img src="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}" alt="Boston MedFlight">
+        <span>Crew Hub</span>
+      </a>
+      <nav class="bmf-side-nav">
+        <div class="bmf-side-group">Schedule</div>
+        <a class="bmf-side-link{% if url_name == 'hub_home' %} active{% endif %}" href="{% url 'crew_hub:hub_home' %}">Today</a>
+        <a class="bmf-side-link{% if url_name == 'comm_month' or url_name == 'comm_day' or url_name == 'comm_staff' or url_name == 'comm_rotations' %} active{% endif %}" href="{% url 'crew_hub:comm_month' %}">Comm Center</a>
+        <a class="bmf-side-link{% if url_name == 'duty_month' or url_name == 'duty_day' or url_name == 'duty_roster' or url_name == 'duty_rotations' %} active{% endif %}" href="{% url 'crew_hub:duty_month' %}">Duty officers</a>
+        <a class="bmf-side-link{% if url_name == 'vehicle_board' %} active{% endif %}" href="{% url 'crew_hub:vehicle_board' %}">Vehicles</a>
+        <a class="bmf-side-link{% if url_name == 'my_schedule' %} active{% endif %}" href="{% url 'crew_hub:my_schedule' %}">My schedule</a>
+        {% if perms.crew_hub.review_time_off %}
+        <a class="bmf-side-link{% if url_name == 'time_off_manage' %} active{% endif %}" href="{% url 'crew_hub:time_off_manage' %}">Time off</a>
+        {% endif %}
+        <a class="bmf-side-link{% if url_name == 'notifications' %} active{% endif %}" href="{% url 'crew_hub:notifications' %}">
+          <span>Notifications</span>
+          {% if crew_hub_unread %}<span class="bmf-side-badge">{{ crew_hub_unread }}</span>{% endif %}
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
-                aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="mainNav">
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-            <li class="nav-item">
-              <a class="nav-link{% if request.resolver_match.url_name == 'home' %} active{% endif %}" href="{% url 'home' %}">Home</a>
-            </li>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle{% if request.path|slice:':5' == '/hub/' %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                Crew Hub
-              </a>
-              <ul class="dropdown-menu dropdown-menu-dark">
-                <li><a class="dropdown-item fw-semibold" href="{% url 'crew_hub:hub_home' %}">Today at a glance</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'crew_hub:report_today' %}">AOC daily report</a></li>
-                <li><a class="dropdown-item" href="{% url 'crew_hub:report_list' %}">Past reports</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'crew_hub:comm_month' %}">Comm Center schedule</a></li>
-                <li><a class="dropdown-item" href="{% url 'crew_hub:duty_month' %}">Duty officer rotation</a></li>
-                <li><a class="dropdown-item" href="{% url 'crew_hub:vehicle_board' %}">Vehicle status board</a></li>
-              </ul>
-            </li>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle{% if request.path == '/weeks/' or '/week/' in request.path or '/import-schedule/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                Operations
-              </a>
-              <ul class="dropdown-menu dropdown-menu-dark">
-                <li><a class="dropdown-item" href="{% url 'week_list' %}">Weeks</a></li>
-                <li><a class="dropdown-item" href="{% url 'week_add' %}">Add week</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'import_schedule' %}">Import schedule</a></li>
-              </ul>
-            </li>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle{% if '/reports/' in request.path or '/staffing-dashboard/' in request.path or '/manager-shifts/' in request.path or '/ops/person/' in request.path or '/report/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                Reports
-              </a>
-              <ul class="dropdown-menu dropdown-menu-dark">
-                <li><a class="dropdown-item fw-semibold" href="{% url 'reports_index' %}">All reports</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a></li>
-                <li><a class="dropdown-item" href="{% url 'manager_shifts' %}">Manager shifts</a></li>
-                <li><a class="dropdown-item" href="{% url 'person_ops_report' %}">Staff ops report</a></li>
-                <li><a class="dropdown-item" href="{% url 'weekly_staffing_report' %}">Weekly staffing report</a></li>
-                <li><a class="dropdown-item" href="{% url 'quarterly_staffing_report' %}">Quarterly staffing report</a></li>
-                <li><a class="dropdown-item" href="{% url 'monthly_report' %}">Monthly board report</a></li>
-              </ul>
-            </li>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle{% if '/settings/' in request.path or '/base-totals/' in request.path or '/admin-tools/' in request.path %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                Settings
-              </a>
-              <ul class="dropdown-menu dropdown-menu-dark">
-                <li><a class="dropdown-item fw-semibold" href="{% url 'settings_index' %}">All settings</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'manager_roster_settings' %}">Manager roster</a></li>
-                <li><a class="dropdown-item" href="{% url 'staff_roster_settings' %}">Staff roster</a></li>
-                <li><a class="dropdown-item" href="{% url 'kpi_thresholds_settings' %}">KPI thresholds</a></li>
-                <li><a class="dropdown-item" href="{% url 'base_totals' %}">Base totals (RW / GR)</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'database_backups' %}">Database backups</a></li>
-                <li><a class="dropdown-item" href="{% url 'backup_db' %}">Backup database</a></li>
-                <li><a class="dropdown-item" href="{% url 'restore_db' %}">Restore database</a></li>
-              </ul>
-            </li>
-          </ul>
-        </div>
+
+        <div class="bmf-side-group">Daily report</div>
+        <a class="bmf-side-link{% if url_name == 'report_today' or url_name == 'report_detail' %} active{% endif %}" href="{% url 'crew_hub:report_today' %}">AOC daily report</a>
+        <a class="bmf-side-link{% if url_name == 'report_list' %} active{% endif %}" href="{% url 'crew_hub:report_list' %}">Past reports</a>
+
+        <div class="bmf-side-group">Reports &amp; KPIs</div>
+        <a class="bmf-side-link{% if url_name == 'home' %} active{% endif %}" href="{% url 'home' %}">KPI overview</a>
+        <a class="bmf-side-link{% if url_name == 'staffing_dashboard' %} active{% endif %}" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a>
+        <a class="bmf-side-link{% if url_name == 'weekly_staffing_report' %} active{% endif %}" href="{% url 'weekly_staffing_report' %}">Weekly report</a>
+        <a class="bmf-side-link{% if url_name == 'monthly_report' %} active{% endif %}" href="{% url 'monthly_report' %}">Monthly board report</a>
+        <a class="bmf-side-link{% if url_name == 'quarterly_staffing_report' %} active{% endif %}" href="{% url 'quarterly_staffing_report' %}">Quarterly report</a>
+        <a class="bmf-side-link{% if url_name == 'hours_report' %} active{% endif %}" href="{% url 'crew_hub:hours_report' %}">Hours / payroll</a>
+        <a class="bmf-side-link{% if url_name == 'manager_shifts' %} active{% endif %}" href="{% url 'manager_shifts' %}">Manager shifts</a>
+        <a class="bmf-side-link{% if url_name == 'person_ops_report' %} active{% endif %}" href="{% url 'person_ops_report' %}">Staff ops</a>
+
+        <div class="bmf-side-group">Data</div>
+        <a class="bmf-side-link{% if url_name == 'week_list' or url_name == 'week_add' or url_name == 'week_edit' %} active{% endif %}" href="{% url 'week_list' %}">Weeks</a>
+        <a class="bmf-side-link{% if url_name == 'import_schedule' %} active{% endif %}" href="{% url 'import_schedule' %}">Import schedule</a>
+
+        <div class="bmf-side-group">Admin</div>
+        {% if perms.crew_hub.manage_users %}
+        <a class="bmf-side-link{% if url_name == 'user_admin' %} active{% endif %}" href="{% url 'crew_hub:user_admin' %}">Permissions</a>
+        {% endif %}
+        <a class="bmf-side-link{% if url_name == 'settings_index' or url_name == 'manager_roster_settings' or url_name == 'staff_roster_settings' or url_name == 'kpi_thresholds_settings' or url_name == 'base_totals' %} active{% endif %}" href="{% url 'settings_index' %}">Settings</a>
+        <a class="bmf-side-link{% if url_name == 'database_backups' or url_name == 'backup_db' or url_name == 'restore_db' %} active{% endif %}" href="{% url 'database_backups' %}">Backups</a>
+      </nav>
+      <div class="bmf-side-footer">
+        {% if user.is_authenticated %}
+        <div class="bmf-side-user">{{ user.get_full_name|default:user.get_username }}</div>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Sign out</button></form>
+        {% else %}
+        <a href="{% url 'login' %}">Sign in</a>
+        {% endif %}
       </div>
-    </nav>
+    </aside>
+    {% endwith %}
+
+    <div class="bmf-main">
+    <header class="bmf-topbar no-print">
+      <button type="button" class="bmf-burger" onclick="document.body.classList.toggle('bmf-sidebar-open')" aria-label="Toggle navigation">&#9776;</button>
+      <img src="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}" alt="" style="height:28px;width:auto;">
+      <span class="fw-semibold">Crew Hub</span>
+    </header>
 
     <main class="container my-4">
       {% if messages %}
@@ -502,12 +581,13 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="bmf-footer border-top py-3 mt-auto">
+    <footer class="bmf-footer border-top py-3 mt-auto no-print">
       <div class="container small d-flex flex-wrap align-items-center justify-content-between gap-2">
         <img src="{% static 'dashboard/images/BMF_White_tagline.png' %}" alt="Boston MedFlight – Your Life. Our Mission." class="bmf-logo-footer" style="height: 32px; width: auto;">
-        <span>Staffing Dashboard &middot; Weeks run Sunday &rarr; Saturday</span>
+        <span>Crew Hub &middot; Weeks run Sunday &rarr; Saturday</span>
       </div>
     </footer>
+    </div><!-- /.bmf-main -->
   </div>
 
   <script src="{% static 'dashboard/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>

@@ -28,8 +28,8 @@
           <td style="padding:4px 8px 4px 0;">
             <select class="ch-select" name="officer_{{ row.role }}">
               <option value="">—</option>
-              {% for o in officers %}
-                <option value="{{ o.pk }}" {% if row.primary_id == o.pk %}selected{% endif %}>{{ o.name }}</option>
+              {% for o in row.options %}
+                <option value="{{ o.pk }}" {% if row.primary_id == o.pk %}selected{% endif %}>{{ o.name }}{% if not o.role %} (no role){% endif %}</option>
               {% endfor %}
             </select>
           </td>

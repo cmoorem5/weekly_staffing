@@ -653,3 +653,145 @@ def export_quarterly_staffing_pdf(
     ctx = load_quarter_report_data(db_path, fy_label_year, quarter)
     path = _output_path(output_dir, ctx)
     return build_pdf(ctx, path)
+
+
+# --------------------------------------------------------------------
+# HTML export (board-ready, same visual family as the weekly report)
+# --------------------------------------------------------------------
+
+# KPI label -> whether a higher value is better (for prior-quarter deltas).
+_KPI_DIRECTION = {
+    "Avg Staffing Rate": True,
+    "Avg OT Dependency": False,
+    "Avg Shift Exception %": False,
+    "Avg System RW %": True,
+    "Avg System GR %": True,
+}
+
+
+def _parse_pct(value: str) -> float | None:
+    try:
+        return float(value.rstrip("%")) / 100.0
+    except (ValueError, AttributeError):
+        return None
+
+
+def _kpis_with_deltas(
+    ctx: QuarterlyReportContext, prior: QuarterlyReportContext | None
+) -> list[tuple[str, str] | tuple[str, str, str]]:
+    from staffing_tool import report_html as rh
+
+    prior_by_label = dict(prior.kpi_data) if prior else {}
+    kpis: list[tuple[str, str] | tuple[str, str, str]] = []
+    for label, value in ctx.kpi_data:
+        higher_better = _KPI_DIRECTION.get(label)
+        cur = _parse_pct(value)
+        prev = _parse_pct(prior_by_label.get(label, ""))
+        if higher_better is None or cur is None or prev is None:
+            kpis.append((label, value))
+        else:
+            kpis.append(
+                (label, value, rh.delta_html(cur, prev, higher_is_better=higher_better))
+            )
+    return kpis
+
+
+def build_html(
+    ctx: QuarterlyReportContext,
+    output_path: str,
+    prior_ctx: QuarterlyReportContext | None = None,
+) -> str:
+    from staffing_tool import report_html as rh
+
+    trend_b64 = rh.fig_to_png_base64(_build_trend_fig(ctx)) if ctx.weekly_trend else ""
+    exc_b64 = rh.fig_to_png_base64(_build_exception_bar_fig(ctx))
+    top2 = _leave_top2(ctx)
+
+    kpi_note = (
+        rh.note(f"Change shown vs {prior_ctx.period} (percentage points).")
+        if prior_ctx
+        else ""
+    )
+    body = rh.section_bar("KEY PERFORMANCE INDICATORS — QUARTER AVERAGES")
+    body += rh.body_cell(rh.kpi_strip(_kpis_with_deltas(ctx, prior_ctx)) + kpi_note)
+
+    if trend_b64:
+        body += rh.section_bar("WEEKLY TREND THIS QUARTER")
+        body += rh.body_cell(rh.chart_img(trend_b64, "Weekly staffing trend"))
+
+    top2_note = ", ".join(
+        f"{code} ({count})"
+        for code, count in sorted(ctx.leave_breakdown, key=lambda r: r[1], reverse=True)
+        if code in top2
+    )
+    grid_label = " &middot; ".join(EXCEPTION_GRID_COLS)
+    body += rh.section_bar(f"EXCEPTION BREAKDOWN ({grid_label})")
+    body += rh.body_cell(
+        rh.chart_img(exc_b64, "Exception breakdown")
+        + '<div style="height:12px;"></div>'
+        + rh.exception_mix_table(ctx.leave_breakdown, top2)
+        + rh.note(f"Top drivers (red in chart): {top2_note or 'n/a'}.")
+    )
+
+    body += rh.section_bar("PERIOD VOLUMES BY ROLE")
+    vol_rows = [list(r) for r in ctx.period_volumes] + [list(ctx.period_vol_total)]
+    body += rh.body_cell(
+        rh.data_table(
+            ["Role", "RN Shifts", "PM Shifts", "Total Shifts", "Exceptions", "OT RN", "OT PM"],
+            vol_rows,
+            right_cols={1, 2, 3, 4, 5, 6},
+            total_row=True,
+        )
+    )
+
+    body += rh.section_bar("COVERAGE BY BASE")
+    body += rh.body_cell(
+        rh.data_table(
+            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+            [list(r) for r in ctx.base_coverage],
+            right_cols={1, 2, 3, 4},
+        )
+    )
+
+    body += rh.section_bar("WEEK-BY-WEEK DETAIL")
+    body += rh.body_cell(
+        rh.data_table(
+            ["Week", "Staffing Rate", "OT Dependency", "Exception %"],
+            [list(r) for r in ctx.weekly_detail],
+            right_cols={1, 2, 3},
+        )
+    )
+
+    html = rh.report_shell(
+        title="QUARTERLY STAFFING REPORT",
+        subtitle=f"{ctx.period} &nbsp;|&nbsp; {ctx.dates}",
+        meta=(
+            f"Weeks included: {ctx.weeks_count} &middot; "
+            f"Prepared {ctx.prepared_date} &middot; CONFIDENTIAL"
+        ),
+        body=body,
+        doc_title=f"Quarterly Staffing Report — {ctx.period}",
+    )
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return output_path
+
+
+def _prior_quarter(fy_label_year: int, quarter: int) -> tuple[int, int]:
+    return (fy_label_year, quarter - 1) if quarter > 1 else (fy_label_year - 1, 4)
+
+
+def export_quarterly_staffing_html(
+    db_path: str,
+    fy_label_year: int,
+    quarter: int,
+    output_dir: str,
+) -> str:
+    ctx = load_quarter_report_data(db_path, fy_label_year, quarter)
+    prior_ctx = None
+    try:
+        prior_ctx = load_quarter_report_data(db_path, *_prior_quarter(fy_label_year, quarter))
+    except ValueError:
+        pass  # first quarter with data — no comparison to show
+    path = _output_path(output_dir, ctx).removesuffix(".pdf") + ".html"
+    return build_html(ctx, path, prior_ctx)

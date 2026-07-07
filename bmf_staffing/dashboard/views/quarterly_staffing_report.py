@@ -11,22 +11,27 @@ from .helpers import DB_PATH, _ensure_db, _resolve_output_dir
 
 def _pdf_exports():
     from staffing_tool.quarterly_pdf_report import (
+        export_quarterly_staffing_html,
         export_quarterly_staffing_pdf,
         list_fiscal_quarters,
     )
 
-    return export_quarterly_staffing_pdf, list_fiscal_quarters
+    return (
+        export_quarterly_staffing_pdf,
+        export_quarterly_staffing_html,
+        list_fiscal_quarters,
+    )
 
 
 def quarterly_staffing_report(request):
-    """Pick a fiscal quarter from staffing.db and download PDF."""
+    """Pick a fiscal quarter from staffing.db and download PDF or HTML."""
     _ensure_db()
     if not DB_PATH:
         messages.error(request, "Database is not configured (STAFFING_DB_PATH).")
         return redirect("home")
 
     try:
-        export_pdf, list_fiscal_quarters = _pdf_exports()
+        export_pdf, export_html, list_fiscal_quarters = _pdf_exports()
     except ImportError:
         messages.error(
             request,
@@ -59,15 +64,21 @@ def quarterly_staffing_report(request):
             return redirect("quarterly_staffing_report")
 
         output_dir = _resolve_output_dir()
+        fmt = (request.POST.get("format") or "pdf").strip().lower()
         try:
-            path = export_pdf(DB_PATH, fy_label_year, quarter, output_dir)
+            if fmt == "html":
+                path = export_html(DB_PATH, fy_label_year, quarter, output_dir)
+                content_type = "text/html; charset=utf-8"
+            else:
+                path = export_pdf(DB_PATH, fy_label_year, quarter, output_dir)
+                content_type = "application/pdf"
             if not path or not os.path.isfile(path):
                 raise Http404("Export file not found")
             return FileResponse(
                 open(path, "rb"),
                 as_attachment=True,
                 filename=os.path.basename(path),
-                content_type="application/pdf",
+                content_type=content_type,
             )
         except ValueError as exc:
             messages.error(request, str(exc))

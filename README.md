@@ -65,7 +65,7 @@ python -m staffing_tool init-db
 python -m staffing_tool --help
 ```
 
-### Weekly / quarterly PDF reports
+### Weekly / monthly / quarterly reports
 
 From the repo root (after `pip install -r requirements.txt` and `python scripts/setup_report_fonts.py`):
 
@@ -79,7 +79,22 @@ python scripts/build_quarterly_report.py --fy 2026 --quarter 2
 python scripts/build_quarterly_report.py
 ```
 
-In the Django dashboard: **Reports → Weekly staffing report** or **Quarterly staffing report**. After importing a schedule, the week edit page offers one-click PDF/HTML download.
+In the app: **Weekly staffing report**, **Monthly board report**, and
+**Quarterly report** in the sidebar. All three offer a **polished HTML
+export** in the same visual family (navy banner, KPI strip, embedded trend
+and exception charts) — ready to attach to email or open in a browser:
+
+- **Weekly** — PDF or HTML for any imported week.
+- **Monthly board report** — pick any date range; the HTML is a board-level
+  summary: staffing rate, OT dependency, shift exception %, and system
+  RW/GR availability averaged over the period, each with **change vs the
+  prior period** (▲/▼ in percentage points), plus weekly trend, exception
+  mix, OT by role, base coverage, and week-by-week detail. Excel remains
+  available as the working format.
+- **Quarterly** — PDF or HTML per fiscal quarter; the HTML includes change
+  vs the prior quarter.
+
+After importing a schedule, the week edit page offers one-click PDF/HTML download.
 
 **Staff roster** (RN / Medic / EMT): **Settings → Staff roster** (`/settings/staff-roster/`). The roster **updates automatically on schedule import** — new clinical names are added and `staff_member_id` links are set in the same pass. Deactivate people here if they should not appear in the Staff ops report; deactivated entries are not re-added on import. Manual backfill from an older week is optional on that page.
 
@@ -165,6 +180,17 @@ python manage.py runserver
 
 See **`bmf_staffing/README.md`** for features and **`bmf_staffing/bmf_staffing/settings.py`** for paths (`STAFFING_DB_PATH`, etc.).
 
+**Layout:** the app uses a persistent **left sidebar** like a scheduling
+program, grouped into **Schedule** (Today, Comm Center, Duty officers,
+Vehicles, My schedule, Time off, Notifications), **Daily report**,
+**Reports & KPIs** (KPI overview, staffing dashboard, weekly / monthly /
+quarterly reports, hours & payroll, manager shifts, staff ops), **Data**
+(weeks, schedule import), and **Admin** (Permissions, Settings, Backups) —
+one consistent navy-branded shell across the scheduling pages and the KPI
+dashboard. The root URL lands on **today's schedule board** (`/hub/`); the
+former KPI home page lives at `/overview/` ("KPI overview" in the sidebar).
+On phones the sidebar collapses behind a ☰ button.
+
 **Manager report** (`/manager-shifts/`): line-shift counts vs the 52-shift FY minimum plus **AOC day** totals per manager. AOC cells on manager roster rows in the schedule Excel are stored on import (`event_type=aoc`) and excluded from CEO clinical aggregates. Re-import a week to backfill AOC history.
 
 ## Crew Hub (AOC Daily Report + schedulers)
@@ -175,7 +201,12 @@ Report workflow and adds real scheduling for the pieces we own:
 - **Comm Center schedule** (`/hub/comm/`) — month calendar; assign a person
   to each seat (D, D-2, S, S-2, S-3, N, N-2, P, P-2, Orientee/Extra) per day.
 - **Duty officer rotation** (`/hub/duty/`) — AOC, AAOC, MDOC, PediDOC, ITOC,
-  BPM by date, same calendar treatment.
+  BPM by date, same calendar treatment. Each person on the duty roster
+  carries **their role**, so day pickers and rotations only offer people
+  qualified for that seat (people without a role appear everywhere). The
+  roster page has a **bulk add** box — paste several `Name, ROLE` lines at
+  once (ITC and Blood are accepted for ITOC and BPM) — and picking an
+  officer on the rotations form pre-selects their role.
 - **Rotations** (`/hub/comm/rotations/`, `/hub/duty/rotations/`) — repeating
   patterns per person (cycle N-on/M-off from an anchor date, or fixed
   weekdays). "Apply rotations" on either month calendar auto-fills the month;
@@ -195,7 +226,7 @@ Report workflow and adds real scheduling for the pieces we own:
   at `/hub/timeoff/` — approving/denying notifies the requester, and any
   already-scheduled days inside the window are flagged as conflicts to fix
   on the calendars (never auto-deleted).
-- **Notifications** (`/hub/notifications/`, bell in the tab bar) — in-app
+- **Notifications** (`/hub/notifications/`, badge in the sidebar) — in-app
   alerts when a manager moves/swaps/re-codes/removes one of your shifts and
   for time-off submissions and decisions.
 - **Vehicle status board** (`/hub/vehicles/`) — live fleet status that

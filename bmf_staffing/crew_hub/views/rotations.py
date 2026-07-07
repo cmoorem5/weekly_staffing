@@ -196,6 +196,14 @@ def _add_rotation(request, cfg) -> None:
         f"Rotation added: {person.name} ({rotation.pattern_label}). Use "
         "“Apply rotations” on the month view to fill the calendar.",
     )
+    person_role = getattr(person, "role", "")
+    if cfg["slot_field"] == "role" and person_role and slot != person_role:
+        messages.warning(
+            request,
+            f"Heads up: {person.name} is rostered as "
+            f"{shifts.DUTY_ROLE_LABELS.get(person_role, person_role)} but this "
+            f"rotation covers {shifts.DUTY_ROLE_LABELS.get(slot, slot)}.",
+        )
 
 
 def _rotation_apply(request, kind: str):
