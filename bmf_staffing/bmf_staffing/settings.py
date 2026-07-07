@@ -5,6 +5,7 @@ Runs locally; uses existing staffing.db next to the Weekly_staffing folder.
 """
 
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -184,3 +185,20 @@ CREW_HUB_REPORT_RECIPIENTS = [
 
 # External Equipment OOS / MISS dashboard link shown on the report.
 CREW_HUB_EQUIPMENT_DASHBOARD_URL = os.environ.get("AOC_EQUIPMENT_DASHBOARD_URL", "")
+
+# Base weather strip on the Today board: "Base:ICAO" pairs, comma-separated.
+# Stations are the nearest METAR-reporting airports (Mansfield's field does
+# not report, so Norwood covers it). Set AOC_WEATHER_STATIONS= (empty) to
+# turn the strip off entirely.
+_default_weather = (
+    "Bedford:KBED,Lawrence:KLWM,Manchester:KMHT,Mansfield:KOWD,Plymouth:KPYM"
+)
+CREW_HUB_WEATHER_STATIONS = [
+    (pair.split(":", 1)[0].strip(), pair.split(":", 1)[1].strip().upper())
+    for pair in os.environ.get("AOC_WEATHER_STATIONS", _default_weather).split(",")
+    if ":" in pair and pair.split(":", 1)[0].strip() and pair.split(":", 1)[1].strip()
+]
+# Never fetch live weather inside the test suite (tests override the
+# station list explicitly when they exercise the weather path).
+if "test" in sys.argv:
+    CREW_HUB_WEATHER_STATIONS = []

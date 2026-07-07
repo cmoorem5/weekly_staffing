@@ -5,6 +5,7 @@ from django.shortcuts import render
 
 from .. import shifts
 from ..models import CommShiftAssignment, DailyReport, DutyAssignment, Vehicle
+from ..weather import get_base_weather
 from .helpers import local_today
 
 
@@ -55,5 +56,6 @@ def hub_home(request):
             "vehicle_exceptions": exceptions,
             "vehicle_count": len(vehicles),
             "report": report,
+            "base_weather": get_base_weather(),
         },
     )
