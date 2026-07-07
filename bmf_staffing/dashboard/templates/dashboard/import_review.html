@@ -1,0 +1,132 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Import review{% endblock %}
+{% block content %}
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Data</div>
+  <h1 class="bmf-page-title">Import review</h1>
+  <p class="bmf-page-subtitle">
+    Everything the last schedule import couldn't resolve on its own — fix it
+    here so the numbers stay trustworthy. Unit mappings apply on the next
+    re-import; name links apply immediately to all imported weeks.
+  </p>
+</div>
+
+{% if not weeks %}
+<div class="bmf-empty-state">
+  <div class="bmf-empty-icon">✓</div>
+  <h3>No imports yet</h3>
+  <p class="text-muted mb-0"><a href="{% url 'import_schedule' %}">Import a schedule</a> and anything needing review will show up here.</p>
+</div>
+{% else %}
+
+<form method="get" class="bmf-toolbar d-flex flex-wrap align-items-end gap-3 mb-3" data-no-loading>
+  <div>
+    <label class="form-label mb-1" for="id_week">Imported week</label>
+    <select id="id_week" name="week" class="form-select" onchange="this.form.submit()">
+      {% for w in weeks %}<option value="{{ w }}" {% if w == week %}selected{% endif %}>{{ w }}</option>{% endfor %}
+    </select>
+  </div>
+  <span class="ms-auto">
+    {% if todo_count %}
+    <span class="bmf-rag bmf-rag--monitor">{{ todo_count }} item(s) need review</span>
+    {% else %}
+    <span class="bmf-rag bmf-rag--ontarget">Nothing needs review for this week</span>
+    {% endif %}
+  </span>
+</form>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Unknown unit codes ({{ unknown_units|length }})</div>
+  <div class="card-body">
+    {% if unknown_units %}
+    <p class="small text-muted">Cells with these unit codes were skipped. Map each to its canonical unit, then <a href="{% url 'import_schedule' %}">re-import the week</a> to pick them up.</p>
+    <datalist id="canonical-units">
+      {% for u in canonical_units %}<option value="{{ u }}">{% endfor %}
+    </datalist>
+    <table style="width:100%;">
+      <tr><th>Code</th><th>Cells</th><th>Example</th><th style="width:40%;">Map to canonical unit</th></tr>
+      {% for u in unknown_units %}
+      <tr>
+        <td class="bmf-numeric fw-bold">{{ u.code }}</td>
+        <td>{{ u.count }}</td>
+        <td class="text-muted small">{{ u.example }}</td>
+        <td>
+          <form method="post" class="d-flex gap-2" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="map_unit">
+            <input type="hidden" name="week" value="{{ week }}">
+            <input type="hidden" name="raw_code" value="{{ u.code }}">
+            <input type="text" name="maps_to" class="form-control form-control-sm" list="canonical-units" placeholder="e.g. D7B" required>
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <span class="text-muted">All unit codes resolved for this week. ✓</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Names not on the staff roster ({{ unlinked|length }})</div>
+  <div class="card-body">
+    {% if unlinked %}
+    <p class="small text-muted">These people appear on imported shifts but aren't linked to a roster entry, so they're missing from the Staff ops report. Link to an existing entry (the best fuzzy match is pre-selected) or add them.</p>
+    <table style="width:100%;">
+      <tr><th>Name on schedule</th><th>Role</th><th>Shifts</th><th style="width:45%;">Link to roster entry</th></tr>
+      {% for row in unlinked %}
+      <tr>
+        <td class="fw-bold">{{ row.display }}</td>
+        <td>{{ row.role }}</td>
+        <td>{{ row.count }}</td>
+        <td>
+          <form method="post" class="d-flex flex-wrap gap-2" data-no-loading>
+            {% csrf_token %}
+            <input type="hidden" name="week" value="{{ week }}">
+            <input type="hidden" name="display" value="{{ row.display }}">
+            <input type="hidden" name="role" value="{{ row.role }}">
+            <select name="entry_id" class="form-select form-select-sm" style="max-width:16rem;">
+              <option value="">— pick an entry —</option>
+              {% for opt in row.options %}
+              <option value="{{ opt.id }}" {% if opt.id == row.suggestion_id %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" name="action" value="link_name" class="btn btn-sm btn-primary">Link</button>
+            <button type="submit" name="action" value="add_link" class="btn btn-sm btn-outline-primary"
+                    onclick="return confirm('Add “{{ row.display }}” to the staff roster as a new {{ row.role }} and link these shifts?');">Add to roster</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <span class="text-muted">Every name on this week's shifts is linked to the roster. ✓</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Other parse issues ({{ other_issues|length }})</div>
+  <div class="card-body">
+    {% if other_issues %}
+    <table style="width:100%;">
+      <tr><th>Type</th><th>Where</th><th>Value</th><th>Message</th></tr>
+      {% for issue in other_issues %}
+      <tr>
+        <td><span class="bmf-rag bmf-rag--monitor">{{ issue.issue_type }}</span></td>
+        <td class="small text-muted">{{ issue.sheet }}{% if issue.cell %}!{{ issue.cell }}{% endif %}</td>
+        <td class="bmf-numeric small">{{ issue.raw_value }}</td>
+        <td class="small">{{ issue.message }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="small text-muted mt-2 mb-0">These are informational — fix the workbook and re-import if something looks wrong.</p>
+    {% else %}
+    <span class="text-muted">No other parse issues for this week. ✓</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

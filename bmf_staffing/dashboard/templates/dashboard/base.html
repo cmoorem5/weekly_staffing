@@ -499,6 +499,7 @@
         <div class="bmf-side-group">Reports &amp; KPIs</div>
         <a class="bmf-side-link{% if url_name == 'home' %} active{% endif %}" href="{% url 'home' %}">KPI overview</a>
         <a class="bmf-side-link{% if url_name == 'staffing_dashboard' %} active{% endif %}" href="{% url 'staffing_dashboard' %}">Staffing dashboard</a>
+        <a class="bmf-side-link{% if url_name == 'coverage_heatmap' %} active{% endif %}" href="{% url 'coverage_heatmap' %}">Coverage heatmap</a>
         <a class="bmf-side-link{% if url_name == 'weekly_staffing_report' %} active{% endif %}" href="{% url 'weekly_staffing_report' %}">Weekly report</a>
         <a class="bmf-side-link{% if url_name == 'monthly_report' %} active{% endif %}" href="{% url 'monthly_report' %}">Monthly board report</a>
         <a class="bmf-side-link{% if url_name == 'quarterly_staffing_report' %} active{% endif %}" href="{% url 'quarterly_staffing_report' %}">Quarterly report</a>
@@ -509,6 +510,7 @@
         <div class="bmf-side-group">Data</div>
         <a class="bmf-side-link{% if url_name == 'week_list' or url_name == 'week_add' or url_name == 'week_edit' %} active{% endif %}" href="{% url 'week_list' %}">Weeks</a>
         <a class="bmf-side-link{% if url_name == 'import_schedule' %} active{% endif %}" href="{% url 'import_schedule' %}">Import schedule</a>
+        <a class="bmf-side-link{% if url_name == 'import_review' %} active{% endif %}" href="{% url 'import_review' %}">Import review</a>
 
         <div class="bmf-side-group">Admin</div>
         {% if perms.crew_hub.manage_users %}

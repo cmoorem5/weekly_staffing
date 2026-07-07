@@ -89,6 +89,28 @@
         {% endfor %}
       </div>
     </div>
+
+    <div class="ch-card">
+      <div class="ch-card-header light">Subscribe in your calendar</div>
+      <div class="ch-card-body">
+        <div class="ch-note" style="margin-bottom:6px;">
+          Add this link in Outlook (Add calendar &rarr; Subscribe from web) or on
+          your phone (Add subscribed calendar) — your shifts stay in sync
+          automatically.
+        </div>
+        <div style="display:flex; gap:6px;">
+          <input class="ch-input" type="text" id="feed-url" value="{{ feed_url }}" readonly style="font-size:11px;">
+          <button type="button" class="ch-btn ch-btn-outline" style="padding:4px 10px; font-size:11px;"
+                  onclick="navigator.clipboard.writeText(document.getElementById('feed-url').value); this.textContent='Copied';">Copy</button>
+        </div>
+        <form method="post" action="{% url 'crew_hub:calendar_feed_reset' %}" style="margin-top:8px;" data-no-loading
+              onsubmit="return confirm('Reset the link? Calendars using the old link will stop updating.');">
+          {% csrf_token %}
+          <button type="submit" class="ch-btn ch-btn-outline" style="padding:3px 10px; font-size:11px;">Reset link</button>
+          <span class="ch-note">The link is private — anyone who has it can see your schedule.</span>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

@@ -737,7 +737,15 @@ def build_html(
     vol_rows = [list(r) for r in ctx.period_volumes] + [list(ctx.period_vol_total)]
     body += rh.body_cell(
         rh.data_table(
-            ["Role", "RN Shifts", "PM Shifts", "Total Shifts", "Exceptions", "OT RN", "OT PM"],
+            [
+                "Role",
+                "RN Shifts",
+                "PM Shifts",
+                "Total Shifts",
+                "Exceptions",
+                "OT RN",
+                "OT PM",
+            ],
             vol_rows,
             right_cols={1, 2, 3, 4, 5, 6},
             total_row=True,
@@ -790,7 +798,9 @@ def export_quarterly_staffing_html(
     ctx = load_quarter_report_data(db_path, fy_label_year, quarter)
     prior_ctx = None
     try:
-        prior_ctx = load_quarter_report_data(db_path, *_prior_quarter(fy_label_year, quarter))
+        prior_ctx = load_quarter_report_data(
+            db_path, *_prior_quarter(fy_label_year, quarter)
+        )
     except ValueError:
         pass  # first quarter with data — no comparison to show
     path = _output_path(output_dir, ctx).removesuffix(".pdf") + ".html"

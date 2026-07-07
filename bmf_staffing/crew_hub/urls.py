@@ -9,6 +9,8 @@ from .views import (
     api_duty_move,
     api_duty_remove,
     api_duty_work_type,
+    calendar_feed,
+    calendar_feed_reset,
     comm_day,
     comm_month,
     comm_rotations,
@@ -84,6 +86,9 @@ urlpatterns = [
     # Self-service: my schedule, time off, notifications
     path("me/", my_schedule, name="my_schedule"),
     path("me/time-off/", time_off_submit, name="time_off_submit"),
+    # Personal iCal feed (token-authenticated for calendar apps) + reset
+    path("calendar/<str:token>/feed.ics", calendar_feed, name="calendar_feed"),
+    path("me/calendar/reset/", calendar_feed_reset, name="calendar_feed_reset"),
     path("timeoff/", time_off_manage, name="time_off_manage"),
     path("timeoff/<int:pk>/decide/", time_off_decide, name="time_off_decide"),
     path("notifications/", notifications, name="notifications"),

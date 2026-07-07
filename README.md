@@ -84,7 +84,10 @@ In the app: **Weekly staffing report**, **Monthly board report**, and
 export** in the same visual family (navy banner, KPI strip, embedded trend
 and exception charts) — ready to attach to email or open in a browser:
 
-- **Weekly** — PDF or HTML for any imported week.
+- **Weekly** — PDF or HTML for any imported week. The HTML now breaks the
+  staffing rate into **day vs night fill** (56 day / 28 night required)
+  and shows **fill rate by role** (RN / Paramedic / EMT worked
+  person-shifts vs the weekly plan).
 - **Monthly board report** — pick any date range; the HTML is a board-level
   summary: staffing rate, OT dependency, shift exception %, and system
   RW/GR availability averaged over the period, each with **change vs the
@@ -95,6 +98,20 @@ and exception charts) — ready to attach to email or open in a browser:
   vs the prior quarter.
 
 After importing a schedule, the week edit page offers one-click PDF/HTML download.
+
+**Coverage heatmap** (`/reports/coverage-heatmap/`, sidebar → Reports &
+KPIs): base × day-of-week grid of average RW and GR coverage over any date
+range (default last 8 weeks), color-coded green → red so recurring holes
+(e.g. one base's Thursdays) stand out instead of averaging away. Built
+from the per-day ops-view counts captured on schedule import; hover a cell
+for staffed vs planned and the unfilled total.
+
+**Import review** (`/import-review/`, sidebar → Data): the post-import
+cleanup queue. For any imported week it lists **unknown unit codes** (map
+each to its canonical unit with one click — applied on re-import),
+**names that didn't match the staff roster** (best fuzzy match
+pre-selected; link or add-to-roster in one click, updating every imported
+week), and any other parse issues.
 
 **Staff roster** (RN / Medic / EMT): **Settings → Staff roster** (`/settings/staff-roster/`). The roster **updates automatically on schedule import** — new clinical names are added and `staff_member_id` links are set in the same pass. Deactivate people here if they should not appear in the Staff ops report; deactivated entries are not re-added on import. Manual backfill from an older week is optional on that page.
 
@@ -221,7 +238,10 @@ Report workflow and adds real scheduling for the pieces we own:
   **Detail CSV** (one row per assignment) exports.
 - **My schedule** (`/hub/me/`) — staff whose login is linked to a roster
   person (link from the roster pages or admin) see their own upcoming comm
-  and duty shifts and can submit **time-off requests**. Managers and
+  and duty shifts and can submit **time-off requests**. A personal
+  **calendar feed** (subscribe link on the page) syncs their shifts into
+  Outlook / iPhone / Google Calendar automatically; the tokenized link can
+  be reset any time. Managers and
   Reviewers decide them
   at `/hub/timeoff/` — approving/denying notifies the requester, and any
   already-scheduled days inside the window are flagged as conflicts to fix

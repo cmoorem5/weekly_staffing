@@ -6,13 +6,16 @@ import datetime as dt
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .. import shifts
+from ..ical import build_user_calendar
 from ..models import (
+    CalendarFeedToken,
     CommShiftAssignment,
     DutyAssignment,
     Notification,
@@ -70,6 +73,10 @@ def my_schedule(request):
     assignments = _upcoming_assignments(request.user, today, end)
     comm_profile = getattr(request.user, "comm_profile", None)
     duty_profile = getattr(request.user, "duty_profile", None)
+    feed_token = CalendarFeedToken.for_user(request.user)
+    feed_url = request.build_absolute_uri(
+        reverse("crew_hub:calendar_feed", kwargs={"token": feed_token.token})
+    )
     return render(
         request,
         "crew_hub/my_schedule.html",
@@ -81,8 +88,35 @@ def my_schedule(request):
             "duty_profile": duty_profile,
             "linked": bool(comm_profile or duty_profile),
             "my_requests": TimeOffRequest.objects.filter(user=request.user)[:20],
+            "feed_url": feed_url,
         },
     )
+
+
+def calendar_feed(request, token):
+    """Personal .ics feed — token-authenticated so calendar apps can pull it."""
+    feed = CalendarFeedToken.objects.filter(token=token).select_related("user").first()
+    if feed is None or not feed.user.is_active:
+        raise Http404("Unknown calendar feed.")
+    response = HttpResponse(
+        build_user_calendar(feed.user),
+        content_type="text/calendar; charset=utf-8",
+    )
+    response["Content-Disposition"] = 'inline; filename="crew-hub-schedule.ics"'
+    return response
+
+
+@login_required
+@require_POST
+def calendar_feed_reset(request):
+    """Rotate the feed token (invalidates any previously shared link)."""
+    CalendarFeedToken.for_user(request.user).rotate()
+    messages.success(
+        request,
+        "Calendar link reset. Re-subscribe with the new link below — the old "
+        "one no longer works.",
+    )
+    return redirect("crew_hub:my_schedule")
 
 
 @login_required

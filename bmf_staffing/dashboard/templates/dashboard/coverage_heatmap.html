@@ -1,0 +1,99 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Coverage heatmap{% endblock %}
+{% block content %}
+<style>
+  .hm-table { border-collapse: collapse; width: 100%; }
+  .hm-table th, .hm-table td { border: 1px solid var(--bmf-medium-gray); text-align: center; padding: 0.45rem 0.4rem; }
+  .hm-table th { background: var(--bmf-navy); color: #fff; font-size: 0.8rem; }
+  .hm-table td.hm-base { text-align: left; font-weight: 600; color: var(--bmf-navy); background: #fff; }
+  .hm-cell { font-weight: 600; font-size: 0.85rem; }
+  .hm-full     { background: #2e7d32; color: #fff; }
+  .hm-good     { background: #a5d6a7; color: #1e3c20; }
+  .hm-watch    { background: #ffe082; color: #6b4f00; }
+  .hm-low      { background: #ffab66; color: #5c2e00; }
+  .hm-critical { background: #c12126; color: #fff; }
+  .hm-none     { background: var(--bmf-gray); color: #8a8a8a; }
+  .hm-legend span { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 3px; font-size: 0.75rem; margin-right: 0.35rem; }
+</style>
+
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Reports &amp; KPIs</div>
+  <h1 class="bmf-page-title">Coverage heatmap</h1>
+  <p class="bmf-page-subtitle">
+    Average staffing by base and day of week, so recurring holes stand out
+    instead of averaging away. Uses the per-day ops-view counts captured on
+    schedule import against each base's planned unit-days.
+  </p>
+</div>
+
+{% if not has_data %}
+<div class="bmf-empty-state">
+  <div class="bmf-empty-icon">▦</div>
+  <h3>No per-day coverage data yet</h3>
+  <p class="text-muted mb-0">Import a schedule workbook (the OPS VIEW tab fills this) — <a href="{% url 'import_schedule' %}">Import schedule</a>.</p>
+</div>
+{% else %}
+
+<form method="get" class="bmf-toolbar d-flex flex-wrap align-items-end gap-3 mb-3" data-no-loading>
+  <div>
+    <label class="form-label mb-1" for="id_start">From</label>
+    <input type="date" id="id_start" name="start" class="form-control" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div>
+    <label class="form-label mb-1" for="id_end">Through</label>
+    <input type="date" id="id_end" name="end" class="form-control" value="{{ end|date:'Y-m-d' }}">
+  </div>
+  <button type="submit" class="btn btn-primary">Apply</button>
+  <span class="text-muted small ms-auto">{{ days_covered }} day(s) of imported data in range</span>
+</form>
+
+<div class="hm-legend mb-3">
+  <span class="hm-full">100%</span>
+  <span class="hm-good">90–99%</span>
+  <span class="hm-watch">75–89%</span>
+  <span class="hm-low">50–74%</span>
+  <span class="hm-critical">&lt; 50%</span>
+  <span class="hm-none">no plan / no data</span>
+</div>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Rotor wing (RW) coverage</div>
+  <div class="card-body table-responsive">
+    <table class="hm-table">
+      <tr><th style="text-align:left;">Base</th>{% for d in weekday_labels %}<th>{{ d }}</th>{% endfor %}</tr>
+      {% for row in rw_grid %}
+      <tr>
+        <td class="hm-base">{{ row.base }}</td>
+        {% for cell in row.cells %}
+        <td class="hm-cell hm-{{ cell.bucket }}" {% if cell.detail %}title="{{ cell.detail }}"{% endif %}>{{ cell.label }}</td>
+        {% endfor %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="text-muted">No bases with an RW plan configured (Settings → Base totals).</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Ground (GR) coverage</div>
+  <div class="card-body table-responsive">
+    <table class="hm-table">
+      <tr><th style="text-align:left;">Base</th>{% for d in weekday_labels %}<th>{{ d }}</th>{% endfor %}</tr>
+      {% for row in gr_grid %}
+      <tr>
+        <td class="hm-base">{{ row.base }}</td>
+        {% for cell in row.cells %}
+        <td class="hm-cell hm-{{ cell.bucket }}" {% if cell.detail %}title="{{ cell.detail }}"{% endif %}>{{ cell.label }}</td>
+        {% endfor %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="text-muted">No bases with a GR plan configured (Settings → Base totals).</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<p class="small text-muted">Hover a cell for staffed vs planned counts and the unfilled total. Cells average all imported days on that weekday in the range.</p>
+{% endif %}
+{% endblock %}

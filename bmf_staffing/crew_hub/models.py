@@ -687,6 +687,42 @@ class TimeOffRequest(models.Model):
         return names or [self.user.get_username()]
 
 
+class CalendarFeedToken(models.Model):
+    """Secret token for a user's personal iCal schedule feed.
+
+    The feed URL embeds the token so phone/Outlook calendars can subscribe
+    without a login. Rotating the token invalidates old links.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="calendar_feed_token",
+    )
+    token = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Calendar feed for {self.user.get_username()}"
+
+    @staticmethod
+    def _new_token() -> str:
+        import secrets
+
+        return secrets.token_urlsafe(32)
+
+    @classmethod
+    def for_user(cls, user) -> CalendarFeedToken:
+        obj, _ = cls.objects.get_or_create(
+            user=user, defaults={"token": cls._new_token()}
+        )
+        return obj
+
+    def rotate(self) -> None:
+        self.token = self._new_token()
+        self.save(update_fields=["token"])
+
+
 class Notification(models.Model):
     """In-app notification shown under the bell in the Crew Hub nav."""
 

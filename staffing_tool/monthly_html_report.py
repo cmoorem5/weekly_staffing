@@ -22,7 +22,9 @@ from staffing_tool.db import session_scope
 from staffing_tool.leave_grid import EXCEPTION_GRID_COLS
 from staffing_tool.metrics import (
     PeriodRollups,
+    RoleFill,
     compute_period_rollups,
+    compute_role_fill,
     compute_week_metrics,
 )
 from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
@@ -53,6 +55,7 @@ class MonthlyBoardData:
     leave_breakdown: list[tuple[str, int]]
     ot_by_role: list[tuple[str, int]]
     base_coverage: list[tuple[str, str, str, str, str]]
+    role_fill: list[RoleFill]
 
 
 def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
@@ -98,9 +101,7 @@ def load_monthly_board_data(
             .all()
         )
         if not week_rows:
-            raise ValueError(
-                f"No staffing weeks between {date_start} and {date_end}."
-            )
+            raise ValueError(f"No staffing weeks between {date_start} and {date_end}.")
         base_configs = session.query(BaseConfig).all()
         cfg_by_name = {b.base_name: b for b in base_configs}
 
@@ -205,6 +206,9 @@ def load_monthly_board_data(
             ],
             ot_by_role=[("RN", ot_rn), ("Paramedic", ot_medic), ("EMT", ot_emt)],
             base_coverage=base_coverage,
+            role_fill=compute_role_fill(
+                session, [str(row.week_start) for row in week_rows]
+            ),
         )
 
 
@@ -213,6 +217,8 @@ def _board_kpis(data: MonthlyBoardData) -> list[tuple]:
     r, p = data.rollups, data.prior_rollups
     spec = [
         ("Staffing Rate", r.avg_staffing_rate, "avg_staffing_rate", True),
+        ("Day Fill", r.avg_day_staffing_rate, "avg_day_staffing_rate", True),
+        ("Night Fill", r.avg_night_staffing_rate, "avg_night_staffing_rate", True),
         ("OT Dependency", r.avg_ot_dependency, "avg_ot_dependency", False),
         ("Shift Exception %", r.avg_leave_exposure, "avg_leave_exposure", False),
         ("System RW %", r.avg_system_rw_pct, "avg_system_rw_pct", True),
@@ -254,7 +260,9 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
 
     body = rh.section_bar("KEY PERFORMANCE INDICATORS — PERIOD AVERAGES")
     kpi_note = (
-        rh.note(f"Change shown vs prior period ({data.prior_label}), percentage points.")
+        rh.note(
+            f"Change shown vs prior period ({data.prior_label}), percentage points."
+        )
         if data.prior_rollups
         else rh.note("No prior-period data available for comparison.")
     )
@@ -273,6 +281,23 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
         + rh.exception_mix_table(data.leave_breakdown, top2)
         + rh.note(f"Top drivers (red in chart): {top2_note or 'n/a'}.")
     )
+
+    if any(rf.worked for rf in data.role_fill):
+        body += rh.section_bar("FILL RATE BY ROLE")
+        body += rh.body_cell(
+            rh.data_table(
+                ["Role", "Worked", "Capacity", "Fill Rate"],
+                [
+                    [rf.label, str(rf.worked), str(rf.capacity), _pct(rf.rate)]
+                    for rf in data.role_fill
+                ],
+                right_cols={1, 2, 3},
+            )
+            + rh.note(
+                "Worked = staffed + OT person-shifts from the imported "
+                "schedules; capacity is the weekly plan per role × weeks."
+            )
+        )
 
     ot_total = sum(v for _, v in data.ot_by_role)
     ot_rows = [[label, str(v)] for label, v in data.ot_by_role]

@@ -6,12 +6,14 @@ import unittest
 from pathlib import Path
 
 from staffing_tool.db import get_engine, init_db, session_scope
-from staffing_tool.models import WeeklyStaffing
+from staffing_tool.metrics import compute_role_fill
+from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_html_report import (
     export_monthly_report_html,
     load_monthly_board_data,
 )
 from staffing_tool.quarterly_pdf_report import export_quarterly_staffing_html
+from staffing_tool.weekly_pdf_report import export_weekly_staffing_html
 
 
 class HtmlReportExportTests(unittest.TestCase):
@@ -38,6 +40,19 @@ class HtmlReportExportTests(unittest.TestCase):
                         ot_emt=0,
                         leave_at=3,
                         leave_sick=1,
+                    )
+                )
+            session.commit()
+            # Person shifts for role fill (worked = staffed + ot).
+            for i in range(20):
+                session.add(
+                    WeeklyPersonShift(
+                        week_start="2025-12-07",
+                        person_display=f"Person {i}",
+                        shift_date="2025-12-08",
+                        role="RN" if i < 12 else "MEDIC",
+                        event_type="staffed" if i % 4 else "ot",
+                        included_in_aggregates=1,
                     )
                 )
             session.commit()
@@ -68,6 +83,30 @@ class HtmlReportExportTests(unittest.TestCase):
             export_monthly_report_html(
                 self.db_path, "2020-01-01", "2020-01-31", self.out_dir
             )
+
+    def test_compute_role_fill_counts_staffed_and_ot(self):
+        with session_scope(self.db_path) as session:
+            fill = {rf.role: rf for rf in compute_role_fill(session, ["2025-12-07"])}
+        self.assertEqual(fill["RN"].worked, 12)
+        self.assertEqual(fill["RN"].capacity, 84)
+        self.assertEqual(fill["MEDIC"].worked, 8)
+        self.assertEqual(fill["EMT"].worked, 0)
+
+    def test_monthly_html_has_day_night_and_role_fill(self):
+        path = export_monthly_report_html(
+            self.db_path, "2025-12-01", "2025-12-31", self.out_dir
+        )
+        html = Path(path).read_text(encoding="utf-8")
+        self.assertIn("Day Fill", html)
+        self.assertIn("Night Fill", html)
+        self.assertIn("FILL RATE BY ROLE", html)
+
+    def test_weekly_html_has_day_night_and_role_fill(self):
+        path = export_weekly_staffing_html(self.db_path, "2025-12-07", self.out_dir)
+        html = Path(path).read_text(encoding="utf-8")
+        self.assertIn("DAY / NIGHT", html)
+        self.assertIn("Day (56 required)", html)
+        self.assertIn("RN (Flight Nurse)", html)
 
     def test_quarterly_html_export(self):
         path = export_quarterly_staffing_html(self.db_path, 2026, 2, self.out_dir)

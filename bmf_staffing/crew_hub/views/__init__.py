@@ -1,6 +1,8 @@
 from .accounts import user_admin
 from .hub import hub_home
 from .me import (
+    calendar_feed,
+    calendar_feed_reset,
     my_schedule,
     notifications,
     notifications_read,
@@ -44,6 +46,8 @@ from .vehicles import vehicle_board
 
 __all__ = [
     "api_comm_move",
+    "calendar_feed",
+    "calendar_feed_reset",
     "api_comm_remove",
     "api_comm_work_type",
     "api_duty_move",

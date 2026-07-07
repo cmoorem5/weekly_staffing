@@ -10,9 +10,11 @@ from django.views.generic import RedirectView
 from .views import (
     backup_db,
     base_totals,
+    coverage_heatmap,
     database_backups,
     export_excel,
     home,
+    import_review,
     import_schedule,
     kpi_thresholds_settings,
     manager_roster_settings,
@@ -49,6 +51,7 @@ urlpatterns = [
     # KPI overview (the former home page) stays available in the sidebar.
     path("overview/", home, name="home"),
     path("reports/", reports_index, name="reports_index"),
+    path("reports/coverage-heatmap/", coverage_heatmap, name="coverage_heatmap"),
     path("settings/", settings_index, name="settings_index"),
     path(
         "settings/manager-roster/",
@@ -78,6 +81,7 @@ urlpatterns = [
     path("base-totals/", base_totals, name="base_totals"),
     path("weeks/", week_list, name="week_list"),
     path("import-schedule/", import_schedule, name="import_schedule"),
+    path("import-review/", import_review, name="import_review"),
     path("week/add/", week_add, name="week_add"),
     path(
         "week/<str:week_start>/",

@@ -33,6 +33,7 @@ from staffing_tool.metrics import (
     REQUIRED_NIGHT,
     REQUIRED_TOTAL,
     TOTAL_PERSON_SHIFTS,
+    compute_role_fill,
     compute_week_metrics,
 )
 from staffing_tool.models import (
@@ -79,6 +80,9 @@ class WeeklyReportContext:
     exception_by_role: list[tuple[str, int, int, int, int, int, int]]  # label + 6 cols
     exception_col_totals: tuple[int, int, int, int, int, int]
     trend_data: list[tuple[str, float, float, float]] = field(default_factory=list)
+    # Day/night staffing split and per-role fill (HTML export sections)
+    day_night_fill: list[tuple[str, str, str]] = field(default_factory=list)
+    role_fill: list[tuple[str, str, str, str]] = field(default_factory=list)
 
 
 def _pct(v: float) -> str:
@@ -370,6 +374,22 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             week_of=week_of,
             week_dates=week_dates,
             prepared_date=date.today().strftime("%B %d, %Y"),
+            day_night_fill=[
+                (
+                    "Day (56 required)",
+                    f"{metrics.filled_day} / {metrics.required_day}",
+                    _pct(metrics.day_staffing_rate),
+                ),
+                (
+                    "Night (28 required)",
+                    f"{metrics.filled_night} / {metrics.required_night}",
+                    _pct(metrics.night_staffing_rate),
+                ),
+            ],
+            role_fill=[
+                (rf.label, str(rf.worked), str(rf.capacity), _pct(rf.rate))
+                for rf in compute_role_fill(session, [week_start])
+            ],
             kpi_data=[
                 ("Staffing Rate", _pct(metrics.staffing_rate)),
                 ("OT Dependency", _pct(metrics.ot_dependency)),
@@ -958,6 +978,40 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
         )
     )
 
+    dn_table = _html_data_table(
+        ["Shift", "Filled / Required", "Fill Rate"],
+        [list(r) for r in ctx.day_night_fill],
+        navy=navy,
+        lgray=lgray,
+        mgray=mgray,
+        right_cols={1, 2},
+    )
+    fill_section = ""
+    if ctx.role_fill:
+        role_table = _html_data_table(
+            ["Role", "Worked", "Capacity", "Fill Rate"],
+            [list(r) for r in ctx.role_fill],
+            navy=navy,
+            lgray=lgray,
+            mgray=mgray,
+            right_cols={1, 2, 3},
+        )
+        fill_note = (
+            '<p style="font-size:11px;color:#555;margin:10px 0 0;">'
+            "Worked = staffed + OT person-shifts from the imported schedule; "
+            "capacity is the weekly person-shift plan per role.</p>"
+        )
+        fill_section = (
+            _html_section_bar("DAY / NIGHT &amp; ROLE FILL", navy)
+            + f'<tr><td style="padding:12px 16px;">{dn_table}'
+            f'<div style="height:12px;"></div>{role_table}{fill_note}</td></tr>'
+        )
+    else:
+        fill_section = (
+            _html_section_bar("DAY / NIGHT FILL", navy)
+            + f'<tr><td style="padding:12px 16px;">{dn_table}</td></tr>'
+        )
+
     trend_section = ""
     if trend_b64:
         trend_section = (
@@ -992,6 +1046,8 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 <tr><td style="padding:12px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>{kpi_cells}</tr></table>
 </td></tr>
+
+{fill_section}
 
 {trend_section}
 

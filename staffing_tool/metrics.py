@@ -15,7 +15,7 @@ Ground (GR) coverage:
 from dataclasses import dataclass
 from typing import Any, cast
 
-from .models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
+from .models import BaseConfig, WeeklyBaseCoverage, WeeklyPersonShift, WeeklyStaffing
 
 REQUIRED_DAY = 56
 REQUIRED_NIGHT = 28
@@ -23,6 +23,10 @@ REQUIRED_TOTAL = REQUIRED_DAY + REQUIRED_NIGHT  # 84
 
 # RN 84 + Medic 84 + EMT 49
 TOTAL_PERSON_SHIFTS = 217
+
+# Person-shift capacity per role per week (matches WeeklyPersonShift.role).
+ROLE_CAPACITY_PER_WEEK = {"RN": 84, "MEDIC": 84, "EMT": 49}
+ROLE_FILL_LABELS = {"RN": "RN (Flight Nurse)", "MEDIC": "Paramedic", "EMT": "EMT"}
 
 # Max GR unit-days (D+N) staffable system-wide per week — denominator for
 # System GR % only.
@@ -47,6 +51,10 @@ class PeriodRollups:
     pooled_leave_exposure: float
     pooled_system_rw_pct: float
     pooled_system_gr_pct: float
+    # Day/night split of the staffing rate (added later; defaults keep
+    # any positional construction working).
+    avg_day_staffing_rate: float = 0.0
+    avg_night_staffing_rate: float = 0.0
 
 
 @dataclass
@@ -79,6 +87,9 @@ class WeekMetrics:
     base_metrics: dict[str, dict[str, float]] | None = (
         None  # base_name -> {rw_pct, gr_pct}
     )
+    # Day/night split of the staffing rate.
+    day_staffing_rate: float = 0.0
+    night_staffing_rate: float = 0.0
 
 
 def compute_week_metrics(
@@ -212,6 +223,12 @@ def compute_week_metrics(
         system_rw_pct=system_rw_pct,
         system_gr_pct=system_gr_pct,
         base_metrics=base_metrics or None,
+        day_staffing_rate=(
+            float(filled_day) / float(required_day) if required_day else 0.0
+        ),
+        night_staffing_rate=(
+            float(filled_night) / float(required_night) if required_night else 0.0
+        ),
     )
 
 
@@ -255,7 +272,61 @@ def compute_period_rollups(metrics_list: list[WeekMetrics]) -> PeriodRollups | N
         ),
         pooled_system_rw_pct=(float(rw_staffed) / float(rw_denom) if rw_denom else 0.0),
         pooled_system_gr_pct=(float(gr_staffed) / float(gr_denom) if gr_denom else 0.0),
+        avg_day_staffing_rate=sum(m.day_staffing_rate for m in metrics_list) / n,
+        avg_night_staffing_rate=sum(m.night_staffing_rate for m in metrics_list) / n,
     )
+
+
+@dataclass
+class RoleFill:
+    """Worked person-shifts vs weekly capacity for one clinical role."""
+
+    role: str
+    label: str
+    worked: int
+    capacity: int
+    rate: float
+
+
+def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
+    """Fill rate by role over the given weeks.
+
+    Worked = staffed + OT person-shifts from ``weekly_person_shifts``
+    (requires schedule imports for those weeks); capacity = per-role weekly
+    person-shift capacity × number of weeks.
+    """
+    from sqlalchemy import func
+
+    n = len(week_starts)
+    counts = dict.fromkeys(ROLE_CAPACITY_PER_WEEK, 0)
+    if n:
+        rows = (
+            session.query(WeeklyPersonShift.role, func.count())
+            .filter(
+                WeeklyPersonShift.week_start.in_(week_starts),
+                WeeklyPersonShift.event_type.in_(["staffed", "ot"]),
+                WeeklyPersonShift.included_in_aggregates == 1,
+            )
+            .group_by(WeeklyPersonShift.role)
+            .all()
+        )
+        for role, count in rows:
+            if role in counts:
+                counts[role] = int(count)
+    result = []
+    for role, per_week in ROLE_CAPACITY_PER_WEEK.items():
+        capacity = per_week * n
+        worked = counts[role]
+        result.append(
+            RoleFill(
+                role=role,
+                label=ROLE_FILL_LABELS[role],
+                worked=worked,
+                capacity=capacity,
+                rate=float(worked) / float(capacity) if capacity else 0.0,
+            )
+        )
+    return result
 
 
 def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:

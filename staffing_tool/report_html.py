@@ -97,7 +97,9 @@ def kpi_strip(kpis: list[tuple[str, str] | tuple[str, str, str]]) -> str:
     for kpi in kpis:
         label, value = kpi[0], kpi[1]
         sub = kpi[2] if len(kpi) > 2 else ""
-        sub_html = f'<div style="font-size:10px;margin-top:2px;">{sub}</div>' if sub else ""
+        sub_html = (
+            f'<div style="font-size:10px;margin-top:2px;">{sub}</div>' if sub else ""
+        )
         cells += (
             f'<td style="padding:8px 4px;text-align:center;border:1px solid {MGRAY};">'
             f'<div style="font-size:18px;font-weight:bold;color:{NAVY};">{value}</div>'
@@ -109,13 +111,11 @@ def kpi_strip(kpis: list[tuple[str, str] | tuple[str, str, str]]) -> str:
     )
 
 
-def delta_html(
-    current: float, prior: float, *, higher_is_better: bool = True
-) -> str:
+def delta_html(current: float, prior: float, *, higher_is_better: bool = True) -> str:
     """Colored ▲/▼ change vs the prior period, in percentage points."""
     diff = round((current - prior) * 100, 1)
     if abs(diff) < 0.05:
-        return f'<span style="color:#666;">&#9654; 0.0 pts</span>'
+        return '<span style="color:#666;">&#9654; 0.0 pts</span>'
     up = diff > 0
     good = up == higher_is_better
     arrow = "&#9650;" if up else "&#9660;"
@@ -149,9 +149,7 @@ def share_bar_rows(
     return rows, total
 
 
-def exception_mix_table(
-    breakdown: list[tuple[str, int]], highlight: set[str]
-) -> str:
+def exception_mix_table(breakdown: list[tuple[str, int]], highlight: set[str]) -> str:
     rows, total = share_bar_rows(breakdown, highlight)
     return (
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
