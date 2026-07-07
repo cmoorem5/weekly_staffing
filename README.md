@@ -225,9 +225,14 @@ Report workflow and adds real scheduling for the pieces we own:
   once (ITC and Blood are accepted for ITOC and BPM) — and picking an
   officer on the rotations form pre-selects their role.
 - **Rotations** (`/hub/comm/rotations/`, `/hub/duty/rotations/`) — repeating
-  patterns per person (cycle N-on/M-off from an anchor date, or fixed
-  weekdays). "Apply rotations" on either month calendar auto-fills the month;
+  patterns per person: cycle N-on/M-off from an anchor date, fixed weekdays,
+  or the **2-2-3 Pitman** cycle the Comm Techs work (2 on, 2 off, 3 on,
+  2 off, 2 on, 3 off — 7 twelve-hour shifts per two weeks, 3 one week and
+  4 the next; the anchor date is day 1 of the opening 2-on block).
+  "Apply rotations" on either month calendar auto-fills the month;
   days already assigned are never overwritten, so manual edits always win.
+  `python manage.py seed_comm_techs` loads the Comm Tech roster so every
+  tech is available in the seat pickers and on the rotations form.
 - **Calendar interactions** — drag a chip to another day to move it (dropping
   on an occupied seat/role swaps the two days); right-click a chip to code the
   day **Sick leave / Swap / Overtime** or remove it. Work types color-code on

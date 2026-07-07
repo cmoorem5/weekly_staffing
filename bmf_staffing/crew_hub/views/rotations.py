@@ -164,6 +164,9 @@ def _add_rotation(request, cfg) -> None:
 
     model = cfg["rotation_model"]
     pattern_type = request.POST.get("pattern_type", model.PATTERN_CYCLE)
+    if pattern_type not in dict(model.PATTERN_CHOICES):
+        messages.error(request, "Unknown pattern type.")
+        return
     weekdays = ",".join(
         str(d) for d, _ in WEEKDAY_OPTIONS if f"weekday_{d}" in request.POST
     )

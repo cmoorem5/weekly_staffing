@@ -43,6 +43,27 @@ class RotationPatternTests(TestCase):
         self.assertTrue(rotation.works_on(dt.date(2026, 7, 8)))
         self.assertFalse(rotation.works_on(dt.date(2026, 7, 7)))
 
+    def test_pitman_pattern_two_two_three(self):
+        # Anchored on a Sunday: 2 on, 2 off, 3 on, 2 off, 2 on, 3 off.
+        anchor = dt.date(2026, 7, 19)
+        rotation = CommRotation.objects.create(
+            member=self.member,
+            seat="D",
+            pattern_type=CommRotation.PATTERN_PITMAN,
+            anchor_date=anchor,
+        )
+        on_offsets = [
+            offset
+            for offset in range(28)
+            if rotation.works_on(anchor + dt.timedelta(days=offset))
+        ]
+        self.assertEqual(
+            on_offsets, [0, 1, 4, 5, 6, 9, 10, 14, 15, 18, 19, 20, 23, 24]
+        )
+        # 7 shifts per 14-day cycle.
+        self.assertEqual(len(on_offsets), 14)
+        self.assertIn("2-2-3", rotation.pattern_label)
+
     def test_pattern_respects_anchor_end_and_active(self):
         rotation = CommRotation.objects.create(
             member=self.member,
@@ -84,6 +105,59 @@ class RotationPatternTests(TestCase):
         created2, skipped2 = apply_rotations_for_range(JULY_1, JULY_31)
         self.assertEqual(created2, 0)
         self.assertEqual(skipped2, 16)
+
+
+class RotationFormTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("rot-mgr", password="pw")
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="manage_schedules")
+        )
+        self.client.login(username="rot-mgr", password="pw")
+        self.member = CommStaffMember.objects.create(name="Comms Test-Alpha")
+
+    def _add(self, **extra):
+        data = {
+            "action": "add",
+            "person": self.member.pk,
+            "slot": "D",
+            "anchor_date": "2026-07-19",
+            **extra,
+        }
+        return self.client.post(reverse("crew_hub:comm_rotations"), data)
+
+    def test_manage_page_offers_pitman_option(self):
+        response = self.client.get(reverse("crew_hub:comm_rotations"))
+        self.assertContains(response, 'value="pitman"')
+        self.assertContains(response, "2 on / 2 off / 3 on / 2 off / 2 on / 3 off")
+
+    def test_add_pitman_rotation(self):
+        response = self._add(pattern_type="pitman")
+        self.assertEqual(response.status_code, 302)
+        rotation = CommRotation.objects.get(member=self.member)
+        self.assertEqual(rotation.pattern_type, CommRotation.PATTERN_PITMAN)
+        self.assertTrue(rotation.works_on(dt.date(2026, 7, 19)))
+        self.assertFalse(rotation.works_on(dt.date(2026, 7, 21)))
+
+    def test_unknown_pattern_type_rejected(self):
+        response = self._add(pattern_type="bogus")
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(CommRotation.objects.exists())
+
+
+class SeedCommTechsTests(TestCase):
+    def test_seed_command_is_idempotent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        call_command("seed_comm_techs", stdout=StringIO())
+        self.assertEqual(CommStaffMember.objects.count(), 18)
+        self.assertTrue(
+            CommStaffMember.objects.filter(name="Bilodeau, Henry").exists()
+        )
+        call_command("seed_comm_techs", stdout=StringIO())
+        self.assertEqual(CommStaffMember.objects.count(), 18)
 
 
 class CalendarApiTests(TestCase):

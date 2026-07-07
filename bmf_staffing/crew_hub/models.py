@@ -180,9 +180,11 @@ class CommShiftAssignment(AssignmentBase):
 class RotationPattern(models.Model):
     """Abstract repeating work pattern (CrewSense-style rotation).
 
-    Two pattern types:
+    Three pattern types:
     * cycle  — N days on / M days off, counted from ``anchor_date``.
     * weekly — fixed weekdays every week.
+    * pitman — fixed 14-day 2-2-3 cycle (2 on, 2 off, 3 on, 2 off, 2 on,
+      3 off) from ``anchor_date``: 7 twelve-hour shifts per two weeks.
 
     Applying a rotation materializes assignment rows, skipping any slot
     already filled so manual edits always win.
@@ -190,10 +192,17 @@ class RotationPattern(models.Model):
 
     PATTERN_CYCLE = "cycle"
     PATTERN_WEEKLY = "weekly"
+    PATTERN_PITMAN = "pitman"
     PATTERN_CHOICES = [
         (PATTERN_CYCLE, "Cycle (days on / days off)"),
         (PATTERN_WEEKLY, "Weekly (fixed weekdays)"),
+        (PATTERN_PITMAN, "2-2-3 Pitman (7 shifts / 2 weeks)"),
     ]
+
+    # Day offsets worked inside the 14-day 2-2-3 cycle, counted from the
+    # anchor: on-on, off-off, on-on-on, off-off, on-on, off-off-off.
+    PITMAN_ON_OFFSETS = frozenset({0, 1, 4, 5, 6, 9, 10})
+    PITMAN_CYCLE_DAYS = 14
 
     pattern_type = models.CharField(
         max_length=8, choices=PATTERN_CHOICES, default=PATTERN_CYCLE
@@ -220,6 +229,8 @@ class RotationPattern(models.Model):
 
     @property
     def pattern_label(self) -> str:
+        if self.pattern_type == self.PATTERN_PITMAN:
+            return f"2-2-3 (7 shifts / 2 weeks) from {self.anchor_date}"
         if self.pattern_type == self.PATTERN_CYCLE:
             return f"{self.days_on} on / {self.days_off} off from {self.anchor_date}"
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -234,6 +245,9 @@ class RotationPattern(models.Model):
             return False
         if self.pattern_type == self.PATTERN_WEEKLY:
             return date.weekday() in self.weekday_set
+        if self.pattern_type == self.PATTERN_PITMAN:
+            offset = (date - self.anchor_date).days % self.PITMAN_CYCLE_DAYS
+            return offset in self.PITMAN_ON_OFFSETS
         cycle_len = self.days_on + self.days_off
         if cycle_len == 0:
             return False
