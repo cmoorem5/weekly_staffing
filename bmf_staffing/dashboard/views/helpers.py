@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from django.conf import settings
-from django.http import Http404
+from django.http import FileResponse, Http404
 from staffing_tool.db import DEFAULT_BASES, ensure_db_ready, session_scope
 from staffing_tool.manager_roster import (
     default_manager_last_names_upper,
@@ -119,6 +119,22 @@ def _resolve_output_dir() -> str:
     if DB_PATH:
         return os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "output")
     return "output"
+
+
+def serve_download(path: str | None, content_type: str | None = None) -> FileResponse:
+    """Return a file-attachment response, or raise Http404 if the export is missing.
+
+    Shared by the weekly/monthly/quarterly report download views, which all
+    produce a path on disk and then stream it back as an attachment.
+    """
+    if not path or not os.path.isfile(path):
+        raise Http404("Export file not found")
+    return FileResponse(
+        open(path, "rb"),
+        as_attachment=True,
+        filename=os.path.basename(path),
+        content_type=content_type,
+    )
 
 
 def _is_local_request(request) -> bool:

@@ -1,12 +1,10 @@
 """Weekly staffing PDF + HTML report download."""
 
-import os
-
 from django.contrib import messages
 from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 
-from .helpers import DB_PATH, _ensure_db, _resolve_output_dir
+from .helpers import DB_PATH, _ensure_db, _resolve_output_dir, serve_download
 
 
 def _pdf_exports():
@@ -33,14 +31,7 @@ def _serve_weekly_export(week_start: str, fmt: str) -> FileResponse:
     else:
         path = export_pdf(DB_PATH, week_start, output_dir)
         content_type = "application/pdf"
-    if not path or not os.path.isfile(path):
-        raise Http404("Export file not found")
-    return FileResponse(
-        open(path, "rb"),
-        as_attachment=True,
-        filename=os.path.basename(path),
-        content_type=content_type,
-    )
+    return serve_download(path, content_type)
 
 
 def weekly_report_download_pdf(request, week_start: str):

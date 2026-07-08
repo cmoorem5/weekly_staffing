@@ -1,14 +1,13 @@
 """Monthly report download view."""
 
-import os
 from datetime import date, timedelta
 
 from django.contrib import messages
-from django.http import FileResponse, Http404
+from django.http import Http404
 from django.shortcuts import redirect, render
 from staffing_tool.monthly_report import export_monthly_report
 
-from .helpers import DB_PATH, _ensure_db, _resolve_output_dir
+from .helpers import DB_PATH, _ensure_db, _resolve_output_dir, serve_download
 
 
 def _default_previous_calendar_month():
@@ -47,14 +46,7 @@ def monthly_report(request):
                     DB_PATH, start, end, output_dir=_resolve_output_dir()
                 )
                 content_type = None
-            if not path or not os.path.isfile(path):
-                raise Http404("Export file not found")
-            return FileResponse(
-                open(path, "rb"),
-                as_attachment=True,
-                filename=os.path.basename(path),
-                content_type=content_type,
-            )
+            return serve_download(path, content_type)
         except ValueError as exc:
             messages.error(request, str(exc))
         except Http404:
