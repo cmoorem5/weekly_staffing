@@ -415,3 +415,67 @@ def api_duty_remove(request, pk):
 @require_POST
 def api_duty_move(request, pk):
     return _move(request, DutyAssignment, pk, "role")
+
+
+# Placeholder seat value while dodging the (date, seat) unique constraint
+# during a same-day seat swap. Never persisted outside one transaction.
+_RESEAT_SENTINEL = "_TMP_"
+
+
+@login_required
+@require_POST
+def api_comm_reseat(request, pk):
+    """Change a Comm Center assignment's seat for the same day (swap if taken)."""
+    assignment, error = _get_or_404_json(CommShiftAssignment, pk, request)
+    if error:
+        return error
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    new_seat = payload.get("seat", "")
+    if new_seat not in shifts.COMM_SEAT_INDEX:
+        return JsonResponse({"ok": False, "error": "Unknown seat."}, status=400)
+    old_seat = assignment.seat
+    if new_seat == old_seat:
+        return JsonResponse({"ok": True, "result": "unchanged"})
+
+    date = assignment.date
+    old_label = shifts.COMM_SEAT_INDEX[old_seat].label
+    new_label = shifts.COMM_SEAT_INDEX[new_seat].label
+    actor = request.user.get_username()
+    with transaction.atomic():
+        occupant = (
+            CommShiftAssignment.objects.select_for_update()
+            .filter(date=date, seat=new_seat)
+            .exclude(pk=assignment.pk)
+            .first()
+        )
+        if occupant:
+            occupant.seat = _RESEAT_SENTINEL
+            occupant.save(update_fields=["seat"])
+            assignment.seat = new_seat
+            assignment.save(update_fields=["seat"])
+            occupant.seat = old_seat
+            occupant.save(update_fields=["seat"])
+            _notify_owner(
+                request,
+                assignment,
+                f"Your {date} shift moved from {old_label} to {new_label} "
+                f"(swap made by {actor}).",
+            )
+            _notify_owner(
+                request,
+                occupant,
+                f"Your {date} shift moved from {new_label} to {old_label} "
+                f"(swap made by {actor}).",
+            )
+            return JsonResponse({"ok": True, "result": "swapped"})
+        assignment.seat = new_seat
+        assignment.save(update_fields=["seat"])
+        _notify_owner(
+            request,
+            assignment,
+            f"Your {date} shift moved from {old_label} to {new_label} by {actor}.",
+        )
+    return JsonResponse({"ok": True, "result": "moved"})

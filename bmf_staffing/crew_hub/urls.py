@@ -5,6 +5,7 @@ from django.urls import path
 from .views import (
     api_comm_move,
     api_comm_remove,
+    api_comm_reseat,
     api_comm_work_type,
     api_duty_move,
     api_duty_remove,
@@ -58,6 +59,11 @@ urlpatterns = [
         name="api_comm_work_type",
     ),
     path("comm/api/assignment/<int:pk>/move/", api_comm_move, name="api_comm_move"),
+    path(
+        "comm/api/assignment/<int:pk>/reseat/",
+        api_comm_reseat,
+        name="api_comm_reseat",
+    ),
     path(
         "comm/api/assignment/<int:pk>/remove/",
         api_comm_remove,

@@ -233,10 +233,13 @@ Report workflow and adds real scheduling for the pieces we own:
   days already assigned are never overwritten, so manual edits always win.
   `python manage.py seed_comm_techs` loads the Comm Tech roster so every
   tech is available in the seat pickers and on the rotations form.
-- **Calendar interactions** — drag a chip to another day to move it (dropping
-  on an occupied seat/role swaps the two days); right-click a chip to code the
-  day **Sick leave / Swap / Overtime** or remove it. Work types color-code on
-  the calendar and tag names on the AOC report (e.g. "Comms Test-Alpha (OT)").
+- **Calendar interactions** — click a chip to open a menu that changes its
+  **seat for that same day** (Comm Center only — e.g. move a tech from D to
+  N without touching any other day) or codes the day **Sick leave / Swap /
+  Overtime** or removes it. Drag a chip to another day to move it instead
+  (dropping on an occupied seat/role swaps the two days). Work types
+  color-code on the calendar and tag names on the AOC report (e.g.
+  "Comms Test-Alpha (OT)").
 - **Hours / payroll report** (`/hub/reports/hours/`) — per-person totals for
   any date range split by work type (regular / OT / swap / sick, plus duty-day
   counts), with **Summary CSV** (per-employee totals for ADP upload) and

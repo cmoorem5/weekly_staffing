@@ -100,6 +100,7 @@ def comm_month(request):
             "nav": month_nav(year, month),
             "today": local_today(),
             "seat_total": len([s for s in shifts.COMM_SEATS if s.code != "EXTRA"]),
+            "seat_options": shifts.COMM_SEAT_CHOICES,
             "members": CommStaffMember.objects.filter(active=True),
             "selected_member": member_id,
         },

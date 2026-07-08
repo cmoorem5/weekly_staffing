@@ -25,6 +25,7 @@ from .report import (
 from .rotations import (
     api_comm_move,
     api_comm_remove,
+    api_comm_reseat,
     api_comm_work_type,
     api_duty_move,
     api_duty_remove,
@@ -49,6 +50,7 @@ __all__ = [
     "calendar_feed",
     "calendar_feed_reset",
     "api_comm_remove",
+    "api_comm_reseat",
     "api_comm_work_type",
     "api_duty_move",
     "api_duty_remove",

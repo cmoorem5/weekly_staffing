@@ -209,6 +209,42 @@ class CalendarApiTests(TestCase):
         self.assertEqual(self.assignment.date, dt.date(2026, 7, 5))
         self.assertEqual(other.date, JULY_1)
 
+    def test_reseat_to_empty_seat(self):
+        url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"seat": "N"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["result"], "moved")
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.seat, "N")
+        self.assertEqual(self.assignment.date, JULY_1)
+
+    def test_reseat_onto_occupied_seat_swaps(self):
+        other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
+        other = CommShiftAssignment.objects.create(
+            date=JULY_1, seat="N", member=other_member
+        )
+        url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"seat": "N"})
+        self.assertEqual(response.json()["result"], "swapped")
+        self.assignment.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(self.assignment.seat, "N")
+        self.assertEqual(other.seat, "D")
+
+    def test_reseat_unknown_seat_rejected(self):
+        url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"seat": "BOGUS"})
+        self.assertEqual(response.status_code, 400)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.seat, "D")
+
+    def test_reseat_requires_manage_permission(self):
+        User.objects.create_user("viewer", password="pw")
+        self.client.login(username="viewer", password="pw")
+        url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"seat": "N"})
+        self.assertEqual(response.status_code, 403)
+
     def test_remove_api(self):
         url = reverse("crew_hub:api_comm_remove", kwargs={"pk": self.assignment.pk})
         response = self.client.post(url)

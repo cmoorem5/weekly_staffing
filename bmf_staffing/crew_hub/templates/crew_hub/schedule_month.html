@@ -2,7 +2,7 @@
 {% load crew_hub_extras %}
 
 {% block page_title %}{{ title }}{% endblock %}
-{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a day number to edit; drag a chip to move or swap it; right-click a chip to set sick / swap / overtime{% endblock %}
+{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a chip to change its seat or work type for that day; drag a chip to move or swap it to another day; click a day number to open the full day editor{% endblock %}
 
 {% block hub_content %}
 <style>
@@ -82,7 +82,7 @@
                 {% for chip in info.chips %}
                   <div class="ch-chip wt-{{ chip.work_type }} {% if chip.mine %}mine{% endif %}"
                        draggable="true" data-pk="{{ chip.pk }}" data-name="{{ chip.name }}" data-seat="{{ chip.seat }}"
-                       title="{{ chip.seat }}: {{ chip.name }} — drag to move, right-click for work type">
+                       title="{{ chip.seat }}: {{ chip.name }} — click to change seat/work type, drag to move to another day">
                     <span class="seat">{{ chip.seat }}</span>{{ chip.name }}
                   </div>
                 {% endfor %}
@@ -104,11 +104,18 @@
   <span><span class="swatch" style="background:#fbeced; border-color:#C12126;"></span>Sick leave</span>
   <span><span class="swatch" style="background:#E8EEF8; border-color:#2A4492;"></span>Swap</span>
   <span><span class="swatch" style="background:#fdf3e7; border-color:#E8761A;"></span>Overtime</span>
-  <span style="margin-left:auto;">Drag a chip onto another day to move it — dropping on an occupied seat swaps the two days.</span>
+  <span style="margin-left:auto;">Click a chip to change its seat or work type. Drag a chip onto another day to move it — dropping on an occupied seat swaps the two days.</span>
 </div>
 
 <div id="ctx_menu">
-  <div class="hdr" id="ctx_title">Work type</div>
+  <div class="hdr" id="ctx_title">&nbsp;</div>
+  {% if kind == "comm" %}
+    <div class="hdr">Move to seat (same day)</div>
+    {% for code, label in seat_options %}
+      <button type="button" data-seat="{{ code }}">{{ label }}</button>
+    {% endfor %}
+  {% endif %}
+  <div class="hdr">Work type</div>
   <button type="button" data-wt="regular">Regular</button>
   <button type="button" data-wt="sick">Sick leave</button>
   <button type="button" data-wt="swap">Swap</button>
@@ -131,17 +138,20 @@
     }).then(function (r) { return r.json(); });
   }
 
-  // --- Right-click work-type menu ---
+  // --- Click (or right-click) opens the seat / work-type menu ---
+  function openMenu(chip, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    menuPk = chip.dataset.pk;
+    document.getElementById('ctx_title').textContent =
+      chip.dataset.seat + ' · ' + chip.dataset.name;
+    menu.style.display = 'block';
+    menu.style.left = Math.min(e.clientX, window.innerWidth - 190) + 'px';
+    menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
+  }
   document.querySelectorAll('.ch-chip').forEach(function (chip) {
-    chip.addEventListener('contextmenu', function (e) {
-      e.preventDefault();
-      menuPk = chip.dataset.pk;
-      document.getElementById('ctx_title').textContent =
-        chip.dataset.seat + ' · ' + chip.dataset.name;
-      menu.style.display = 'block';
-      menu.style.left = Math.min(e.clientX, window.innerWidth - 190) + 'px';
-      menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
-    });
+    chip.addEventListener('click', function (e) { openMenu(chip, e); });
+    chip.addEventListener('contextmenu', function (e) { openMenu(chip, e); });
   });
   document.addEventListener('click', function () { menu.style.display = 'none'; });
   document.addEventListener('scroll', function () { menu.style.display = 'none'; }, true);
@@ -152,6 +162,8 @@
       var req;
       if (btn.dataset.remove) {
         req = post(API + menuPk + '/remove/');
+      } else if (btn.dataset.seat) {
+        req = post(API + menuPk + '/reseat/', { seat: btn.dataset.seat });
       } else {
         req = post(API + menuPk + '/work-type/',
                    { work_type: btn.dataset.wt });
