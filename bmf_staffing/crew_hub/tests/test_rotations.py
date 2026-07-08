@@ -57,9 +57,7 @@ class RotationPatternTests(TestCase):
             for offset in range(28)
             if rotation.works_on(anchor + dt.timedelta(days=offset))
         ]
-        self.assertEqual(
-            on_offsets, [0, 1, 4, 5, 6, 9, 10, 14, 15, 18, 19, 20, 23, 24]
-        )
+        self.assertEqual(on_offsets, [0, 1, 4, 5, 6, 9, 10, 14, 15, 18, 19, 20, 23, 24])
         # 7 shifts per 14-day cycle.
         self.assertEqual(len(on_offsets), 14)
         self.assertIn("2-2-3", rotation.pattern_label)
@@ -170,7 +168,10 @@ class RotationFormTests(TestCase):
             anchor_date=dt.date(2026, 7, 21),
         )
         response = self._add(
-            pattern_type="cycle", days_on=2, days_off=2, anchor_date="2026-07-19",
+            pattern_type="cycle",
+            days_on=2,
+            days_off=2,
+            anchor_date="2026-07-19",
             follow=True,
         )
         messages = [str(m) for m in response.context["messages"]]
@@ -185,9 +186,7 @@ class SeedCommTechsTests(TestCase):
 
         call_command("seed_comm_techs", stdout=StringIO())
         self.assertEqual(CommStaffMember.objects.count(), 18)
-        self.assertTrue(
-            CommStaffMember.objects.filter(name="Bilodeau, Henry").exists()
-        )
+        self.assertTrue(CommStaffMember.objects.filter(name="Bilodeau, Henry").exists())
         call_command("seed_comm_techs", stdout=StringIO())
         self.assertEqual(CommStaffMember.objects.count(), 18)
 

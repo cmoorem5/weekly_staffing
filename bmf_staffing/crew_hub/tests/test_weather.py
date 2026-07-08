@@ -107,7 +107,9 @@ class BaseWeatherTests(TestCase):
         today = timezone.localdate()
         with patch.object(weather, "_fetch_metars", return_value={"KBED": SAMPLE}):
             response = self.client.get(
-                reverse("crew_hub:report_detail", kwargs={"date_str": today.isoformat()})
+                reverse(
+                    "crew_hub:report_detail", kwargs={"date_str": today.isoformat()}
+                )
             )
         self.assertContains(response, "Base weather")
         self.assertContains(response, "Light rain, mist")

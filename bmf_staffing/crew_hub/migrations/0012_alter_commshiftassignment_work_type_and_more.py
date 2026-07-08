@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("crew_hub", "0011_alter_commshiftassignment_work_type_and_more"),
     ]

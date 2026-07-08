@@ -117,9 +117,7 @@ def build_hours_report(
                 ),
                 "work_type_code": assignment.work_type,
                 "hours": (
-                    0.0
-                    if assignment.work_type in (WORK_SICK, WORK_LEAVE)
-                    else hours
+                    0.0 if assignment.work_type in (WORK_SICK, WORK_LEAVE) else hours
                 ),
             }
         )

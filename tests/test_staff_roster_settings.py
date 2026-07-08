@@ -28,23 +28,37 @@ from staffing_tool.db import (
 )
 from staffing_tool.models import StaffRosterEntry as SaStaffRosterEntry
 
+from dashboard.models import StaffRosterEntry as DjangoStaffRosterEntry
 from dashboard.views import helpers as view_helpers
 from dashboard.views import settings_views
 
 
 class StaffRosterSettingsViewTests(unittest.TestCase):
     def test_remove_forms_include_csrf_token(self):
-        c = Client(HTTP_HOST="localhost")
-        resp = c.get(reverse("staff_roster_settings"))
-        self.assertEqual(resp.status_code, 200)
-        forms = re.findall(
-            r'<form method="post" class="d-inline".*?</form>',
-            resp.content.decode("utf-8"),
-            re.DOTALL,
+        # The roster listing is read via the Django ORM ("staffing" alias),
+        # not the SQLAlchemy DB_PATH used elsewhere in this file, so the
+        # seed row has to go through that same ORM for the view to see it.
+        entry = DjangoStaffRosterEntry.objects.using("staffing").create(
+            last_name="Smith",
+            first_name="Jane",
+            role="RN",
+            active=True,
+            created_at="2026-06-10T00:00:00Z",
         )
-        self.assertGreater(len(forms), 0)
-        for form in forms:
-            self.assertIn("csrfmiddlewaretoken", form)
+        try:
+            c = Client(HTTP_HOST="localhost")
+            resp = c.get(reverse("staff_roster_settings"))
+            self.assertEqual(resp.status_code, 200)
+            forms = re.findall(
+                r'<form method="post" class="d-inline".*?</form>',
+                resp.content.decode("utf-8"),
+                re.DOTALL,
+            )
+            self.assertGreater(len(forms), 0)
+            for form in forms:
+                self.assertIn("csrfmiddlewaretoken", form)
+        finally:
+            entry.delete(using="staffing")
 
     def test_deactivate_removes_active_entry(self):
         with tempfile.TemporaryDirectory() as tmp:
