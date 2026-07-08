@@ -1,10 +1,12 @@
 """Base weather strip: plain-language decoding, categories, caching."""
 
+import datetime as dt
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from crew_hub import weather
 
@@ -98,6 +100,30 @@ class BaseWeatherTests(TestCase):
         self.assertContains(response, "Light rain, mist")
         self.assertContains(response, "IFR")
         self.assertContains(response, "not an official weather briefing")
+
+    def test_todays_aoc_report_shows_weather_strip(self):
+        User.objects.create_user("staffer", password="pw")
+        self.client.login(username="staffer", password="pw")
+        today = timezone.localdate()
+        with patch.object(weather, "_fetch_metars", return_value={"KBED": SAMPLE}):
+            response = self.client.get(
+                reverse("crew_hub:report_detail", kwargs={"date_str": today.isoformat()})
+            )
+        self.assertContains(response, "Base weather")
+        self.assertContains(response, "Light rain, mist")
+
+    def test_past_aoc_report_has_no_weather_strip(self):
+        User.objects.create_user("staffer", password="pw")
+        self.client.login(username="staffer", password="pw")
+        yesterday = timezone.localdate() - dt.timedelta(days=1)
+        with patch.object(weather, "_fetch_metars", return_value={"KBED": SAMPLE}):
+            response = self.client.get(
+                reverse(
+                    "crew_hub:report_detail",
+                    kwargs={"date_str": yesterday.isoformat()},
+                )
+            )
+        self.assertNotContains(response, "Base weather")
 
 
 class DisabledWeatherTests(TestCase):

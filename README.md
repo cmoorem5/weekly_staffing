@@ -264,14 +264,17 @@ Report workflow and adds real scheduling for the pieces we own:
 - **Vehicle status board** (`/hub/vehicles/`) — live fleet status that
   carries forward day to day, with a change log. Keywords color the entry:
   `OOS` red, `INIS` orange, `Primary` green.
-- **Base weather** (Today board) — live conditions per base in plain
-  language ("Broken clouds at 800 ft, 2 mi visibility, northeast wind
-  14 mph gusting 23, 39°F") with the standard flight-category chip (VFR
-  green / MVFR blue / IFR red / LIFR magenta). Hover a card for the raw
-  METAR. Data comes from aviationweather.gov (free, cached 10 minutes);
-  stations are configurable per base via `AOC_WEATHER_STATIONS` in `.env`
-  (Mansfield uses Norwood since its field doesn't report). Planning
-  reference only — not an official weather briefing.
+- **Base weather** (Today board, and on today's AOC report just above Field
+  Staffing) — live conditions per base in plain language ("Broken clouds at
+  800 ft, 2 mi visibility, northeast wind 14 mph gusting 23, 39°F") with the
+  standard flight-category chip (VFR green / MVFR blue / IFR red / LIFR
+  magenta). Hover a card for the raw METAR. Data comes from
+  aviationweather.gov (free, cached 10 minutes); stations are configurable
+  per base via `AOC_WEATHER_STATIONS` in `.env` (Mansfield uses Norwood
+  since its field doesn't report). Planning reference only — not an
+  official weather briefing. Only shows on today's report (a live reading
+  wouldn't mean anything on a past or future date) — the manual "Weather"
+  text field above it is still there for the official write-up.
 - **AOC Daily Report** (`/hub/report/`) — one report per day. Opening a date
   pre-fills duty officers, Comm Center, and vehicles from the schedules
   above and seeds the full crew shift skeleton (names typed daily; the crew

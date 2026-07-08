@@ -12,27 +12,7 @@
   </div>
 {% endif %}
 
-{% if base_weather %}
-<div class="ch-card">
-  <div class="ch-card-header light">Base weather</div>
-  <div class="ch-card-body">
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
-      {% for wx in base_weather %}
-      <div style="border:1px solid #E6E6E6; border-left:4px solid {{ wx.color }}; border-radius:5px; padding:8px 10px;" {% if wx.raw %}title="{{ wx.raw }}"{% endif %}>
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px;">
-          <span style="font-size:12px; font-weight:bold; color:#052C47;">{{ wx.base }}</span>
-          <span style="background:{{ wx.color }}; color:#fff; border-radius:999px; font-size:10px; font-weight:bold; padding:1px 8px;">{{ wx.category }}</span>
-          {% if wx.observed %}<span class="ch-note" style="margin-left:auto;">{{ wx.observed }}Z</span>{% endif %}
-        </div>
-        <div style="font-size:12px; color:#1a1a1a; line-height:1.4;">{{ wx.summary }}</div>
-        <div class="ch-note">{{ wx.meaning }}{% if wx.station %} · {{ wx.station }}{% endif %}</div>
-      </div>
-      {% endfor %}
-    </div>
-    <div class="ch-note" style="margin-top:8px;">Planning reference only — not an official weather briefing. Hover a card for the raw METAR.</div>
-  </div>
-</div>
-{% endif %}
+{% include "crew_hub/base_weather_cards.html" %}
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
   <div class="ch-card">

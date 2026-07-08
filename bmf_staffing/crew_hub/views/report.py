@@ -29,6 +29,7 @@ from ..services import (
     reopen_report,
     submit_report,
 )
+from ..weather import get_base_weather
 from .helpers import clamp_int as _int
 from .helpers import local_today, parse_date_or_404
 
@@ -140,12 +141,16 @@ def _apply_post(report: DailyReport, post) -> None:
 
 def _form_context(report: DailyReport) -> dict:
     context = build_report_context(report)
+    # Live METARs only make sense as "right now" — show them on today's
+    # report, not when someone opens a past or future date.
+    is_today = report.report_date == local_today()
     context.update(
         {
             "shift_choices": shifts.SHIFT_CHOICES,
             "base_choices": shifts.BASE_CHOICES,
             "position_choices": shifts.POSITION_CHOICES,
             "can_reopen": False,  # set per-request in report_detail
+            "base_weather": get_base_weather() if is_today else [],
         }
     )
     return context
