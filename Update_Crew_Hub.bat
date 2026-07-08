@@ -56,8 +56,14 @@ if errorlevel 1 goto :fail
 echo.
 
 REM --- 5) First admin account ---------------------------------------
+REM Write the count to a temp file instead of a for /f backtick command:
+REM cmd /c strips the outer quotes of a doubly-quoted command line, which
+REM breaks the path to python.exe ("The system cannot find the path specified").
 set "USERCOUNT="
-for /f "usebackq delims=" %%c in (`"%PYEXE%" bmf_staffing\manage.py shell -c "from django.contrib.auth import get_user_model; print(get_user_model().objects.count())"`) do set "USERCOUNT=%%c"
+set "COUNTFILE=%TEMP%\crewhub_usercount.txt"
+"%PYEXE%" bmf_staffing\manage.py shell -c "from django.contrib.auth import get_user_model; print(get_user_model().objects.count())" >"%COUNTFILE%" 2>nul
+if not errorlevel 1 if exist "%COUNTFILE%" set /p USERCOUNT=<"%COUNTFILE%"
+del "%COUNTFILE%" >nul 2>nul
 if "%USERCOUNT%"=="0" (
   echo [5/5] No login accounts exist yet. Create the first admin account:
   echo.
