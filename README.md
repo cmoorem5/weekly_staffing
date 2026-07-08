@@ -289,9 +289,12 @@ dependencies, creates `.env` if missing, applies migrations, and walks you
 through creating the first admin login. Then run
 **`Create Desktop Shortcut.bat`** once: the **Crew Hub** desktop icon starts
 the server *silently* (no command-prompt windows, like a native app) and
-opens your browser at `/hub/`. Server output goes to
-`output\crew_hub_server.log`; stop the background server with
-**`Stop_Crew_Hub.bat`**. Re-run `Update_Crew_Hub.bat` any time to update.
+opens `/hub/` in an Edge app-mode window — no address bar or tabs, just the
+dashboard. Closing that window stops the server again automatically, so it
+doesn't sit running in the background. Server output goes to
+`output\crew_hub_server.log`; **`Stop_Crew_Hub.bat`** is a manual fallback
+if you ever need to force it down. Re-run `Update_Crew_Hub.bat` any time to
+update.
 
 **Setup (manual):** copy `.env.example` to `.env` (gitignored) and adjust. With no
 `.env`, dev defaults apply and email uses the **console backend** (prints to
