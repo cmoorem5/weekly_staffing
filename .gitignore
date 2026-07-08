@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.ruff_cache/
 
 # Django dev DB (distinct from staffing.db used by the app)
 **/db.sqlite3
