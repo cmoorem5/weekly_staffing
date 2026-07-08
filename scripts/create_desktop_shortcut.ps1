@@ -2,9 +2,11 @@
 # Run once after clone/move, or re-run if the project folder moves.
 #
 # The shortcut launches scripts\launch_crew_hub.vbs via wscript, which starts
-# the Django server fully hidden and opens the browser — no command-prompt
-# windows, like a native Windows app. Server output: output\crew_hub_*.log.
-# Stop the hidden server with Stop_Crew_Hub.bat.
+# the Django server fully hidden and opens the dashboard in an Edge app-mode
+# window — no browser chrome, no command-prompt windows, like a native
+# Windows app. The server stops itself automatically when that window is
+# closed. Server output: output\crew_hub_*.log. Stop_Crew_Hub.bat is still
+# there as a manual fallback (e.g. if the window is closed via Task Manager).
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -52,6 +54,6 @@ Write-Host ""
 Write-Host "Desktop shortcut created:" -ForegroundColor Green
 Write-Host "  $ShortcutPath"
 Write-Host ""
-Write-Host "Double-click ""Crew Hub"" to start the app silently and open the browser."
-Write-Host "No command windows appear; server logs go to output\crew_hub_server.log."
-Write-Host "To stop the background server, run Stop_Crew_Hub.bat."
+Write-Host "Double-click ""Crew Hub"" to start the app silently in its own window."
+Write-Host "No command windows or browser chrome; server logs go to output\crew_hub_server.log."
+Write-Host "The server stops itself when you close the window. Stop_Crew_Hub.bat is a manual fallback."
