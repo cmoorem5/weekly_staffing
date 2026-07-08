@@ -12,8 +12,7 @@ Web UI for the Boston MedFlight board staffing KPI workflow. Uses the same `staf
 
 2. Start the server:
 
-   - **Desktop:** double-click **`BMF Staffing`** (run **`Create Desktop Shortcut.bat`** once to install the BMF logo shortcut), or  
-   - Double-click **`Run_Staffing_Django.bat`** (in `Weekly_staffing`), or **`Open_Staffing_Dashboard.bat`** (opens staffing dashboard directly), or  
+   - **Desktop:** double-click the **`Crew Hub`** icon (run **`Create Desktop Shortcut.bat`** once to install it). It starts the server hidden and opens the app in its own window; closing the window stops the server. **`Stop_Crew_Hub.bat`** is a manual fallback.
    - In a terminal:
 
      ```bash
