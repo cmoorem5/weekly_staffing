@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("crew_hub", "0010_alter_commrotation_pattern_type_and_more"),
     ]
