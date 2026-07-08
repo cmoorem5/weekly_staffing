@@ -66,13 +66,13 @@ WORK_TYPE_CHOICES = [
     (WORK_SICK, "Sick leave"),
     (WORK_SWAP, "Swap"),
     (WORK_OT, "Overtime"),
-    (WORK_LEAVE, "Leave (LOA)"),
+    (WORK_LEAVE, "Leave (LT)"),
 ]
 WORK_TYPE_TAGS = {
     WORK_SICK: "Sick",
     WORK_SWAP: "Swap",
     WORK_OT: "OT",
-    WORK_LEAVE: "LOA",
+    WORK_LEAVE: "LT",
 }
 VALID_WORK_TYPES = {code for code, _ in WORK_TYPE_CHOICES}
 

@@ -3,7 +3,7 @@ Per-person hours reporting for payroll export (e.g. upload to ADP).
 
 Comm Center seats carry fixed paid hours (12h shifts; Orientee/Extra
 counts 0 unless adjusted). Duty officer roles are day-based coverage, so
-they are reported as duty days rather than hours. Sick and leave (LOA)
+they are reported as duty days rather than hours. Sick and leave (LT)
 days are tracked in their own buckets and excluded from worked hours.
 """
 

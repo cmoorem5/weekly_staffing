@@ -240,7 +240,7 @@ Report workflow and adds real scheduling for the pieces we own:
 - **Calendar interactions** — click a chip to open a menu that changes its
   **seat for that same day** (Comm Center only — e.g. move a tech from D to
   N without touching any other day) or codes the day **Sick leave / Swap /
-  Overtime / Leave (LOA)** or removes it. Drag a chip to another day to move
+  Overtime / Leave (LT)** or removes it. Drag a chip to another day to move
   it instead (dropping on an occupied seat/role swaps the two days). Work
   types color-code on the calendar and tag names on the AOC report (e.g.
   "Comms Test-Alpha (OT)").
