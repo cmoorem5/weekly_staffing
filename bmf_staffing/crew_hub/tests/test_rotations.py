@@ -116,7 +116,7 @@ class RotationFormTests(TestCase):
         self.client.login(username="rot-mgr", password="pw")
         self.member = CommStaffMember.objects.create(name="Comms Test-Alpha")
 
-    def _add(self, **extra):
+    def _add(self, follow=False, **extra):
         data = {
             "action": "add",
             "person": self.member.pk,
@@ -124,7 +124,7 @@ class RotationFormTests(TestCase):
             "anchor_date": "2026-07-19",
             **extra,
         }
-        return self.client.post(reverse("crew_hub:comm_rotations"), data)
+        return self.client.post(reverse("crew_hub:comm_rotations"), data, follow=follow)
 
     def test_manage_page_offers_pitman_option(self):
         response = self.client.get(reverse("crew_hub:comm_rotations"))
@@ -143,6 +143,38 @@ class RotationFormTests(TestCase):
         response = self._add(pattern_type="bogus")
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CommRotation.objects.exists())
+
+    def test_overlapping_same_seat_rotation_warns(self):
+        other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
+        CommRotation.objects.create(
+            member=other_member,
+            seat="D",
+            pattern_type=CommRotation.PATTERN_PITMAN,
+            anchor_date=dt.date(2026, 7, 19),
+        )
+        response = self._add(pattern_type="pitman", follow=True)
+        messages = [str(m) for m in response.context["messages"]]
+        self.assertTrue(
+            any("Comms Test-Bravo" in m and "overlaps" in m for m in messages)
+        )
+
+    def test_non_overlapping_same_seat_rotation_no_warning(self):
+        other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
+        # Anchored on Bravo's off days relative to Alpha's pitman cycle.
+        CommRotation.objects.create(
+            member=other_member,
+            seat="D",
+            pattern_type=CommRotation.PATTERN_CYCLE,
+            days_on=2,
+            days_off=2,
+            anchor_date=dt.date(2026, 7, 21),
+        )
+        response = self._add(
+            pattern_type="cycle", days_on=2, days_off=2, anchor_date="2026-07-19",
+            follow=True,
+        )
+        messages = [str(m) for m in response.context["messages"]]
+        self.assertFalse(any("overlaps" in m for m in messages))
 
 
 class SeedCommTechsTests(TestCase):

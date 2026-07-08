@@ -60,13 +60,20 @@ WORK_REGULAR = "regular"
 WORK_SICK = "sick"
 WORK_SWAP = "swap"
 WORK_OT = "overtime"
+WORK_LEAVE = "leave"
 WORK_TYPE_CHOICES = [
     (WORK_REGULAR, "Regular"),
     (WORK_SICK, "Sick leave"),
     (WORK_SWAP, "Swap"),
     (WORK_OT, "Overtime"),
+    (WORK_LEAVE, "Leave (LOA)"),
 ]
-WORK_TYPE_TAGS = {WORK_SICK: "Sick", WORK_SWAP: "Swap", WORK_OT: "OT"}
+WORK_TYPE_TAGS = {
+    WORK_SICK: "Sick",
+    WORK_SWAP: "Swap",
+    WORK_OT: "OT",
+    WORK_LEAVE: "LOA",
+}
 VALID_WORK_TYPES = {code for code, _ in WORK_TYPE_CHOICES}
 
 
@@ -78,6 +85,7 @@ class AssignmentBase(models.Model):
     WORK_SICK = WORK_SICK
     WORK_SWAP = WORK_SWAP
     WORK_OT = WORK_OT
+    WORK_LEAVE = WORK_LEAVE
     WORK_TYPE_CHOICES = WORK_TYPE_CHOICES
     WORK_TYPE_TAGS = WORK_TYPE_TAGS
 

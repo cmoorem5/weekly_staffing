@@ -3,8 +3,8 @@ Per-person hours reporting for payroll export (e.g. upload to ADP).
 
 Comm Center seats carry fixed paid hours (12h shifts; Orientee/Extra
 counts 0 unless adjusted). Duty officer roles are day-based coverage, so
-they are reported as duty days rather than hours. Sick days are tracked
-in their own bucket and excluded from worked hours.
+they are reported as duty days rather than hours. Sick and leave (LOA)
+days are tracked in their own buckets and excluded from worked hours.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from . import shifts
 from .models import (
+    WORK_LEAVE,
     WORK_OT,
     WORK_SICK,
     WORK_SWAP,
@@ -32,12 +33,13 @@ class PersonTotals:
     overtime: float = 0.0
     swap: float = 0.0
     sick: float = 0.0
+    leave: float = 0.0
     duty_days: int = 0
     shifts: int = 0
 
     @property
     def worked(self) -> float:
-        """Hours actually worked: regular + overtime + swap (sick excluded)."""
+        """Hours actually worked: regular + overtime + swap (sick/leave excluded)."""
         return self.regular + self.overtime + self.swap
 
 
@@ -56,6 +58,10 @@ class HoursReport:
     @property
     def grand_sick(self) -> float:
         return sum(t.sick for t in self.totals)
+
+    @property
+    def grand_leave(self) -> float:
+        return sum(t.leave for t in self.totals)
 
     @property
     def grand_duty_days(self) -> int:
@@ -92,6 +98,8 @@ def build_hours_report(
         row_totals.shifts += 1
         if assignment.work_type == WORK_SICK:
             row_totals.sick += hours
+        elif assignment.work_type == WORK_LEAVE:
+            row_totals.leave += hours
         elif assignment.work_type == WORK_OT:
             row_totals.overtime += hours
         elif assignment.work_type == WORK_SWAP:
@@ -108,7 +116,11 @@ def build_hours_report(
                     assignment.work_type, assignment.work_type
                 ),
                 "work_type_code": assignment.work_type,
-                "hours": hours if assignment.work_type != WORK_SICK else 0.0,
+                "hours": (
+                    0.0
+                    if assignment.work_type in (WORK_SICK, WORK_LEAVE)
+                    else hours
+                ),
             }
         )
 
@@ -152,6 +164,7 @@ def summary_csv_rows(report: HoursReport) -> list[list]:
             "Overtime Hours",
             "Swap Hours",
             "Sick Hours",
+            "Leave Hours",
             "Total Worked Hours",
             "Duty Days",
             "Comm Shifts",
@@ -165,6 +178,7 @@ def summary_csv_rows(report: HoursReport) -> list[list]:
                 f"{t.overtime:.2f}",
                 f"{t.swap:.2f}",
                 f"{t.sick:.2f}",
+                f"{t.leave:.2f}",
                 f"{t.worked:.2f}",
                 t.duty_days,
                 t.shifts,

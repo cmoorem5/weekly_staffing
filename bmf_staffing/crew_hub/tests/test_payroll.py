@@ -106,6 +106,9 @@ class HoursReportTests(TestCase):
         CommShiftAssignment.objects.create(
             date=dt.date(2026, 7, 4), seat="D", member=self.member, work_type="sick"
         )
+        CommShiftAssignment.objects.create(
+            date=dt.date(2026, 7, 5), seat="D", member=self.member, work_type="leave"
+        )
         officer = DutyOfficer.objects.create(name="Comms Test-Alpha")
         DutyAssignment.objects.create(date=JULY_1, role="ITOC", officer=officer)
         # Someone else, to prove the person filter works.
@@ -119,6 +122,7 @@ class HoursReportTests(TestCase):
         self.assertEqual(alpha.regular, 24.0)
         self.assertEqual(alpha.overtime, 12.0)
         self.assertEqual(alpha.sick, 12.0)
+        self.assertEqual(alpha.leave, 12.0)
         self.assertEqual(alpha.worked, 36.0)
         self.assertEqual(alpha.duty_days, 1)
         self.assertEqual(totals["Comms Test-Bravo"].regular, 12.0)

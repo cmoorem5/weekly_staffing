@@ -207,6 +207,44 @@ def _add_rotation(request, cfg) -> None:
             f"{shifts.DUTY_ROLE_LABELS.get(person_role, person_role)} but this "
             f"rotation covers {shifts.DUTY_ROLE_LABELS.get(slot, slot)}.",
         )
+    if cfg["slot_field"] == "seat":
+        _warn_seat_conflicts(request, model, rotation, cfg)
+
+
+# How far ahead to scan for overlapping same-seat rotations (about 2 months
+# — long enough to catch nearly any cycle/weekly overlap without walking
+# an unbounded date range).
+SEAT_CONFLICT_LOOKAHEAD_DAYS = 60
+
+
+def _warn_seat_conflicts(request, model, rotation, cfg) -> None:
+    """Warn if another active rotation already claims this seat on the same
+    days — only one person can hold a seat per day, so whichever rotation
+    is applied second gets silently skipped."""
+    others = model.objects.filter(seat=rotation.seat, active=True).exclude(
+        pk=rotation.pk
+    )
+    if not others:
+        return
+    window_start = rotation.anchor_date
+    conflicting = set()
+    for other in others:
+        for offset in range(SEAT_CONFLICT_LOOKAHEAD_DAYS):
+            day = window_start + dt.timedelta(days=offset)
+            if rotation.works_on(day) and other.works_on(day):
+                conflicting.add(getattr(other, cfg["person_field"]).name)
+                break
+    if conflicting:
+        messages.warning(
+            request,
+            f"Heads up: {', '.join(sorted(conflicting))} also "
+            f"{'has' if len(conflicting) == 1 else 'have'} an active rotation "
+            f"in the {rotation.get_seat_display()} seat that overlaps with "
+            f"this one. Only one person can hold a seat per day, so whichever "
+            "rotation you apply first wins and the other gets skipped as "
+            "“already assigned.” Give each person a different seat, "
+            "or pause/delete the one that shouldn't apply.",
+        )
 
 
 def _rotation_apply(request, kind: str):

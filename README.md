@@ -232,18 +232,22 @@ Report workflow and adds real scheduling for the pieces we own:
   "Apply rotations" on either month calendar auto-fills the month;
   days already assigned are never overwritten, so manual edits always win.
   `python manage.py seed_comm_techs` loads the Comm Tech roster so every
-  tech is available in the seat pickers and on the rotations form.
+  tech is available in the seat pickers and on the rotations form. Only one
+  person can hold a given seat on a given day — if two active rotations for
+  the same seat overlap, adding the second one warns you by name so you can
+  give each person a distinct seat instead of one silently losing the day
+  when "Apply rotations" runs.
 - **Calendar interactions** — click a chip to open a menu that changes its
   **seat for that same day** (Comm Center only — e.g. move a tech from D to
   N without touching any other day) or codes the day **Sick leave / Swap /
-  Overtime** or removes it. Drag a chip to another day to move it instead
-  (dropping on an occupied seat/role swaps the two days). Work types
-  color-code on the calendar and tag names on the AOC report (e.g.
+  Overtime / Leave (LOA)** or removes it. Drag a chip to another day to move
+  it instead (dropping on an occupied seat/role swaps the two days). Work
+  types color-code on the calendar and tag names on the AOC report (e.g.
   "Comms Test-Alpha (OT)").
 - **Hours / payroll report** (`/hub/reports/hours/`) — per-person totals for
-  any date range split by work type (regular / OT / swap / sick, plus duty-day
-  counts), with **Summary CSV** (per-employee totals for ADP upload) and
-  **Detail CSV** (one row per assignment) exports.
+  any date range split by work type (regular / OT / swap / sick / leave,
+  plus duty-day counts), with **Summary CSV** (per-employee totals for ADP
+  upload) and **Detail CSV** (one row per assignment) exports.
 - **My schedule** (`/hub/me/`) — staff whose login is linked to a roster
   person (link from the roster pages or admin) see their own upcoming comm
   and duty shifts and can submit **time-off requests**. A personal

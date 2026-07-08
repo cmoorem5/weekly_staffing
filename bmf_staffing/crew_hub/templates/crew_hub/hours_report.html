@@ -2,7 +2,7 @@
 {% load crew_hub_extras %}
 
 {% block page_title %}Hours &amp; payroll report{% endblock %}
-{% block page_subtitle %}Per-person hours from the Comm Center schedule plus duty-day counts, ready to export as CSV for payroll (e.g. ADP upload). Sick days are tracked separately and excluded from worked hours.{% endblock %}
+{% block page_subtitle %}Per-person hours from the Comm Center schedule plus duty-day counts, ready to export as CSV for payroll (e.g. ADP upload). Sick and leave (LOA) days are tracked separately and excluded from worked hours.{% endblock %}
 
 {% block hub_content %}
 <div class="ch-card no-print">
@@ -39,6 +39,7 @@
         <td class="ch-label" style="text-align:right; padding:4px 8px;">OT hrs</td>
         <td class="ch-label" style="text-align:right; padding:4px 8px;">Swap hrs</td>
         <td class="ch-label" style="text-align:right; padding:4px 8px;">Sick hrs</td>
+        <td class="ch-label" style="text-align:right; padding:4px 8px;">Leave hrs</td>
         <td class="ch-label" style="text-align:right; padding:4px 8px;">Worked total</td>
         <td class="ch-label" style="text-align:right; padding:4px 8px;">Duty days</td>
         <td class="ch-label" style="text-align:right; padding:4px 0;">Comm shifts</td>
@@ -50,6 +51,7 @@
         <td style="font-size:12px; text-align:right; padding:5px 8px; {% if t.overtime %}color:#b35e00; font-weight:bold;{% endif %}">{{ t.overtime|floatformat:2 }}</td>
         <td style="font-size:12px; text-align:right; padding:5px 8px;">{{ t.swap|floatformat:2 }}</td>
         <td style="font-size:12px; text-align:right; padding:5px 8px; {% if t.sick %}color:#C12126; font-weight:bold;{% endif %}">{{ t.sick|floatformat:2 }}</td>
+        <td style="font-size:12px; text-align:right; padding:5px 8px; {% if t.leave %}color:#6b3fa0; font-weight:bold;{% endif %}">{{ t.leave|floatformat:2 }}</td>
         <td style="font-size:12px; text-align:right; padding:5px 8px; font-weight:bold;">{{ t.worked|floatformat:2 }}</td>
         <td style="font-size:12px; text-align:right; padding:5px 8px;">{{ t.duty_days }}</td>
         <td style="font-size:12px; text-align:right; padding:5px 0;">{{ t.shifts }}</td>
@@ -57,7 +59,7 @@
       {% endfor %}
       <tr>
         <td style="font-size:12px; font-weight:bold; color:#052C47; padding:6px 8px 0 0;">Total</td>
-        <td colspan="4"></td>
+        <td colspan="5"></td>
         <td style="font-size:12px; text-align:right; font-weight:bold; color:#052C47; padding:6px 8px 0;">{{ report.grand_worked|floatformat:2 }}</td>
         <td style="font-size:12px; text-align:right; font-weight:bold; color:#052C47; padding:6px 8px 0;">{{ report.grand_duty_days }}</td>
         <td></td>

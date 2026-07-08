@@ -50,6 +50,7 @@ WORK_TYPE_COLORS = {
     "sick": "#C12126",
     "overtime": "#b35e00",
     "swap": "#2A4492",
+    "leave": "#6b3fa0",
 }
 
 
