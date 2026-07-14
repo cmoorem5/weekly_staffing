@@ -138,6 +138,12 @@
       </tr>
     </tbody>
   </table>
+  {% if training_breakdown %}
+  <p class="text-muted small mb-4">
+    This week's mix (read-only, from the import — not editable here):
+    {% for code, count in training_breakdown %}{{ code }} ({{ count }}){% if not forloop.last %}, {% endif %}{% endfor %}
+  </p>
+  {% endif %}
 
   <div class="row g-4 mt-1">
     <div class="col-md-12">

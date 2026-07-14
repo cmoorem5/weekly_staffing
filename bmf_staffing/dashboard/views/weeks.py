@@ -8,6 +8,7 @@ from typing import cast
 from django.contrib import messages
 from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
+from sqlalchemy import func
 from staffing_tool.db import session_scope
 from staffing_tool.leave_grid import (
     EXCEPTION_COL_BREAKDOWN_KEYS,
@@ -22,6 +23,7 @@ from staffing_tool.models import (
     KpiThreshold,
     WeeklyBaseCoverage,
     WeeklyLeaveDetail,
+    WeeklyPersonShift,
     WeeklyStaffing,
 )
 from staffing_tool.rag import evaluate_rag
@@ -211,6 +213,24 @@ def _get_week_form_initial(week_start, session):
     return initial, coverage_initial
 
 
+def _load_training_breakdown(week_start, session):
+    """Training shift counts by raw code (EDU, CCT, Neo Sim, ...) for a week.
+
+    Read-only visibility into what makes up the training total -- derived
+    straight from the imported cells, not a maintained list of categories.
+    """
+    rows = (
+        session.query(WeeklyPersonShift.raw_value, func.count(WeeklyPersonShift.id))
+        .filter(
+            WeeklyPersonShift.week_start == week_start,
+            WeeklyPersonShift.event_type == "training",
+        )
+        .group_by(WeeklyPersonShift.raw_value)
+        .all()
+    )
+    return sorted(((code, count) for code, count in rows), key=lambda r: (-r[1], r[0]))
+
+
 def week_edit(request, week_start):
     _ensure_db()
     if request.method == "POST":
@@ -224,6 +244,8 @@ def week_edit(request, week_start):
                 return redirect("week_list")
         leave_detail_map, _ = _parse_exception_grid_post(request.POST)
         leave_grid_rows = _build_leave_grid_rows(leave_detail_map)
+        with session_scope(DB_PATH) as session:
+            training_breakdown = _load_training_breakdown(week_start, session)
     else:
         with session_scope(DB_PATH) as session:
             data = _get_week_form_initial(week_start, session)
@@ -239,6 +261,7 @@ def week_edit(request, week_start):
                 .all()
             )
             leave_breakdown = {(r.role, r.leave_type): r.count for r in leave_details}
+            training_breakdown = _load_training_breakdown(week_start, session)
         form = WeekForm(initial=initial, prefix="week")
         formset = BaseCoverageFormSet(initial=coverage_initial, prefix="cov")
         leave_grid_rows = _build_leave_grid_rows(leave_breakdown)
@@ -257,6 +280,7 @@ def week_edit(request, week_start):
             "imported": imported,
             "leave_types_order": EXCEPTION_GRID_COLS,
             "leave_grid_rows": leave_grid_rows,
+            "training_breakdown": training_breakdown,
         },
     )
 
@@ -305,6 +329,7 @@ def week_add(request):
             "is_add": True,
             "leave_types_order": EXCEPTION_GRID_COLS,
             "leave_grid_rows": leave_grid_rows,
+            "training_breakdown": [],
         },
     )
 

@@ -34,7 +34,12 @@ from staffing_tool.db import (
     init_db,
     session_scope,
 )
-from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
+from staffing_tool.models import (
+    BaseConfig,
+    WeeklyBaseCoverage,
+    WeeklyPersonShift,
+    WeeklyStaffing,
+)
 
 from dashboard import context_processors
 from dashboard.views import helpers, weeks
@@ -166,6 +171,46 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
         html = get_resp.content.decode()
         self.assertIn('name="week-training_shifts"', html)
         self.assertIn('name="week-training_shifts" value="4"', html)
+
+    def test_training_breakdown_shown_read_only(self):
+        # Per-cell training detail (as schedule import would persist it),
+        # not a maintained/configured category list.
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyPersonShift(
+                    week_start=WEEK_START,
+                    person_display="Smith, Jane",
+                    shift_date=WEEK_START,
+                    role="RN",
+                    event_type="training",
+                    raw_value="EDU",
+                )
+            )
+            session.add(
+                WeeklyPersonShift(
+                    week_start=WEEK_START,
+                    person_display="Doe, Roe",
+                    shift_date=WEEK_START,
+                    role="RN",
+                    event_type="training",
+                    raw_value="EDU",
+                )
+            )
+            session.add(
+                WeeklyPersonShift(
+                    week_start=WEEK_START,
+                    person_display="Jones, Bob",
+                    shift_date=WEEK_START,
+                    role="MEDIC",
+                    event_type="training",
+                    raw_value="CCT",
+                )
+            )
+
+        resp = self.client.get(reverse("week_edit", args=[WEEK_START]))
+        html = resp.content.decode()
+        self.assertIn("EDU (2)", html)
+        self.assertIn("CCT (1)", html)
 
 
 class ZeroCapBaseStaffingTests(unittest.TestCase):
