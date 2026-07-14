@@ -430,19 +430,14 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                 continue
             rw_cap = int(cast(int, cfg.rw_total_unit_days) or 0)
             gr_cap = int(cast(int, cfg.gr_total_unit_days) or 0)
-            if rw_cap == 0 and rw_s > 0:
-                messages.error(
-                    request,
-                    f"Base {base} has RW total = 0. Set base totals first.",
-                )
-                return False
-            if gr_cap == 0 and gr_s > 0:
-                messages.error(
-                    request,
-                    f"Base {base} has GR total = 0. Set base totals first.",
-                )
-                return False
-            if (rw_cap and rw_s > rw_cap) or (gr_cap and gr_s > gr_cap):
+            # A base with no configured total (e.g. an opportunistic/extra
+            # base like Plymouth ground, not part of the formal totals) can
+            # still be staffed occasionally — that just needs a note, same
+            # as staffing beyond a configured cap. It must not block the
+            # save outright.
+            if (rw_cap == 0 and rw_s > 0) or (rw_cap and rw_s > rw_cap):
+                base_staffed_gt = True
+            if (gr_cap == 0 and gr_s > 0) or (gr_cap and gr_s > gr_cap):
                 base_staffed_gt = True
 
         if (

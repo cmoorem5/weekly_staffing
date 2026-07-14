@@ -34,14 +34,16 @@ from staffing_tool.db import (
     init_db,
     session_scope,
 )
-from staffing_tool.models import WeeklyStaffing
+from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
 
+from dashboard import context_processors
 from dashboard.views import helpers, weeks
 
 WEEK_START = "2026-07-05"
 
 
-def _coverage_post(prefix="cov", *, rw_day=0):
+def _coverage_post(prefix="cov", *, rw_day=0, gr_by_base=None):
+    gr_by_base = gr_by_base or {}
     data = {
         f"{prefix}-TOTAL_FORMS": str(len(DEFAULT_BASES)),
         f"{prefix}-INITIAL_FORMS": str(len(DEFAULT_BASES)),
@@ -52,7 +54,7 @@ def _coverage_post(prefix="cov", *, rw_day=0):
         data[f"{prefix}-{i}-base_name"] = base_name
         data[f"{prefix}-{i}-rw_staffed_day"] = str(rw_day)
         data[f"{prefix}-{i}-rw_staffed_night"] = "0"
-        data[f"{prefix}-{i}-gr_staffed_day"] = "0"
+        data[f"{prefix}-{i}-gr_staffed_day"] = str(gr_by_base.get(base_name, 0))
         data[f"{prefix}-{i}-gr_staffed_night"] = "0"
     return data
 
@@ -79,6 +81,7 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
         self._patchers = [
             patch.object(helpers, "DB_PATH", self.db_path),
             patch.object(weeks, "DB_PATH", self.db_path),
+            patch.object(context_processors, "DB_PATH", self.db_path),
         ]
         for p in self._patchers:
             p.start()
@@ -142,6 +145,97 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
             )
             self.assertEqual(row.filled_day, 52)
             self.assertEqual(row.filled_night, 30)
+
+
+class ZeroCapBaseStaffingTests(unittest.TestCase):
+    """Staffing a base with no configured total (e.g. Plymouth ground, an
+    opportunistic/extra base not part of the formal GR totals) must not be a
+    hard, no-override block -- it should behave like exceeding a configured
+    cap: allowed with a note."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.tmp.name) / "zero_cap.db")
+        init_db(self.db_path)
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyStaffing(
+                    week_start=WEEK_START,
+                    day_target=8,
+                    night_min=4,
+                    filled_day=52,
+                    filled_night=30,
+                    notes="baseline",
+                    entered_by="test",
+                    created_at="2026-07-05T00:00:00Z",
+                    updated_at="2026-07-05T00:00:00Z",
+                )
+            )
+            plymouth = (
+                session.query(BaseConfig)
+                .filter(BaseConfig.base_name == "Plymouth")
+                .first()
+            )
+            plymouth.gr_total_unit_days = 0
+        self._patchers = [
+            patch.object(helpers, "DB_PATH", self.db_path),
+            patch.object(weeks, "DB_PATH", self.db_path),
+            patch.object(context_processors, "DB_PATH", self.db_path),
+        ]
+        for p in self._patchers:
+            p.start()
+        self.client = Client(HTTP_HOST="localhost")
+
+    def tearDown(self):
+        for p in self._patchers:
+            p.stop()
+        import staffing_tool.db as db_mod
+
+        resolved = db_mod._resolve_db_path(self.db_path)
+        get_engine(self.db_path).dispose()
+        _get_engine_cached.cache_clear()
+        _sessionmaker_for_path.cache_clear()
+        db_mod._DB_READY_PATHS.discard(resolved)
+        self.tmp.cleanup()
+
+    def _post_edit(self, *, notes):
+        data = {
+            "week-week_start": WEEK_START,
+            "week-filled_day": "52",
+            "week-filled_night": "30",
+            "week-notes": notes,
+        }
+        data.update(_coverage_post(gr_by_base={"Plymouth": 2}))
+        return self.client.post(reverse("week_edit", args=[WEEK_START]), data=data)
+
+    def test_zero_cap_base_blocked_without_note(self):
+        resp = self._post_edit(notes="")
+        self.assertEqual(resp.status_code, 200)
+        with session_scope(self.db_path) as session:
+            cov = (
+                session.query(WeeklyBaseCoverage)
+                .filter(
+                    WeeklyBaseCoverage.week_start == WEEK_START,
+                    WeeklyBaseCoverage.base_name == "Plymouth",
+                )
+                .first()
+            )
+            self.assertIsNone(cov)
+
+    def test_zero_cap_base_saves_with_note(self):
+        resp = self._post_edit(notes="Extra Plymouth ground crew covered an OT shift")
+        self.assertEqual(resp.status_code, 302)
+        with session_scope(self.db_path) as session:
+            cov = (
+                session.query(WeeklyBaseCoverage)
+                .filter(
+                    WeeklyBaseCoverage.week_start == WEEK_START,
+                    WeeklyBaseCoverage.base_name == "Plymouth",
+                )
+                .first()
+            )
+            self.assertIsNotNone(cov)
+            self.assertEqual(cov.gr_staffed_day, 2)
 
 
 if __name__ == "__main__":
