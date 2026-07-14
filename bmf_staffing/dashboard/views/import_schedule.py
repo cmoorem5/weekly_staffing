@@ -24,6 +24,7 @@ from .helpers import (
     _last_sunday,
     _manager_last_names_upper_for_parse,
     _schedule_upload_dir,
+    _training_codes_upper_for_parse,
     backup_staffing_db_before_write,
 )
 
@@ -44,6 +45,7 @@ def _build_import_preview_context(
         upload_path,
         week_start=ws_show,
         manager_last_names_upper=mgr_names,
+        extra_training_codes=_training_codes_upper_for_parse(),
     )
     filled_count = sum(1 for r in records if r.filled)
     ot_count = sum(1 for r in records if r.overtime and r.filled)

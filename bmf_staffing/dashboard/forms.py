@@ -194,6 +194,27 @@ class ManagerRosterAddForm(forms.Form):
         ),
     )
 
+
+class TrainingCodeAddForm(forms.Form):
+    code = forms.CharField(
+        max_length=64,
+        label="Code",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "e.g. ACLS",
+                "autocomplete": "off",
+            }
+        ),
+        help_text="Exact schedule cell text (case-insensitive). Not staffing, not leave.",
+    )
+
+    def clean_code(self):
+        code = (self.cleaned_data.get("code") or "").strip().upper()
+        if not code:
+            raise forms.ValidationError("Enter a code.")
+        return code
+
     def clean_last_name(self):
         name = (self.cleaned_data.get("last_name") or "").strip()
         if not name:

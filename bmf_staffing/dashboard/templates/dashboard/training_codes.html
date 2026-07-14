@@ -1,0 +1,76 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Training codes{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'settings_index' %}">Settings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Training codes</li>
+  </ol>
+</nav>
+
+<h1 class="bmf-page-title">Training codes</h1>
+<p class="bmf-page-subtitle">
+  Schedule cell values recognized as training/education (not staffing, not leave) and counted toward
+  each week's training total. Built-in codes (EDU, CCT, Neo Sim, Clinical/PER, SM, SIM, Airway Sim)
+  are always recognized; add more here as new classes come up.
+</p>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Add code</div>
+      <div class="card-body">
+        <form method="post" class="row g-2 align-items-end">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add">
+          <div class="col">
+            <label class="form-label mb-0" for="id_code">Code</label>
+            {{ add_form.code }}
+            {% if add_form.code.errors %}
+              <div class="text-danger small">{{ add_form.code.errors }}</div>
+            {% endif %}
+            <div class="form-text">{{ add_form.code.help_text }}</div>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card bmf-card shadow-sm">
+      <div class="card-header bmf-card-header">Added codes ({{ codes|length }})</div>
+      <div class="card-body p-0">
+        {% if codes %}
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Code</th>
+              <th scope="col" class="text-end" style="width: 6rem;">Remove</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in codes %}
+            <tr>
+              <td>{{ row.code }}</td>
+              <td class="text-end">
+                <form method="post" class="d-inline" onsubmit="return confirm('Remove {{ row.code }} from training codes?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="code_id" value="{{ row.id }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No codes added here yet — the built-in list (EDU, CCT, Neo Sim, Clinical/PER, SM, SIM, Airway Sim) still applies.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

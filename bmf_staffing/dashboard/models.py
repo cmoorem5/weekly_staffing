@@ -23,6 +23,23 @@ class ManagerRosterLastName(models.Model):
         return self.last_name
 
 
+class TrainingCode(models.Model):
+    """Admin-added training/education codes (Settings > Training codes)."""
+
+    id = models.AutoField(primary_key=True)
+    code = models.CharField(max_length=64, unique=True)
+    created_at = models.CharField(max_length=32, null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "training_code"
+        verbose_name = "Training code"
+        verbose_name_plural = "Training codes"
+
+    def __str__(self) -> str:
+        return self.code
+
+
 class StaffRosterEntry(models.Model):
     """RN / Medic / EMT roster for schedule import and staff ops reports."""
 

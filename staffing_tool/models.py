@@ -62,6 +62,24 @@ class ManagerRosterLastName(Base):
         return f"ManagerRosterLastName(last_name={self.last_name!r})"
 
 
+class TrainingCode(Base):
+    """Admin-added training/education codes (Settings > Training codes).
+
+    Additive on top of the built-in SKIP_TRAINING_VALUES in schedule_import.py --
+    lets new class names (e.g. a code we haven't seen before) be recognized
+    as training without a code change.
+    """
+
+    __tablename__ = "training_code"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(64), nullable=False, unique=True)
+    created_at = Column(String(32), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"TrainingCode(code={self.code!r})"
+
+
 STAFF_ROSTER_ROLES: tuple[str, ...] = ("RN", "MEDIC", "EMT")
 
 

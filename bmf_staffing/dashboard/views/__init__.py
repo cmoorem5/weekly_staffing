@@ -19,6 +19,7 @@ from .settings_views import (
     manager_roster_settings,
     settings_index,
     staff_roster_settings,
+    training_codes_settings,
 )
 from .staffing_dashboard import (
     staffing_dashboard,
@@ -64,6 +65,7 @@ __all__ = [
     "weekly_staffing_report",
     "restore_db",
     "settings_index",
+    "training_codes_settings",
     "staffing_dashboard",
     "staffing_dashboard_export_csv",
     "staffing_dashboard_export_xlsx",

@@ -1,6 +1,8 @@
 """Route staffing.db mirror models; never migrate that file with Django."""
 
-_STAFFING_MIRROR_MODELS = frozenset({"ManagerRosterLastName", "StaffRosterEntry"})
+_STAFFING_MIRROR_MODELS = frozenset(
+    {"ManagerRosterLastName", "StaffRosterEntry", "TrainingCode"}
+)
 
 
 class StaffingDbRouter:
@@ -25,6 +27,7 @@ class StaffingDbRouter:
         if app_label == "dashboard" and model_name in {
             "managerrosterlastname",
             "staffrosterentry",
+            "trainingcode",
         }:
             return False
         return None

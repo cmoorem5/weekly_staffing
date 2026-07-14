@@ -299,11 +299,17 @@ def _normalize_cell_value(raw: object) -> str:
     return s
 
 
-def _classify_skip_reason(text: str) -> SkipReason:
-    """Map a skipped cell value to a persistence skip_reason."""
+def _classify_skip_reason(
+    text: str, training_values: frozenset[str] | set[str] = SKIP_TRAINING_VALUES
+) -> SkipReason:
+    """Map a skipped cell value to a persistence skip_reason.
+
+    training_values: SKIP_TRAINING_VALUES plus any admin-added training
+    codes (Settings > Training codes) for this parse call.
+    """
     if text == "OPEN":
         return "open"
-    if text in SKIP_TRAINING_VALUES:
+    if text in training_values:
         return "training"
     if text in SKIP_ADMIN_VALUES or text in IGNORE_UNIT_CODES:
         return "admin"
@@ -620,6 +626,7 @@ def _parse_grid(
     week_end_date: date | None = None,
     unit_overrides: dict[str, str] | None = None,
     manager_last_names_upper: frozenset[str] | None = None,
+    extra_training_codes: frozenset[str] | None = None,
 ) -> tuple[list[ShiftRecord], list[ParseIssue]]:
     """Parse a rectangular RN/Medic/EMT grid into shift records + issues.
 
@@ -629,6 +636,10 @@ def _parse_grid(
 
     manager_last_names_upper: roster from staffing.db (or caller default); when
     omitted, uses the built-in default list.
+
+    extra_training_codes: admin-added codes (Settings > Training codes) on
+    top of the built-in SKIP_TRAINING_VALUES -- e.g. a new class name that
+    would otherwise show up as an unknown unit code.
     """
     mgr_upper = (
         manager_last_names_upper
@@ -638,6 +649,8 @@ def _parse_grid(
     records: list[ShiftRecord] = []
     issues: list[ParseIssue] = []
     overrides = unit_overrides or {}
+    training_values = SKIP_TRAINING_VALUES | (extra_training_codes or frozenset())
+    skip_cell_values = SKIP_CELL_VALUES | (extra_training_codes or frozenset())
 
     header_row_idx, col_dates = _best_header_row_in_ws(
         ws,
@@ -737,7 +750,7 @@ def _parse_grid(
                 text = "N9L"
 
             # Non-staffing / training / admin markers — persist as skipped.
-            if text in SKIP_CELL_VALUES:
+            if text in skip_cell_values:
                 if is_manager_row and text == "AOC":
                     records.append(
                         ShiftRecord(
@@ -774,7 +787,7 @@ def _parse_grid(
                     person_displays=person_displays,
                     person_display=person_display,
                     is_manager_row=is_manager_row,
-                    skip_reason=_classify_skip_reason(text),
+                    skip_reason=_classify_skip_reason(text, training_values),
                 )
                 continue
 
@@ -1375,6 +1388,7 @@ def parse_schedule_workbook(
     week_start: str | None = None,
     unit_overrides: dict[str, str] | None = None,
     manager_last_names_upper: frozenset[str] | None = None,
+    extra_training_codes: frozenset[str] | None = None,
     wb: Workbook | None = None,
 ) -> tuple[
     list[ShiftRecord],
@@ -1432,6 +1446,7 @@ def parse_schedule_workbook(
                 week_end_date=week_end_date,
                 unit_overrides=unit_overrides,
                 manager_last_names_upper=mgr_upper,
+                extra_training_codes=extra_training_codes,
             )
             # Medic block: first line row 52 (row 51 blank in current template).
             med_records, med_issues = _parse_grid(
@@ -1445,6 +1460,7 @@ def parse_schedule_workbook(
                 week_end_date=week_end_date,
                 unit_overrides=unit_overrides,
                 manager_last_names_upper=mgr_upper,
+                extra_training_codes=extra_training_codes,
             )
             records.extend(rn_records)
             records.extend(med_records)
@@ -1481,6 +1497,7 @@ def parse_schedule_workbook(
                 week_end_date=week_end_date,
                 unit_overrides=unit_overrides,
                 manager_last_names_upper=mgr_upper,
+                extra_training_codes=extra_training_codes,
             )
             records.extend(emt_records)
             issues.extend(emt_issues)

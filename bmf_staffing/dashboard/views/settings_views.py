@@ -20,8 +20,10 @@ from ..forms import (
     KpiThresholdFormSet,
     ManagerRosterAddForm,
     StaffRosterAddForm,
+    TrainingCodeAddForm,
 )
 from ..models import ManagerRosterLastName, StaffRosterEntry
+from ..models import TrainingCode as DjangoTrainingCode
 from .helpers import (
     DB_PATH,
     FY_AND_PAY_PERIOD_POLICY_NOTE,
@@ -83,11 +85,13 @@ def settings_index(request):
     roster_count = 0
     staff_roster_count = 0
     threshold_count = 0
+    training_code_count = 0
     if DB_PATH:
         roster_count = ManagerRosterLastName.objects.using("staffing").count()
         staff_roster_count = (
             StaffRosterEntry.objects.using("staffing").filter(active=True).count()
         )
+        training_code_count = DjangoTrainingCode.objects.using("staffing").count()
         with session_scope(DB_PATH) as session:
             threshold_count = session.query(KpiThreshold).count()
 
@@ -112,6 +116,19 @@ def settings_index(request):
                 f"{staff_roster_count} active"
                 if staff_roster_count
                 else "auto-fills on import"
+            ),
+        },
+        {
+            "title": "Training codes",
+            "description": (
+                "Schedule cell values recognized as training/education (EDU, CCT, "
+                "Neo Sim, ...) and counted toward each week's training total."
+            ),
+            "url_name": "training_codes_settings",
+            "meta": (
+                f"{training_code_count} added"
+                if training_code_count
+                else "built-ins only"
             ),
         },
         {
@@ -202,6 +219,47 @@ def manager_roster_settings(request):
         request,
         "dashboard/manager_roster.html",
         {"roster": roster, "add_form": add_form},
+    )
+
+
+def training_codes_settings(request):
+    """Add or remove training/education codes recognized on schedule import."""
+    _ensure_db()
+    add_form = TrainingCodeAddForm()
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "add":
+            add_form = TrainingCodeAddForm(request.POST)
+            if add_form.is_valid():
+                code = add_form.cleaned_data["code"]
+                try:
+                    DjangoTrainingCode.objects.using("staffing").create(
+                        code=code, created_at=_utc_now_iso()
+                    )
+                    messages.success(request, f"Added training code {code}.")
+                except IntegrityError:
+                    messages.error(request, f"{code} is already a training code.")
+                return redirect("training_codes_settings")
+        elif action == "delete":
+            raw_id = (request.POST.get("code_id") or "").strip()
+            if raw_id.isdigit():
+                deleted, _ = (
+                    DjangoTrainingCode.objects.using("staffing")
+                    .filter(id=int(raw_id))
+                    .delete()
+                )
+                if deleted:
+                    messages.success(request, "Removed training code.")
+                else:
+                    messages.error(request, "Code not found.")
+            return redirect("training_codes_settings")
+
+    codes = list(DjangoTrainingCode.objects.using("staffing").order_by("code"))
+    return render(
+        request,
+        "dashboard/training_codes.html",
+        {"codes": codes, "add_form": add_form},
     )
 
 

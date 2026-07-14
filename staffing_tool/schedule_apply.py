@@ -33,6 +33,7 @@ from .schedule_import import (
 )
 from .schedule_persistence import persist_schedule_import_detail
 from .timeutil import utc_now_iso as _utc_now_iso
+from .training_codes import training_codes_upper_from_session
 
 BASES = [name for name, _rw, _gr in DEFAULT_BASES]
 
@@ -61,6 +62,13 @@ def manager_last_names_upper_for_parse(session: Session | None) -> frozenset[str
         return default_manager_last_names_upper()
     names = manager_last_names_upper_from_session(session)
     return names if names else default_manager_last_names_upper()
+
+
+def training_codes_upper_for_parse(session: Session | None) -> frozenset[str]:
+    """Admin-added training codes (Settings > Training codes), or empty if none."""
+    if session is None:
+        return frozenset()
+    return training_codes_upper_from_session(session)
 
 
 IMPORTED_FROM_SCHEDULE_NOTE = "Imported from schedule"
@@ -178,6 +186,7 @@ def apply_schedule_workbook(
     source_filename: str | None = None,
     unit_overrides: dict[str, str] | None = None,
     manager_last_names_upper: frozenset[str] | None = None,
+    extra_training_codes: frozenset[str] | None = None,
     entered_by: str = "import",
     preserve_manual_fields: bool = False,
 ) -> tuple[ScheduleApplyResult | None, str | None]:
@@ -190,6 +199,9 @@ def apply_schedule_workbook(
     mgr_names = manager_last_names_upper
     if mgr_names is None:
         mgr_names = manager_last_names_upper_for_parse(session)
+    training_codes = extra_training_codes
+    if training_codes is None:
+        training_codes = training_codes_upper_for_parse(session)
 
     # Load the workbook once and reuse it for every parse pass (records, OPS
     # View daily, OPS detail, raw-cell archive) instead of re-reading the file
@@ -206,6 +218,7 @@ def apply_schedule_workbook(
             week_start=week_start,
             unit_overrides=unit_overrides,
             manager_last_names_upper=mgr_names,
+            extra_training_codes=training_codes,
             wb=wb,
         )
     except Exception as exc:

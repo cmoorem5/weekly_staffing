@@ -32,6 +32,7 @@ from .views import (
     staffing_dashboard,
     staffing_dashboard_export_csv,
     staffing_dashboard_export_xlsx,
+    training_codes_settings,
     week_add,
     week_delete,
     week_edit,
@@ -59,6 +60,11 @@ urlpatterns = [
         name="manager_roster_settings",
     ),
     path("settings/staff-roster/", staff_roster_settings, name="staff_roster_settings"),
+    path(
+        "settings/training-codes/",
+        training_codes_settings,
+        name="training_codes_settings",
+    ),
     path(
         "settings/kpi-thresholds/",
         kpi_thresholds_settings,
