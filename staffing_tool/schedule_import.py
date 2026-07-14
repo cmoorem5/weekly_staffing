@@ -186,10 +186,35 @@ IGNORE_UNIT_CODES: set[str] = {
 
 # Training / admin / manager markers: skip cell entirely
 # (no staffed, no leave, no issue).
-# RN & Medic: OPEN/EXTRA rows + footer block — skip schedule grid B–P (cols 2–16).
-RN_MEDIC_SKIP_SCHEDULE_ROWS = frozenset({45, 46, 91, 92, *range(95, 114)})
+# RN & Medic / EMT grids end with an "OPEN" row (unfilled units per day) and
+# an "EXTRA" row (float staff names per day), followed by footer/notes rows.
+# None of that is a person's schedule, so once we hit OPEN or EXTRA in a
+# row's name column, that row and everything below it (within the block) is
+# skipped. Detected by label text rather than a fixed row number: adding
+# staff above these rows pushes them down the sheet every time a roster
+# grows, so a hardcoded row number silently goes stale and lets the OPEN/
+# EXTRA row's contents (unit-code lists, staff names) leak into the
+# "unknown unit codes" review as if they were shift codes.
+NON_PERSON_ROW_LABELS = frozenset({"OPEN", "EXTRA"})
 _SCHEDULE_COL_B = 2
 _SCHEDULE_COL_P = 16
+
+
+def _find_non_person_skip_row(
+    ws: Worksheet, first_row_idx: int, last_row_idx: int
+) -> int | None:
+    """First row in range labeled OPEN or EXTRA in its name column (A or B).
+
+    Everything from that row through the end of the block is summary/
+    footer content, not a person's schedule.
+    """
+    for row_idx in range(first_row_idx, last_row_idx + 1):
+        raw_a, raw_b = _grid_name_cells(ws, row_idx)
+        label = (raw_a or raw_b or "").strip().upper()
+        if label in NON_PERSON_ROW_LABELS:
+            return row_idx
+    return None
+
 
 SKIP_CELL_VALUES: set[str] = {
     "AOC",
@@ -648,6 +673,8 @@ def _parse_grid(
             )
         return records, issues
 
+    skip_from_row_idx = _find_non_person_skip_row(ws, first_row_idx, last_row_idx)
+
     for row_idx in range(first_row_idx, last_row_idx + 1):
         person_displays, is_manager_row = _row_person_displays_and_manager_flag(
             ws, row_idx, role, mgr_upper
@@ -660,8 +687,8 @@ def _parse_grid(
             if not text:
                 continue
             if (
-                sheet_label.startswith("RN & Medic")
-                and row_idx in RN_MEDIC_SKIP_SCHEDULE_ROWS
+                skip_from_row_idx is not None
+                and row_idx >= skip_from_row_idx
                 and _SCHEDULE_COL_B <= col_idx <= _SCHEDULE_COL_P
             ):
                 _append_skipped_shift(
