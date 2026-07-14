@@ -232,9 +232,17 @@ SKIP_CELL_VALUES: set[str] = {
     "SM(VIRTUAL)",
     "EDU",
     "CCT",
+    "CCTP",  # CCT preceptor day
     "NEO SIM",
     "CLINICAL/PER",
     "CLINICAL/ PER",  # Excel sometimes has a space after the slash
+    "AUDIO",
+    "SM/EDU",
+    "SM / EDU",  # spaces around the slash
+    "SM(LIVE)/AUDIO",
+    "SM (LIVE)/AUDIO",
+    "SM(VIRTUAL)/AUDIO",
+    "SM (VIRTUAL)/AUDIO",
 }
 
 # Training/education markers: not staffing, not leave -- counted separately
@@ -249,9 +257,17 @@ SKIP_TRAINING_VALUES: set[str] = {
     "SM(VIRTUAL)",
     "EDU",
     "CCT",
+    "CCTP",
     "NEO SIM",
     "CLINICAL/PER",
     "CLINICAL/ PER",
+    "AUDIO",
+    "SM/EDU",
+    "SM / EDU",
+    "SM(LIVE)/AUDIO",
+    "SM (LIVE)/AUDIO",
+    "SM(VIRTUAL)/AUDIO",
+    "SM (VIRTUAL)/AUDIO",
 }
 
 SKIP_ADMIN_VALUES: set[str] = {
@@ -1217,15 +1233,27 @@ def _ops_vehicle_blocks(
         raw_b = cell_b.value
         text_a = (_normalize_cell_value(raw_a) or "").strip()
         text_b = (_normalize_cell_value(raw_b) or "").strip()
-        # Unit code in A starts a new block (ignore FLOAT, "(Badged)", etc.)
+        # Unit code in A starts a new block. Any other section label in A
+        # (FLOAT, OPEN, Extra, footer text) ENDS the current block — its role
+        # rows belong to that section, not to the previous vehicle. It must
+        # not merely reset role_rows while current_unit stays set: that
+        # discarded the previous unit's rows and re-filled them from the
+        # non-unit section (a FLOAT block after PG erased Plymouth ground
+        # coverage this way). Parenthesized annotations like "(Badged)" are
+        # still ignored without closing the block.
         if text_a and text_a not in RETIRED_UNIT_CODES:
             canonical_a = LEGACY_UNIT_ALIASES.get(text_a, text_a)
             if canonical_a in UNIT_MAP:
                 if current_unit is not None:
                     blocks.append((current_unit, current_start, role_rows))
                 current_unit = canonical_a
-            current_start = row_idx
-            role_rows = {}
+                current_start = row_idx
+                role_rows = {}
+            elif not (text_a.startswith("(") and text_a.endswith(")")):
+                if current_unit is not None:
+                    blocks.append((current_unit, current_start, role_rows))
+                current_unit = None
+                role_rows = {}
         if current_unit is None:
             continue
         if not text_b:

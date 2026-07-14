@@ -47,7 +47,18 @@ def _parse_cell(
 
 class TrainingCellClassificationTests(unittest.TestCase):
     def test_training_codes_not_unknown_unit(self):
-        for code in ("EDU", "CCT", "NEO SIM", "CLINICAL/PER", "CLINICAL/ PER"):
+        for code in (
+            "EDU",
+            "CCT",
+            "CCTP",
+            "NEO SIM",
+            "CLINICAL/PER",
+            "CLINICAL/ PER",
+            "AUDIO",
+            "SM / EDU",
+            "SM(VIRTUAL)/AUDIO",
+            "SM(LIVE)/AUDIO",
+        ):
             records, issues = _parse_cell(code)
             self.assertEqual(issues, [], code)
             self.assertEqual(len(records), 1, code)
