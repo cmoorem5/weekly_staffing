@@ -243,6 +243,8 @@ SKIP_CELL_VALUES: set[str] = {
     "SM (LIVE)/AUDIO",
     "SM(VIRTUAL)/AUDIO",
     "SM (VIRTUAL)/AUDIO",
+    "SM(LIVE)/ADUIO",  # AUDIO typo seen in real workbooks
+    "SM(VIRTUAL)/ADUIO",
 }
 
 # Training/education markers: not staffing, not leave -- counted separately
@@ -268,6 +270,8 @@ SKIP_TRAINING_VALUES: set[str] = {
     "SM (LIVE)/AUDIO",
     "SM(VIRTUAL)/AUDIO",
     "SM (VIRTUAL)/AUDIO",
+    "SM(LIVE)/ADUIO",  # AUDIO typo seen in real workbooks
+    "SM(VIRTUAL)/ADUIO",
 }
 
 SKIP_ADMIN_VALUES: set[str] = {
@@ -827,6 +831,34 @@ def _parse_grid(
 
             # Weekday labels (e.g. row 2: SUN, MON, TUE, …) — ignore.
             if text in {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"}:
+                continue
+
+            # "<UNIT> EMT" (e.g. "MG EMT") on an RN/Medic row: the person is
+            # covering that unit's EMT seat — a manager or medic filling in.
+            # The seat itself is already recorded on the EMT sheet (and OPS
+            # View), so counting this cross-reference as a staffed shift
+            # would double-count the person. Persist as skipped admin. (On
+            # the EMT sheet itself such a value would be the real seat
+            # assignment, so this only applies to RN/Medic rows.)
+            if (
+                role != "EMT"
+                and text.endswith(" EMT")
+                and _is_resolvable_unit(text[:-4].strip())
+            ):
+                _append_skipped_shift(
+                    records,
+                    ws=ws,
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    d=d,
+                    role=role,
+                    sheet_label=sheet_label,
+                    text=text,
+                    person_displays=person_displays,
+                    person_display=person_display,
+                    is_manager_row=is_manager_row,
+                    skip_reason="admin",
+                )
                 continue
 
             # Ignored unit-like codes — persist as skipped admin.
