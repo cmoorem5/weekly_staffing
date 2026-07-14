@@ -28,6 +28,11 @@ TOTAL_PERSON_SHIFTS = 217
 ROLE_CAPACITY_PER_WEEK = {"RN": 84, "MEDIC": 84, "EMT": 49}
 ROLE_FILL_LABELS = {"RN": "RN (Flight Nurse)", "MEDIC": "Paramedic", "EMT": "EMT"}
 
+# Opportunistic extra Bedford ambulance unit codes (staffed when available,
+# not counted toward minimum) — excluded from role-fill "worked" counts so
+# they don't inflate fill rate past the required-line capacity above.
+EXTRA_UNIT_CODES = {"GR2", "NG2"}
+
 # Max GR unit-days (D+N) staffable system-wide per week — denominator for
 # System GR % only.
 SYSTEM_GR_MAX_SHIFTS_PER_WEEK = 28
@@ -291,8 +296,9 @@ class RoleFill:
 def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
     """Fill rate by role over the given weeks.
 
-    Worked = staffed + OT person-shifts from ``weekly_person_shifts``
-    (requires schedule imports for those weeks); capacity = per-role weekly
+    Worked = staffed + OT person-shifts from ``weekly_person_shifts``,
+    excluding opportunistic extra units (``EXTRA_UNIT_CODES``) that aren't
+    part of the required-line capacity below; capacity = per-role weekly
     person-shift capacity × number of weeks.
     """
     from sqlalchemy import func
@@ -306,6 +312,7 @@ def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
                 WeeklyPersonShift.week_start.in_(week_starts),
                 WeeklyPersonShift.event_type.in_(["staffed", "ot"]),
                 WeeklyPersonShift.included_in_aggregates == 1,
+                WeeklyPersonShift.unit_code.notin_(EXTRA_UNIT_CODES),
             )
             .group_by(WeeklyPersonShift.role)
             .all()

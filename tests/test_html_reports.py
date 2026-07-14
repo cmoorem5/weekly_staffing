@@ -92,6 +92,35 @@ class HtmlReportExportTests(unittest.TestCase):
         self.assertEqual(fill["MEDIC"].worked, 8)
         self.assertEqual(fill["EMT"].worked, 0)
 
+    def test_compute_role_fill_excludes_extra_bedford_units(self):
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyPersonShift(
+                    week_start="2025-12-07",
+                    person_display="Required Line",
+                    shift_date="2025-12-08",
+                    role="EMT",
+                    event_type="staffed",
+                    unit_code="NG",
+                    included_in_aggregates=1,
+                )
+            )
+            for unit_code in ("GR2", "NG2"):
+                session.add(
+                    WeeklyPersonShift(
+                        week_start="2025-12-07",
+                        person_display="Extra Ambulance",
+                        shift_date="2025-12-08",
+                        role="EMT",
+                        event_type="staffed",
+                        unit_code=unit_code,
+                        included_in_aggregates=1,
+                    )
+                )
+            session.commit()
+            fill = {rf.role: rf for rf in compute_role_fill(session, ["2025-12-07"])}
+        self.assertEqual(fill["EMT"].worked, 1)
+
     def test_monthly_html_has_day_night_and_role_fill(self):
         path = export_monthly_report_html(
             self.db_path, "2025-12-01", "2025-12-31", self.out_dir

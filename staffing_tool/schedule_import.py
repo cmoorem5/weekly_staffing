@@ -140,6 +140,7 @@ UNIT_MAP: dict[str, tuple[str, ServiceType, DayNight]] = {
     "D11H": ("Manchester", "RW", "D"),
     # EMT GR shorthand (Bedford ground, aligns with D7B EMT staffing)
     "GR2": ("Bedford", "GR", "D"),
+    "NG2": ("Bedford", "GR", "N"),
 }
 
 # Historical Manchester codes → canonical D11H (same base, RW day as today).
