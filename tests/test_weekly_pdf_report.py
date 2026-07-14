@@ -32,6 +32,7 @@ class WeeklyPdfReportTests(unittest.TestCase):
                     ot_emt=0,
                     leave_at=2,
                     leave_lt=1,
+                    training_shifts=5,
                 )
             )
             session.commit()
@@ -48,6 +49,15 @@ class WeeklyPdfReportTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(html_path))
         self.assertGreater(os.path.getsize(pdf_path), 0)
         self.assertGreater(os.path.getsize(html_path), 0)
+
+    def test_training_shifts_kpi_in_html(self):
+        _pdf_path, html_path = export_weekly_staffing_both(
+            self.db_path, "2025-12-07", self.out_dir
+        )
+        with open(html_path, encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn("Training Shifts", html)
+        self.assertIn(">5<", html)
 
 
 if __name__ == "__main__":

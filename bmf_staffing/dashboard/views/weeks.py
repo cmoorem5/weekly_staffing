@@ -178,6 +178,7 @@ def _get_week_form_initial(week_start, session):
         "leave_loa": row.leave_loa,
         "leave_jury": getattr(row, "leave_jury", 0),
         "leave_brev": getattr(row, "leave_brev", 0),
+        "training_shifts": getattr(row, "training_shifts", 0) or 0,
         "medic_unpartnered": getattr(row, "medic_unpartnered", 0) or 0,
         "rn_unpartnered_staff": getattr(row, "rn_unpartnered_staff", 0) or 0,
         "unpartnered_note_medic": getattr(row, "unpartnered_note_medic", None) or "",
@@ -478,6 +479,7 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
             row.leave_loa = _int(data.get("leave_loa"))
             row.leave_jury = _int(data.get("leave_jury"))
             row.leave_brev = _int(data.get("leave_brev"))
+            row.training_shifts = _int(data.get("training_shifts"))
             row.medic_unpartnered = _int(data.get("medic_unpartnered"))
             row.rn_unpartnered_staff = _int(data.get("rn_unpartnered_staff"))
             row.unpartnered_note_medic = _short_note(data.get("unpartnered_note_medic"))
@@ -509,6 +511,7 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                 leave_loa=_int(data.get("leave_loa")),
                 leave_jury=_int(data.get("leave_jury")),
                 leave_brev=_int(data.get("leave_brev")),
+                training_shifts=_int(data.get("training_shifts")),
                 medic_unpartnered=_int(data.get("medic_unpartnered")),
                 rn_unpartnered_staff=_int(data.get("rn_unpartnered_staff")),
                 unpartnered_note_medic=_short_note(data.get("unpartnered_note_medic")),

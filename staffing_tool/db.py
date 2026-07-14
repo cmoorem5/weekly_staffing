@@ -95,6 +95,7 @@ def migrate_weekly_staffing_columns(engine: Engine) -> None:
         "leave_brev",
         "medic_unpartnered",
         "rn_unpartnered_staff",
+        "training_shifts",
     )
     alter_sql = (
         "ALTER TABLE weekly_staffing ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"

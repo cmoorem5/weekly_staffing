@@ -235,6 +235,7 @@ def apply_schedule_workbook(
         and agg.filled_night == 0
         and _agg_leave_total(agg) == 0
         and _ops_coverage_total(ops_coverage) == 0
+        and getattr(agg, "training_total", 0) == 0
     ):
         dates = sorted({r.date for r in records})
         span = (
@@ -287,6 +288,7 @@ def apply_schedule_workbook(
         row.leave_loa = agg.leave_loa
         row.leave_jury = getattr(agg, "leave_jury", 0)
         row.leave_brev = getattr(agg, "leave_brev", 0)
+        row.training_shifts = getattr(agg, "training_total", 0)
         row.notes = notes
         row.updated_at = now
     else:
@@ -313,6 +315,7 @@ def apply_schedule_workbook(
                 leave_loa=agg.leave_loa,
                 leave_jury=getattr(agg, "leave_jury", 0),
                 leave_brev=getattr(agg, "leave_brev", 0),
+                training_shifts=getattr(agg, "training_total", 0),
                 overnights_below=0,
                 pilot_vacancies=0,
                 notes=notes,

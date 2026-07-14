@@ -318,6 +318,9 @@ class WeeklyStaffing(Base):
     leave_brev = Column(Integer, nullable=False, default=0)
     # leave_pfml is retained for legacy data but treated as part of LOA in practice.
     leave_pfml = Column(Integer, nullable=False, default=0)
+    # Training/education shift count (EDU, CCT, Neo Sim, Clinical/PER, ...):
+    # not staffing, not leave -- tracked separately, weekly total only.
+    training_shifts = Column(Integer, nullable=False, default=0)
 
     overnights_below = Column(Integer, nullable=False, default=0)
     pilot_vacancies = Column(Integer, nullable=False, default=0)

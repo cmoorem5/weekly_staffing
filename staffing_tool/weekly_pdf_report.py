@@ -397,6 +397,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
                 ("System RW %", _pct(metrics.system_rw_pct)),
                 ("System GR %", _pct(metrics.system_gr_pct)),
                 ("Person-Shifts", str(TOTAL_PERSON_SHIFTS)),
+                ("Training Shifts", str(int(ws.training_shifts or 0))),
             ],
             daily_data=daily_data,
             daily_totals=(

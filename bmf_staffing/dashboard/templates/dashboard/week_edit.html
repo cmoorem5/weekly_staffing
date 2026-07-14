@@ -128,6 +128,17 @@
     </tbody>
   </table>
 
+  <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mt-4 mb-2">Training (weekly total)</h2>
+  <p class="text-muted small mb-1">EDU, CCT, Neo Sim, Clinical/PER, SM/SIM shifts from the schedule import — not staffing, not leave.</p>
+  <table class="table table-bordered table-sm" style="max-width: 12rem;">
+    <thead><tr><th>Training shifts</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ form.training_shifts }}{% if form.training_shifts.errors %}<br><span class="text-danger small">{{ form.training_shifts.errors.0 }}</span>{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+
   <div class="row g-4 mt-1">
     <div class="col-md-12">
       <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mb-2">Notes</h2>

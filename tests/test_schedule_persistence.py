@@ -86,10 +86,12 @@ class WeeklyPersonShiftPersistenceMappingsTests(unittest.TestCase):
         ]
         rows = weekly_person_shift_mappings("2026-05-25", records)
         self.assertEqual(len(rows), 2)
-        skipped = [r for r in rows if r["event_type"] == "skipped"]
-        self.assertEqual(len(skipped), 1)
-        self.assertEqual(skipped[0]["skip_reason"], "training")
-        self.assertEqual(skipped[0]["included_in_aggregates"], 0)
+        # skip_reason="training" gets its own event_type (not generic
+        # "skipped") so it stays visible in per-person reporting.
+        training = [r for r in rows if r["event_type"] == "training"]
+        self.assertEqual(len(training), 1)
+        self.assertEqual(training[0]["skip_reason"], "training")
+        self.assertEqual(training[0]["included_in_aggregates"], 0)
 
     def test_aggregate_ignores_skipped_records(self):
         records = [

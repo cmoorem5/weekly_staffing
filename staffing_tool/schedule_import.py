@@ -229,8 +229,15 @@ SKIP_CELL_VALUES: set[str] = {
     "SM (VIRTUAL)",
     "SM(LIVE)",  # Excel sometimes drops space before (
     "SM(VIRTUAL)",
+    "EDU",
+    "CCT",
+    "NEO SIM",
+    "CLINICAL/PER",
+    "CLINICAL/ PER",  # Excel sometimes has a space after the slash
 }
 
+# Training/education markers: not staffing, not leave -- counted separately
+# in WeeklyStaffing.training_shifts (weekly total across all these codes).
 SKIP_TRAINING_VALUES: set[str] = {
     "SM",
     "SIM",
@@ -239,6 +246,11 @@ SKIP_TRAINING_VALUES: set[str] = {
     "SM (VIRTUAL)",
     "SM(LIVE)",
     "SM(VIRTUAL)",
+    "EDU",
+    "CCT",
+    "NEO SIM",
+    "CLINICAL/PER",
+    "CLINICAL/ PER",
 }
 
 SKIP_ADMIN_VALUES: set[str] = {
@@ -314,6 +326,12 @@ def _append_skipped_shift(
     skip_reason: SkipReason,
 ) -> None:
     cell_ref = f"{get_column_letter(col_idx)}{row_idx}"
+    # Training is the one skip category that still counts toward a weekly
+    # total (WeeklyStaffing.training_shifts) -- everything else here is
+    # truly dropped. Manager-row cells are excluded, matching how manager
+    # leave/OT are tracked separately (weekly_manager_shifts) rather than
+    # folded into the staff weekly totals.
+    included_in_aggregates = skip_reason == "training" and not is_manager_row
     records.append(
         ShiftRecord(
             date=d,
@@ -331,7 +349,7 @@ def _append_skipped_shift(
             person_displays=person_displays,
             is_manager_row=is_manager_row,
             skip_reason=skip_reason,
-            included_in_aggregates=False,
+            included_in_aggregates=included_in_aggregates,
             excel_row=row_idx,
             excel_col=col_idx,
         )
@@ -998,7 +1016,9 @@ def _parse_grid(
 
 
 def _person_shift_event_type(rec: ShiftRecord) -> str | None:
-    """Derive staffed / leave / ot / skipped from a parsed shift record."""
+    """Derive staffed / leave / ot / training / skipped from a parsed shift record."""
+    if rec.skip_reason == "training":
+        return "training"
     if rec.skip_reason:
         return "skipped"
     if rec.leave_type:
@@ -1512,6 +1532,8 @@ class AggregatedWeek:
     leave_loa: int
     leave_jury: int
     leave_brev: int
+    # Training/education shift count (EDU, CCT, Neo Sim, Clinical/PER, SM/SIM, ...).
+    training_total: int
     # (role, leave_type) -> count for grid (RN/Medic/EMT/Pilot × leave types).
     leave_breakdown: dict[tuple[str, str], int]
     base_rw_staffed: dict[str, int]
@@ -1850,6 +1872,7 @@ def aggregate_week_from_records(
     ot_medic_day = ot_medic_night = 0
     ot_emt_day = ot_emt_night = 0
     leave_at = leave_lt = leave_sick = leave_loa = leave_jury = leave_brev = 0
+    training_total = 0
     leave_breakdown: dict[tuple[str, str], int] = {}
     base_rw_day: dict[str, int] = {}
     base_rw_night: dict[str, int] = {}
@@ -1877,6 +1900,9 @@ def aggregate_week_from_records(
 
     for rec in records:
         if not rec.included_in_aggregates:
+            continue
+        if rec.skip_reason == "training":
+            training_total += 1
             continue
         # Filled staffing: crew slots (RN + MEDIC paired); when not using OPS
         # View, derive base-level staffed unit-days from the same keys (below).
@@ -2048,6 +2074,7 @@ def aggregate_week_from_records(
         leave_loa=leave_loa,
         leave_jury=leave_jury,
         leave_brev=leave_brev,
+        training_total=training_total,
         leave_breakdown=leave_breakdown,
         base_rw_staffed=base_rw,
         base_gr_staffed=base_gr,

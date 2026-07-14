@@ -50,6 +50,13 @@ class WeekForm(forms.Form):
     leave_brev = forms.IntegerField(
         min_value=0, required=False, initial=0, label="Leave BREV (Bereavement)"
     )
+    training_shifts = forms.IntegerField(
+        min_value=0,
+        required=False,
+        initial=0,
+        label="Training shifts",
+        help_text="EDU, CCT, Neo Sim, Clinical/PER, SM/SIM — weekly total, not staffing or leave.",
+    )
     medic_unpartnered = forms.IntegerField(
         min_value=0,
         required=False,

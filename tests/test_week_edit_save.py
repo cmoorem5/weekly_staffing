@@ -99,11 +99,12 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
         db_mod._DB_READY_PATHS.discard(resolved)
         self.tmp.cleanup()
 
-    def _post_edit(self, *, filled_day, filled_night, notes):
+    def _post_edit(self, *, filled_day, filled_night, notes, training_shifts=0):
         data = {
             "week-week_start": WEEK_START,
             "week-filled_day": str(filled_day),
             "week-filled_night": str(filled_night),
+            "week-training_shifts": str(training_shifts),
             "week-notes": notes,
         }
         data.update(_coverage_post())
@@ -145,6 +146,26 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
             )
             self.assertEqual(row.filled_day, 52)
             self.assertEqual(row.filled_night, 30)
+
+    def test_training_shifts_saved_and_reloaded(self):
+        resp = self._post_edit(
+            filled_day=52, filled_night=30, notes="", training_shifts=4
+        )
+        self.assertEqual(resp.status_code, 302)
+
+        with session_scope(self.db_path) as session:
+            row = (
+                session.query(WeeklyStaffing)
+                .filter(WeeklyStaffing.week_start == WEEK_START)
+                .first()
+            )
+            self.assertEqual(row.training_shifts, 4)
+
+        # Re-GET the edit form: the saved value must round-trip back in.
+        get_resp = self.client.get(reverse("week_edit", args=[WEEK_START]))
+        html = get_resp.content.decode()
+        self.assertIn('name="week-training_shifts"', html)
+        self.assertIn('name="week-training_shifts" value="4"', html)
 
 
 class ZeroCapBaseStaffingTests(unittest.TestCase):
