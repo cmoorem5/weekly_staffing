@@ -216,6 +216,17 @@ def _existing_roster_keys(session: Session) -> set[tuple[str, str, str]]:
     return keys
 
 
+def _existing_roster_rows_by_role_last(
+    session: Session,
+) -> dict[tuple[str, str], list[StaffRosterEntry]]:
+    """All roster rows (active or inactive), grouped by (role, LAST NAME)."""
+    index: dict[tuple[str, str], list[StaffRosterEntry]] = {}
+    for row in session.query(StaffRosterEntry).all():
+        key = ((row.role or "").strip().upper(), (row.last_name or "").strip().upper())
+        index.setdefault(key, []).append(row)
+    return index
+
+
 def list_roster_import_weeks(session: Session) -> list[str]:
     """Sunday week_start values with person-shift imports, newest first."""
     from_imports = [
@@ -419,7 +430,9 @@ def sync_roster_from_import(
 
     existing = _existing_roster_keys(session)
     to_add = _roster_entries_from_role_labels(by_role_labels, existing)
-    added, _skipped = add_roster_entries(session, to_add, created_at=created_at)
+    added, _updated, _skipped = add_roster_entries(
+        session, to_add, created_at=created_at
+    )
     return added, staff_roster_index_from_session(session)
 
 
@@ -428,14 +441,29 @@ def add_roster_entries(
     entries: list[tuple[str, str, str]],
     *,
     created_at: str,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """
     Insert active roster rows.
 
-    Returns ``(added_count, skipped_count)``; skips duplicates and invalid roles.
+    A candidate that doesn't exactly match an existing row, but is the only
+    row for that (role, last name) and is missing a first name, is treated
+    as the same person: the first name is filled in on the existing row
+    instead of creating a duplicate (active/inactive status is preserved).
+    A bare last-name candidate is skipped outright when a fuller record for
+    that last name already exists -- nothing new to add. Both directions
+    guard against the exact scenario that created "Prins" + "Prins,
+    Jonathan" as two separate rows.
+
+    Returns ``(added_count, updated_count, skipped_count)``.
     """
-    existing = _existing_roster_keys(session)
+    by_role_last = _existing_roster_rows_by_role_last(session)
+    existing_keys = {
+        _roster_name_key(row.role, row.last_name, row.first_name)
+        for rows in by_role_last.values()
+        for row in rows
+    }
     added = 0
+    updated = 0
     skipped = 0
     for role, last_name, first_name in entries:
         role_key = (role or "").strip().upper()
@@ -452,23 +480,106 @@ def add_roster_entries(
             skipped += 1
             continue
         key = _roster_name_key(role_key, last, first)
-        if key in existing:
+        if key in existing_keys:
             skipped += 1
             continue
-        session.add(
-            StaffRosterEntry(
-                role=role_key,
-                last_name=last,
-                first_name=first,
-                active=1,
-                created_at=created_at,
-            )
+
+        last_key = (role_key, last.strip().upper())
+        group = by_role_last.get(last_key, [])
+        if first and len(group) == 1 and not (group[0].first_name or "").strip():
+            row = group[0]
+            existing_keys.discard(_roster_name_key(role_key, last, ""))
+            row.first_name = first
+            existing_keys.add(key)
+            updated += 1
+            continue
+        if not first and group:
+            skipped += 1
+            continue
+
+        new_row = StaffRosterEntry(
+            role=role_key,
+            last_name=last,
+            first_name=first,
+            active=1,
+            created_at=created_at,
         )
-        existing.add(key)
+        session.add(new_row)
+        existing_keys.add(key)
+        by_role_last.setdefault(last_key, []).append(new_row)
         added += 1
-    if added:
+    if added or updated:
         session.flush()
-    return added, skipped
+    return added, updated, skipped
+
+
+@dataclass
+class RosterDuplicateCandidate:
+    """Likely duplicate pair: same role + last name, one entry with no
+    first name and exactly one with a first name -- almost certainly the
+    same person recorded twice (e.g. one import had only a surname)."""
+
+    bare_id: int
+    bare_active: bool
+    full_id: int
+    full_name: str
+    role: str
+    last_name: str
+
+
+def find_roster_duplicate_candidates(
+    session: Session,
+) -> list[RosterDuplicateCandidate]:
+    """Roster rows (active or inactive) that look like the same person
+    recorded under a bare last name and again with a first name."""
+    by_role_last: dict[tuple[str, str], list[StaffRosterEntry]] = {}
+    for row in session.query(StaffRosterEntry).all():
+        key = ((row.role or "").strip().upper(), (row.last_name or "").strip().upper())
+        by_role_last.setdefault(key, []).append(row)
+
+    candidates: list[RosterDuplicateCandidate] = []
+    for (role, last), rows in by_role_last.items():
+        if len(rows) != 2:
+            continue
+        bare = [r for r in rows if not (r.first_name or "").strip()]
+        full = [r for r in rows if (r.first_name or "").strip()]
+        if len(bare) == 1 and len(full) == 1:
+            candidates.append(
+                RosterDuplicateCandidate(
+                    bare_id=bare[0].id,
+                    bare_active=bool(bare[0].active),
+                    full_id=full[0].id,
+                    full_name=canonical_display(full[0]),
+                    role=role,
+                    last_name=bare[0].last_name or last,
+                )
+            )
+    return sorted(candidates, key=lambda c: (c.role, c.last_name))
+
+
+def merge_roster_entries(session: Session, *, keep_id: int, remove_id: int) -> bool:
+    """
+    Merge two roster rows for the same person: reassign shift history from
+    ``remove_id`` to ``keep_id``, keep ``keep_id`` active if either side was
+    active, then delete ``remove_id``.
+
+    Returns False (no changes made) if either id doesn't exist or they're
+    different roles; True on success.
+    """
+    if keep_id == remove_id:
+        return False
+    keep = session.query(StaffRosterEntry).filter_by(id=keep_id).first()
+    remove = session.query(StaffRosterEntry).filter_by(id=remove_id).first()
+    if not keep or not remove or keep.role != remove.role:
+        return False
+    session.query(WeeklyPersonShift).filter(
+        WeeklyPersonShift.staff_member_id == remove_id
+    ).update({WeeklyPersonShift.staff_member_id: keep_id})
+    if remove.active:
+        keep.active = 1
+    session.delete(remove)
+    session.flush()
+    return True
 
 
 def parse_roster_import_form_key(key: str) -> tuple[str, str, str] | None:

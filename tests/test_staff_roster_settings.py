@@ -27,6 +27,7 @@ from staffing_tool.db import (
     session_scope,
 )
 from staffing_tool.models import StaffRosterEntry as SaStaffRosterEntry
+from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 
 from dashboard.models import StaffRosterEntry as DjangoStaffRosterEntry
 from dashboard.views import helpers as view_helpers
@@ -99,6 +100,80 @@ class StaffRosterSettingsViewTests(unittest.TestCase):
             with session_scope(db_path) as session:
                 row = session.query(SaStaffRosterEntry).filter_by(id=entry_id).one()
                 self.assertEqual(row.active, 0)
+            get_engine(db_path).dispose()
+            _get_engine_cached.cache_clear()
+            _sessionmaker_for_path.cache_clear()
+
+    def test_merge_duplicate_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "test.db")
+            init_db(db_path)
+            with session_scope(db_path) as session:
+                bare = SaStaffRosterEntry(
+                    last_name="Prins",
+                    first_name="",
+                    role="EMT",
+                    active=1,
+                    created_at="2026-06-01T00:00:00Z",
+                )
+                full = SaStaffRosterEntry(
+                    last_name="Prins",
+                    first_name="Jonathan",
+                    role="EMT",
+                    active=1,
+                    created_at="2026-06-01T00:00:00Z",
+                )
+                session.add(bare)
+                session.add(full)
+                session.add(
+                    WeeklyStaffing(
+                        week_start="2026-05-25", filled_day=1, filled_night=0
+                    )
+                )
+                session.flush()
+                bare_id, full_id = bare.id, full.id
+                session.add(
+                    WeeklyPersonShift(
+                        week_start="2026-05-25",
+                        person_display="Prins",
+                        staff_member_id=bare_id,
+                        shift_date="2026-05-25",
+                        role="EMT",
+                        event_type="staffed",
+                    )
+                )
+
+            with (
+                patch.object(view_helpers, "DB_PATH", db_path),
+                patch.object(settings_views, "DB_PATH", db_path),
+            ):
+                c = Client(HTTP_HOST="localhost")
+                url = reverse("staff_roster_settings")
+                get_resp = c.get(url)
+                self.assertIn(b"Possible duplicates", get_resp.content)
+                csrf = c.cookies["csrftoken"].value
+                resp = c.post(
+                    url,
+                    {
+                        "action": "merge",
+                        "keep_id": str(full_id),
+                        "remove_id": str(bare_id),
+                        "csrfmiddlewaretoken": csrf,
+                    },
+                    follow=True,
+                )
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(b"Merged the duplicate", resp.content)
+            with session_scope(db_path) as session:
+                rows = session.query(SaStaffRosterEntry).filter_by(role="EMT").all()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0].id, full_id)
+                shift = (
+                    session.query(WeeklyPersonShift)
+                    .filter_by(shift_date="2026-05-25")
+                    .first()
+                )
+                self.assertEqual(shift.staff_member_id, full_id)
             get_engine(db_path).dispose()
             _get_engine_cached.cache_clear()
             _sessionmaker_for_path.cache_clear()

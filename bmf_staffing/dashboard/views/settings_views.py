@@ -9,7 +9,9 @@ from staffing_tool.models import StaffRosterEntry as SaStaffRosterEntry
 from staffing_tool.staff_roster import (
     add_roster_entries,
     canonical_display,
+    find_roster_duplicate_candidates,
     list_roster_import_weeks,
+    merge_roster_entries,
     parse_roster_import_form_key,
     suggest_roster_imports,
 )
@@ -327,7 +329,7 @@ def staff_roster_settings(request):
                 messages.error(request, "Database is not configured.")
             else:
                 with session_scope(DB_PATH) as session:
-                    added, skipped = add_roster_entries(
+                    added, updated, skipped = add_roster_entries(
                         session,
                         entries,
                         created_at=_utc_now_iso(),
@@ -337,7 +339,13 @@ def staff_roster_settings(request):
                         request,
                         f"Added {added} name{'s' if added != 1 else ''} to the staff roster.",
                     )
-                if skipped and not added:
+                if updated:
+                    messages.success(
+                        request,
+                        f"Filled in the first name on {updated} existing "
+                        f"entr{'y' if updated == 1 else 'ies'} instead of adding a duplicate.",
+                    )
+                if skipped and not added and not updated:
                     messages.warning(
                         request,
                         "Those names are already on the roster.",
@@ -426,6 +434,27 @@ def staff_roster_settings(request):
             elif raw_id.isdigit():
                 messages.error(request, "Database is not configured.")
             return redirect("staff_roster_settings")
+        elif action == "merge":
+            keep_raw = (request.POST.get("keep_id") or "").strip()
+            remove_raw = (request.POST.get("remove_id") or "").strip()
+            if keep_raw.isdigit() and remove_raw.isdigit() and DB_PATH:
+                with session_scope(DB_PATH) as session:
+                    ok = merge_roster_entries(
+                        session,
+                        keep_id=int(keep_raw),
+                        remove_id=int(remove_raw),
+                    )
+                if ok:
+                    messages.success(
+                        request, "Merged the duplicate into a single roster entry."
+                    )
+                else:
+                    messages.error(request, "Could not merge those entries.")
+            elif keep_raw.isdigit() and remove_raw.isdigit():
+                messages.error(request, "Database is not configured.")
+            else:
+                messages.error(request, "Invalid roster entries.")
+            return redirect("staff_roster_settings")
 
     active_rows = list(
         StaffRosterEntry.objects.using("staffing")
@@ -453,11 +482,17 @@ def staff_roster_settings(request):
             }
         )
 
+    duplicate_candidates = []
+    if DB_PATH:
+        with session_scope(DB_PATH) as session:
+            duplicate_candidates = find_roster_duplicate_candidates(session)
+
     ctx = {
         "add_form": add_form,
         "roster_by_role": roster_by_role,
         "inactive_rows": inactive_rows,
         "active_count": len(active_rows),
+        "duplicate_candidates": duplicate_candidates,
     }
     ctx.update(_staff_roster_import_context(import_week or None))
     return render(request, "dashboard/staff_roster.html", ctx)

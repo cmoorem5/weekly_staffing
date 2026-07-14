@@ -104,6 +104,47 @@
 </div>
 {% endif %}
 
+{% if duplicate_candidates %}
+<div class="card bmf-card shadow-sm mb-4">
+  <div class="card-header bmf-card-header">Possible duplicates ({{ duplicate_candidates|length }})</div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">
+      Same role and last name, one entry with a first name and one without — usually the same
+      person recorded twice (e.g. one week's import only had the surname). Merging moves that
+      person's shift history onto the fuller entry and removes the bare-name row.
+    </p>
+    <table class="table mb-0">
+      <thead>
+        <tr>
+          <th scope="col">Role</th>
+          <th scope="col">Bare entry</th>
+          <th scope="col">Fuller entry (kept)</th>
+          <th scope="col" class="text-end" style="width: 7rem;">Merge</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dup in duplicate_candidates %}
+        <tr>
+          <td>{{ dup.role }}</td>
+          <td>{{ dup.last_name }}{% if not dup.bare_active %} <span class="badge bg-secondary fw-normal">inactive</span>{% endif %}</td>
+          <td>{{ dup.full_name }}</td>
+          <td class="text-end">
+            <form method="post" class="d-inline" onsubmit="return confirm('Merge {{ dup.last_name }} into {{ dup.full_name }}? This moves shift history and removes the bare-name entry.');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="merge">
+              <input type="hidden" name="keep_id" value="{{ dup.full_id }}">
+              <input type="hidden" name="remove_id" value="{{ dup.bare_id }}">
+              <button type="submit" class="btn btn-outline-primary btn-sm">Merge</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-4">
   <div class="col-lg-5">
     <div class="card bmf-card shadow-sm">
