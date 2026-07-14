@@ -216,8 +216,11 @@ def week_edit(request, week_start):
         form = WeekForm(request.POST, prefix="week")
         formset = BaseCoverageFormSet(request.POST, prefix="cov")
         if form.is_valid() and formset.is_valid():
-            _save_week_and_coverage(request, form.cleaned_data, formset, week_start)
-            return redirect("week_list")
+            saved = _save_week_and_coverage(
+                request, form.cleaned_data, formset, week_start
+            )
+            if saved:
+                return redirect("week_list")
         leave_detail_map, _ = _parse_exception_grid_post(request.POST)
         leave_grid_rows = _build_leave_grid_rows(leave_detail_map)
     else:
@@ -265,8 +268,11 @@ def week_add(request):
         formset = BaseCoverageFormSet(request.POST, prefix="cov")
         if form.is_valid() and formset.is_valid():
             week_start = form.cleaned_data.get("week_start") or last_sun
-            _save_week_and_coverage(request, form.cleaned_data, formset, week_start)
-            return redirect("week_list")
+            saved = _save_week_and_coverage(
+                request, form.cleaned_data, formset, week_start
+            )
+            if saved:
+                return redirect("week_list")
         leave_detail_map, _ = _parse_exception_grid_post(request.POST)
         leave_grid_rows = _build_leave_grid_rows(leave_detail_map)
     else:
@@ -365,19 +371,21 @@ def _merge_leave_totals_from_grid(data, col_totals):
     return out
 
 
-def _save_week_and_coverage(request, data, formset, week_start):
+def _save_week_and_coverage(request, data, formset, week_start) -> bool:
+    """Persist the week + coverage. Returns True on success, False if a
+    validation rule blocked the save (an error message has already been set)."""
     week_start = (data.get("week_start") or week_start or "").strip()
     if not week_start:
         messages.error(request, "Week start (Sunday) is required.")
-        return
+        return False
     try:
         d = datetime.strptime(week_start, "%Y-%m-%d")
         if d.weekday() != 6:
             messages.error(request, "Week start must be a Sunday.")
-            return
+            return False
     except ValueError:
         messages.error(request, "Week start must be YYYY-MM-DD.")
-        return
+        return False
 
     leave_detail_map, leave_col_totals = _parse_exception_grid_post(request.POST)
     data = _merge_leave_totals_from_grid(data, leave_col_totals)
@@ -427,13 +435,13 @@ def _save_week_and_coverage(request, data, formset, week_start):
                     request,
                     f"Base {base} has RW total = 0. Set base totals first.",
                 )
-                return
+                return False
             if gr_cap == 0 and gr_s > 0:
                 messages.error(
                     request,
                     f"Base {base} has GR total = 0. Set base totals first.",
                 )
-                return
+                return False
             if (rw_cap and rw_s > rw_cap) or (gr_cap and gr_s > gr_cap):
                 base_staffed_gt = True
 
@@ -449,7 +457,7 @@ def _save_week_and_coverage(request, data, formset, week_start):
             and not notes
         ):
             messages.error(request, notes_required_message(thresholds))
-            return
+            return False
 
         row = (
             session.query(WeeklyStaffing)
@@ -571,6 +579,7 @@ def _save_week_and_coverage(request, data, formset, week_start):
                 )
             )
     messages.success(request, f"Week {week_start} saved.")
+    return True
 
 
 def week_delete(request, week_start):
