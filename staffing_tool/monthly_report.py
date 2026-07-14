@@ -10,7 +10,6 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, cast
 
-from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
@@ -45,6 +44,7 @@ from .report import (
     FONT_BMF_SUBTITLE,
     FONT_BMF_TITLE,
     THIN_BORDER,
+    WHITE_BOLD,
     _add_logo,
     _bmf_border_block,
     _bmf_cell_border,
@@ -69,6 +69,21 @@ def _style_by_base_system_total_cell(
     cell.border = THIN_BORDER
     if number_format:
         cell.number_format = number_format
+
+
+def _heat_fill_and_font(value: float, vmin: float, vmax: float, end_hex: str):
+    """Two-color heat shade computed in code (spec: no Excel conditional
+    formatting) — near-white at the range minimum to ``end_hex`` at the
+    maximum. Returns (fill, font_or_None); dark cells get a white font."""
+    if vmax <= vmin:
+        t = 0.0
+    else:
+        t = (value - vmin) / (vmax - vmin)
+    start = tuple(int("F9F9F9"[i : i + 2], 16) for i in (0, 2, 4))
+    end = tuple(int(end_hex[i : i + 2], 16) for i in (0, 2, 4))
+    rgb = "".join(f"{round(s + (e - s) * t):02X}" for s, e in zip(start, end))
+    fill = PatternFill(start_color=rgb, end_color=rgb, fill_type="solid")
+    return fill, (WHITE_BOLD if t >= 0.6 else None)
 
 
 def _parse_iso(d: str) -> datetime | None:
@@ -518,7 +533,6 @@ def export_monthly_report(
     # -------- Sheet: Exceptions (counts + % person-shifts, color-scaled “heat”) --------
     ws3 = wb.create_sheet("Exceptions", 3)
     n_exc_cols = 1 + len(EXCEPTION_GRID_COLS)
-    last_type_col = get_column_letter(n_exc_cols)
 
     exc_counts: list[list[int]] = []
     for role in EXCEPTION_GRID_ROLES:
@@ -553,30 +567,24 @@ def export_monthly_report(
         cell.border = THIN_BORDER
         cell.alignment = ALIGN_CENTER
     r += 1
-    count_data_first = r
+    flat_counts = [v for row_counts in exc_counts for v in row_counts]
+    count_min = min(flat_counts) if flat_counts else 0
+    count_max = max(flat_counts) if flat_counts else 0
     for ri, role in enumerate(EXCEPTION_GRID_ROLES):
         _bmf_cell_border(ws3, r, 1, role, FONT_BMF_BODY_BOLD)
         for ci, col in enumerate(EXCEPTION_GRID_COLS, start=2):
             v = exc_counts[ri][ci - 2]
-            _bmf_cell_border(ws3, r, ci, v)
+            cell = _bmf_cell_border(ws3, r, ci, v)
+            fill, font = _heat_fill_and_font(v, count_min, count_max, "2A4492")
+            cell.fill = fill
+            if font is not None:
+                cell.font = font
         _bmf_border_block(ws3, r, r, 1, n_exc_cols)
         r += 1
-    count_data_last = r - 1
     _bmf_cell_border(ws3, r, 1, "Total", FONT_BMF_BODY_BOLD)
     for ci, total in enumerate(col_sums, start=2):
         _bmf_cell_border(ws3, r, ci, total)
     _bmf_border_block(ws3, r, r, 1, n_exc_cols)
-
-    count_heat = f"B{count_data_first}:{last_type_col}{count_data_last}"
-    ws3.conditional_formatting.add(
-        count_heat,
-        ColorScaleRule(
-            start_type="min",
-            start_color="FFF9F9F9",
-            end_type="max",
-            end_color="FF2A4492",
-        ),
-    )
 
     person_shifts_period = TOTAL_PERSON_SHIFTS * n_weeks if n_weeks else 0
     r += 2
@@ -599,7 +607,6 @@ def export_monthly_report(
         cell.alignment = ALIGN_CENTER
     r += 1
     denom_ps = float(person_shifts_period) if person_shifts_period else None
-    ps_data_first = r
     for ri, role in enumerate(EXCEPTION_GRID_ROLES):
         _bmf_cell_border(ws3, r, 1, role, FONT_BMF_BODY_BOLD)
         for ci, col in enumerate(EXCEPTION_GRID_COLS, start=2):
@@ -610,11 +617,14 @@ def export_monthly_report(
             if denom_ps:
                 cell.value = cnt / denom_ps
                 cell.number_format = "0.00%"
+                fill, font = _heat_fill_and_font(cnt, count_min, count_max, "C12126")
+                cell.fill = fill
+                if font is not None:
+                    cell.font = font
             else:
                 cell.value = "—"
         _bmf_border_block(ws3, r, r, 1, n_exc_cols)
         r += 1
-    ps_data_last = r - 1
     _bmf_cell_border(ws3, r, 1, "Column %", FONT_BMF_BODY_BOLD)
     for ci, cs in enumerate(col_sums, start=2):
         cell = ws3.cell(r, ci)
@@ -626,17 +636,6 @@ def export_monthly_report(
         else:
             cell.value = "—"
     _bmf_border_block(ws3, r, r, 1, n_exc_cols)
-
-    ps_heat = f"B{ps_data_first}:{last_type_col}{ps_data_last}"
-    ws3.conditional_formatting.add(
-        ps_heat,
-        ColorScaleRule(
-            start_type="min",
-            start_color="FFF9F9F9",
-            end_type="max",
-            end_color="FFC12126",
-        ),
-    )
 
     ws3.freeze_panes = "A2"
     for col in range(1, n_exc_cols + 1):

@@ -440,6 +440,40 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
         thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
         base_by_name = {b.base_name: b for b in session.query(BaseConfig).all()}
 
+        row = (
+            session.query(WeeklyStaffing)
+            .filter(WeeklyStaffing.week_start == week_start)
+            .first()
+        )
+        # A week imported/backfilled before the day/night OT split stores its
+        # OT only in the legacy ot_rn/ot_medic/ot_emt/ot_shifts totals; the
+        # edit form shows the (all-zero) day/night columns, so an untouched
+        # save would silently erase the week's overtime. Preserve the legacy
+        # totals in that case — an all-zero submission only clears OT when
+        # the row actually had day/night values to clear.
+        if row is not None and ot_shifts == 0:
+            row_split_total = sum(
+                int(getattr(row, f, 0) or 0)
+                for f in (
+                    "ot_rn_day",
+                    "ot_rn_night",
+                    "ot_medic_day",
+                    "ot_medic_night",
+                    "ot_emt_day",
+                    "ot_emt_night",
+                )
+            )
+            legacy_rn = int(getattr(row, "ot_rn", 0) or 0)
+            legacy_medic = int(getattr(row, "ot_medic", 0) or 0)
+            legacy_emt = int(getattr(row, "ot_emt", 0) or 0)
+            legacy_total = int(getattr(row, "ot_shifts", 0) or 0)
+            if row_split_total == 0 and (
+                legacy_rn + legacy_medic + legacy_emt + legacy_total
+            ):
+                ot_rn, ot_medic, ot_emt = legacy_rn, legacy_medic, legacy_emt
+                ot_shifts = legacy_total or (legacy_rn + legacy_medic + legacy_emt)
+                ot_dependency = ot_shifts / filled_total if filled_total else 0
+
         base_staffed_gt = False
         for form in formset:
             if not form.cleaned_data.get("base_name"):
@@ -480,11 +514,6 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
             messages.error(request, notes_required_message(thresholds))
             return False
 
-        row = (
-            session.query(WeeklyStaffing)
-            .filter(WeeklyStaffing.week_start == week_start)
-            .first()
-        )
         if row:
             row.filled_day = filled_day
             row.filled_night = filled_night

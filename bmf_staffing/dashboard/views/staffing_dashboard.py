@@ -134,13 +134,18 @@ def _exc_breakdown_groups() -> dict[str, list[str]]:
     }
 
 
+# Reverse map (leave_type -> series), built once: the grouping is static and
+# this is called for every WeeklyLeaveDetail row on each dashboard request.
+_EXC_GROUP_BY_LEAVE_TYPE: dict[str, str] = {
+    key.upper(): group
+    for group, keys in _exc_breakdown_groups().items()
+    for key in keys
+}
+
+
 def _exc_group_for_leave_type(leave_type: str) -> str:
     lt = (leave_type or "").strip().upper()
-    groups = _exc_breakdown_groups()
-    for group, keys in groups.items():
-        if lt in {k.upper() for k in keys}:
-            return group
-    return "Other"
+    return _EXC_GROUP_BY_LEAVE_TYPE.get(lt, "Other")
 
 
 def _build_staffing_dashboard_context(request) -> dict[str, object]:

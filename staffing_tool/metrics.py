@@ -28,6 +28,9 @@ TOTAL_PERSON_SHIFTS = 217
 ROLE_CAPACITY_PER_WEEK = {"RN": 84, "MEDIC": 84, "EMT": 49}
 ROLE_FILL_LABELS = {"RN": "RN (Flight Nurse)", "MEDIC": "Paramedic", "EMT": "EMT"}
 
+# Canonical base display order for report tables (weekly/monthly/quarterly).
+BASE_DISPLAY_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]
+
 # Opportunistic extra Bedford ambulance unit codes (staffed when available,
 # not counted toward minimum) — excluded from role-fill "worked" counts so
 # they don't inflate fill rate past the required-line capacity above.

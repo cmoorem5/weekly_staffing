@@ -26,6 +26,8 @@ from staffing_tool.fiscal_year import (
 )
 from staffing_tool.leave_grid import EXCEPTION_GRID_COLS
 from staffing_tool.metrics import (
+    BASE_DISPLAY_ORDER,
+    ROLE_CAPACITY_PER_WEEK,
     TOTAL_PERSON_SHIFTS,
     compute_period_rollups,
     compute_week_metrics,
@@ -38,10 +40,10 @@ from staffing_tool.models import (
 )
 
 EM = "\u2014"
-BASE_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]
-RN_PER_WEEK = 84
-MEDIC_PER_WEEK = 84
-EMT_PER_WEEK = 49
+BASE_ORDER = BASE_DISPLAY_ORDER
+RN_PER_WEEK = ROLE_CAPACITY_PER_WEEK["RN"]
+MEDIC_PER_WEEK = ROLE_CAPACITY_PER_WEEK["MEDIC"]
+EMT_PER_WEEK = ROLE_CAPACITY_PER_WEEK["EMT"]
 
 
 @dataclass

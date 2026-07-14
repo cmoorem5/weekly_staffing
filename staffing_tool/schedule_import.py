@@ -2077,19 +2077,6 @@ def aggregate_week_from_records(
                 else:
                     base_gr_day[base_name] = base_gr_day.get(base_name, 0) + 1
 
-    # Grid often has names or layout drift; OPS View still counts staffed vehicles.
-    if (
-        ops_coverage is not None
-        and len(ops_coverage) >= 4
-        and filled_day == 0
-        and filled_night == 0
-    ):
-        ops_day = sum(ops_coverage[0].values()) + sum(ops_coverage[2].values())
-        ops_night = sum(ops_coverage[1].values()) + sum(ops_coverage[3].values())
-        if ops_day > 0 or ops_night > 0:
-            filled_day = ops_day
-            filled_night = ops_night
-
     if ops_coverage is not None:
         if len(ops_coverage) >= 4:
             base_rw_day = dict(ops_coverage[0])
@@ -2101,13 +2088,29 @@ def aggregate_week_from_records(
             base_rw_night = {}
             base_gr_day = dict(ops_coverage[1])
             base_gr_night = {}
-    else:
-        _cap_base_coverage_split(
-            base_rw_day,
-            base_rw_night,
-            base_gr_day,
-            base_gr_night,
-        )
+    # Cap both sources at the per-base weekly maxima. Opportunistic extra
+    # vehicles (e.g. Bedford GR2/NG2) can push OPS View counts past the
+    # configured plan, which would report >100% base coverage and inflate
+    # the fixed-denominator system GR %.
+    _cap_base_coverage_split(
+        base_rw_day,
+        base_rw_night,
+        base_gr_day,
+        base_gr_night,
+    )
+
+    # Grid often has names or layout drift; OPS View still counts staffed vehicles.
+    if (
+        ops_coverage is not None
+        and len(ops_coverage) >= 4
+        and filled_day == 0
+        and filled_night == 0
+    ):
+        ops_day = sum(base_rw_day.values()) + sum(base_gr_day.values())
+        ops_night = sum(base_rw_night.values()) + sum(base_gr_night.values())
+        if ops_day > 0 or ops_night > 0:
+            filled_day = ops_day
+            filled_night = ops_night
 
     all_rw = set(base_rw_day) | set(base_rw_night)
     all_gr = set(base_gr_day) | set(base_gr_night)

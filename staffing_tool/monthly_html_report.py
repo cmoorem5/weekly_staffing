@@ -21,6 +21,7 @@ from staffing_tool import report_html as rh
 from staffing_tool.db import session_scope
 from staffing_tool.leave_grid import EXCEPTION_GRID_COLS
 from staffing_tool.metrics import (
+    BASE_DISPLAY_ORDER,
     PeriodRollups,
     RoleFill,
     compute_period_rollups,
@@ -30,7 +31,7 @@ from staffing_tool.metrics import (
 from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
 
 EM = rh.EM
-BASE_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]
+BASE_ORDER = BASE_DISPLAY_ORDER
 
 
 def _pct(v: float) -> str:

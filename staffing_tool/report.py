@@ -5,6 +5,7 @@ Uses openpyxl; status fills are computed in Python (not Excel conditional format
 
 import os
 import subprocess
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from openpyxl import Workbook, load_workbook
@@ -20,6 +21,7 @@ from .leave_grid import (
     EXCEPTION_GRID_ROLES,
 )
 from .metrics import (
+    BASE_DISPLAY_ORDER,
     TOTAL_PERSON_SHIFTS,
     PeriodRollups,
     WeekMetrics,
@@ -391,12 +393,11 @@ def _bmf_border_block(ws, r1: int, r2: int, c1: int, c2: int) -> None:
             ws.cell(r, c).border = THIN_BORDER
 
 
-# Weekly Staffing Detail: fixed base order (matches target output structure)
-DETAIL_BASE_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]
+# Weekly Staffing Detail: fixed base order (canonical order lives in metrics).
+DETAIL_BASE_ORDER = BASE_DISPLAY_ORDER
 
 # Backward-compatible names (canonical definitions in leave_grid)
 LEAVE_TYPE_COLS = EXCEPTION_GRID_COLS
-LEAVE_TYPE_ROWS = EXCEPTION_GRID_COLS
 EXCEPTION_ROLES = EXCEPTION_GRID_ROLES
 
 
@@ -437,14 +438,29 @@ def _verify_weekly_detail_checks(
     checks.append(
         ("Vacancies = Required - Filled", ok, f"{vac} vs {this_metrics.vacancies}")
     )
-    # OT Total Day = RN + MEDIC + EMT (we use all OT in Day)
-    ot_rn = getattr(row_data, "ot_rn", 0) or 0
-    ot_medic = getattr(row_data, "ot_medic", 0) or 0
-    ot_emt = getattr(row_data, "ot_emt", 0) or 0
-    total_ot = ot_rn + ot_medic + ot_emt
+    # OT Total: mirror compute_week_metrics's fallback chain (day/night split,
+    # then per-role legacy totals, then ot_shifts) so the check cross-checks
+    # the same source the metrics actually use.
+    total_ot = sum(
+        int(getattr(row_data, f, 0) or 0)
+        for f in (
+            "ot_rn_day",
+            "ot_rn_night",
+            "ot_medic_day",
+            "ot_medic_night",
+            "ot_emt_day",
+            "ot_emt_night",
+        )
+    )
+    if total_ot == 0:
+        total_ot = sum(
+            int(getattr(row_data, f, 0) or 0) for f in ("ot_rn", "ot_medic", "ot_emt")
+        )
+    if total_ot == 0:
+        total_ot = int(getattr(row_data, "ot_shifts", 0) or 0)
     ok = total_ot == this_metrics.ot_shifts
     checks.append(
-        ("OT Total = RN + MEDIC + EMT", ok, f"{total_ot} vs {this_metrics.ot_shifts}")
+        ("OT Total matches metrics", ok, f"{total_ot} vs {this_metrics.ot_shifts}")
     )
     return checks
 
@@ -494,14 +510,29 @@ def _metrics_for_weeks(
     session: Session, week_starts: list[str]
 ) -> list[tuple[str, WeekMetrics, RAG | None]]:
     """Load metrics for each week and RAG for board metrics (using first metric only for status)."""
+    if not week_starts:
+        return []
     thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
+    bases = session.query(BaseConfig).order_by(BaseConfig.base_name).all()
+    rows_by_week = {
+        r.week_start: r
+        for r in session.query(WeeklyStaffing)
+        .filter(WeeklyStaffing.week_start.in_(week_starts))
+        .all()
+    }
+    coverages_by_week: dict[str, list[WeeklyBaseCoverage]] = defaultdict(list)
+    for c in (
+        session.query(WeeklyBaseCoverage)
+        .filter(WeeklyBaseCoverage.week_start.in_(week_starts))
+        .all()
+    ):
+        coverages_by_week[c.week_start].append(c)
     result = []
     for ws in week_starts:
-        data = _load_week_with_coverage(session, ws)
-        if not data:
+        row = rows_by_week.get(ws)
+        if row is None:
             continue
-        row, coverages, bases = data
-        m = compute_week_metrics(row, coverages, bases)
+        m = compute_week_metrics(row, coverages_by_week.get(ws, []), bases)
         rag = None
         if thresholds.get("Staffing Rate"):
             rag = evaluate_rag(m.staffing_rate, thresholds["Staffing Rate"])
@@ -566,7 +597,10 @@ def _generate_narrative(
             "Overall staffing rate is below acceptable level; status is Action needed."
         )
 
-    # Week-over-week
+    ot_ceil = ot_action_ceiling(thresholds)
+    exc_monitor = shift_exception_monitor_ceiling(thresholds)
+
+    # Week-over-week comparisons need a prior week…
     if prior_week:
         sr_now, sr_prior = this_week.staffing_rate, prior_week.staffing_rate
         if sr_now > sr_prior:
@@ -578,27 +612,27 @@ def _generate_narrative(
                 f"Staffing rate declined week-over-week ({sr_prior:.1%} → {sr_now:.1%})."
             )
         ot_now, ot_prior = this_week.ot_dependency, prior_week.ot_dependency
-        ot_ceil = ot_action_ceiling(thresholds)
-        exc_monitor = shift_exception_monitor_ceiling(thresholds)
         if ot_now > ot_ceil and ot_now > ot_prior:
             drivers.append(
                 f"OT dependency increased ({ot_prior:.1%} → {ot_now:.1%}); overtime filling gaps."
             )
-        if this_week.leave_exposure > exc_monitor:
-            drivers.append(
-                f"Shift exception % at {this_week.leave_exposure:.1%}; contributes to coverage pressure."
-            )
-        if this_week.ot_dependency > ot_ceil:
-            risks.append("High OT dependency; fatigue and sustainability risk.")
-        if (
-            rag_statuses.get("System RW Coverage %") == "Red"
-            or rag_statuses.get("System GR Coverage %") == "Red"
-        ):
-            risks.append(
-                "RW or GR system coverage below threshold; readiness and capacity risk."
-            )
     else:
         takeaways.append("No prior week for comparison.")
+
+    # …but current-week drivers and risks do not.
+    if this_week.leave_exposure > exc_monitor:
+        drivers.append(
+            f"Shift exception % at {this_week.leave_exposure:.1%}; contributes to coverage pressure."
+        )
+    if this_week.ot_dependency > ot_ceil:
+        risks.append("High OT dependency; fatigue and sustainability risk.")
+    if (
+        rag_statuses.get("System RW Coverage %") == "Red"
+        or rag_statuses.get("System GR Coverage %") == "Red"
+    ):
+        risks.append(
+            "RW or GR system coverage below threshold; readiness and capacity risk."
+        )
 
     # Actions (placeholders + suggestions from flags)
     if rag_statuses.get("Staffing Rate") == "Red":
@@ -823,7 +857,7 @@ def _write_board_summary(
 
     # Column widths and freeze (keep KPI header row visible when scrolling)
     ws.column_dimensions["A"].width = 28
-    for c in range(2, 9):
+    for c in range(2, 11):
         ws.column_dimensions[get_column_letter(c)].width = 14
     ws.freeze_panes = f"A{kpi_header_row + 1}"
 
@@ -1510,7 +1544,7 @@ def _write_trend_sheet(
         "Shift Exception %",
         "System RW %",
         "System GR %",
-        "Status (RAG)",
+        "Status",
     ]
     for c, h in enumerate(headers, 1):
         ws.cell(1, c, h).font = BOLD
@@ -1581,26 +1615,32 @@ def _averages(metrics_list: list[WeekMetrics]) -> WeekMetrics | None:
         return None
     m0 = metrics_list[0]
     n = len(metrics_list)
+
+    def _avg_int(values) -> int:
+        # round() rather than floor division: truncation would understate
+        # any averaged count surfaced in a report.
+        return round(sum(values) / n)
+
     return WeekMetrics(
         week_start="Avg",
         required_day=m0.required_day,
         required_night=m0.required_night,
         required_total=m0.required_total,
-        filled_day=sum(m.filled_day for m in metrics_list) // n,
-        filled_night=sum(m.filled_night for m in metrics_list) // n,
-        filled_total=sum(m.filled_total for m in metrics_list) // n,
-        vacancies=sum(m.vacancies for m in metrics_list) // n,
+        filled_day=_avg_int(m.filled_day for m in metrics_list),
+        filled_night=_avg_int(m.filled_night for m in metrics_list),
+        filled_total=_avg_int(m.filled_total for m in metrics_list),
+        vacancies=_avg_int(m.vacancies for m in metrics_list),
         staffing_rate=sum(m.staffing_rate for m in metrics_list) / n,
-        ot_shifts=sum(m.ot_shifts for m in metrics_list) // n,
+        ot_shifts=_avg_int(m.ot_shifts for m in metrics_list),
         ot_dependency=sum(m.ot_dependency for m in metrics_list) / n,
-        leave_total=sum(m.leave_total for m in metrics_list) // n,
+        leave_total=_avg_int(m.leave_total for m in metrics_list),
         leave_exposure=sum(m.leave_exposure for m in metrics_list) / n,
-        overnights_below=sum(m.overnights_below for m in metrics_list) // n,
-        pilot_vacancies=sum(m.pilot_vacancies for m in metrics_list) // n,
+        overnights_below=_avg_int(m.overnights_below for m in metrics_list),
+        pilot_vacancies=_avg_int(m.pilot_vacancies for m in metrics_list),
         rw_total_unit_days=m0.rw_total_unit_days,
         gr_total_unit_days=m0.gr_total_unit_days,
-        rw_staffed_unit_days=sum(m.rw_staffed_unit_days for m in metrics_list) // n,
-        gr_staffed_unit_days=sum(m.gr_staffed_unit_days for m in metrics_list) // n,
+        rw_staffed_unit_days=_avg_int(m.rw_staffed_unit_days for m in metrics_list),
+        gr_staffed_unit_days=_avg_int(m.gr_staffed_unit_days for m in metrics_list),
         system_rw_pct=sum(m.system_rw_pct for m in metrics_list) / n,
         system_gr_pct=sum(m.system_gr_pct for m in metrics_list) / n,
         base_metrics=m0.base_metrics,

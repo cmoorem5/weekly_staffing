@@ -29,6 +29,7 @@ from staffing_tool.leave_grid import (
 )
 from staffing_tool.manager_roster import manager_last_names_upper_from_session
 from staffing_tool.metrics import (
+    BASE_DISPLAY_ORDER,
     REQUIRED_DAY,
     REQUIRED_NIGHT,
     REQUIRED_TOTAL,
@@ -52,7 +53,7 @@ from staffing_tool.schedule_import import (
 )
 
 EM = "\u2014"
-BASE_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]
+BASE_ORDER = BASE_DISPLAY_ORDER
 DAILY_CREW_TARGET = REQUIRED_DAY // 7 + REQUIRED_NIGHT // 7  # 12
 
 ROLE_LABELS = {

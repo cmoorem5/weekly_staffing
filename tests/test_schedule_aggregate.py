@@ -109,6 +109,30 @@ class AggregateWeekFromRecordsTests(unittest.TestCase):
         self.assertEqual(agg.leave_sick, 1)
         self.assertEqual(agg.leave_loa, 1)
 
+    def test_ops_view_coverage_capped_at_base_weekly_max(self):
+        """OPS View counts above a base's weekly plan (e.g. the extra Bedford
+        GR2/NG2 ambulances) must not report >100% base coverage or inflate
+        the fixed-denominator system GR %."""
+        agg = aggregate_week_from_records(
+            "2026-01-04",
+            [],
+            (
+                {"Bedford": 7, "Plymouth": 7},  # rw day
+                {"Bedford": 7, "Plymouth": 9},  # rw night: Plymouth 16 > 14 cap
+                {"Bedford": 9},  # gr day
+                {"Bedford": 7},  # gr night: Bedford 16 > 14 cap
+            ),
+        )
+        self.assertEqual(agg.base_gr_staffed["Bedford"], 14)
+        # Night is reduced first, then day.
+        self.assertEqual(agg.base_gr_staffed_day["Bedford"], 9)
+        self.assertEqual(agg.base_gr_staffed_night["Bedford"], 5)
+        self.assertEqual(agg.base_rw_staffed["Plymouth"], 14)
+        # Within-cap counts pass through untouched.
+        self.assertEqual(agg.base_rw_staffed["Bedford"], 14)
+        # Filled-from-OPS fallback uses the capped counts.
+        self.assertEqual(agg.filled_day + agg.filled_night, 14 + 14 + 14)
+
     def test_bare_rn_emt_are_not_leave_codes(self):
         """Role abbreviations in a cell are not valid absence types."""
         records = [
