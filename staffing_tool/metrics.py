@@ -299,30 +299,48 @@ class RoleFill:
 def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
     """Fill rate by role over the given weeks.
 
-    Worked = staffed + OT person-shifts from ``weekly_person_shifts``,
-    excluding opportunistic extra units (``EXTRA_UNIT_CODES``) that aren't
-    part of the required-line capacity below; capacity = per-role weekly
-    person-shift capacity × number of weeks.
+    Worked = staffed + OT seat-shifts from ``weekly_person_shifts``, counted
+    once per source grid cell — capacity below is seats (e.g. EMT 49 = 7
+    required lines × 7 days), and EMT partner rows list two people for one
+    cell, so ``weekly_person_shift_mappings`` writes two rows for a single
+    seat-day. Opportunistic extra units (``EXTRA_UNIT_CODES``) that aren't
+    part of the required-line capacity are excluded; capacity = per-role
+    weekly seat capacity × number of weeks.
     """
-    from sqlalchemy import func
-
     n = len(week_starts)
     counts = dict.fromkeys(ROLE_CAPACITY_PER_WEEK, 0)
     if n:
         rows = (
-            session.query(WeeklyPersonShift.role, func.count())
+            session.query(
+                WeeklyPersonShift.id,
+                WeeklyPersonShift.role,
+                WeeklyPersonShift.week_start,
+                WeeklyPersonShift.shift_date,
+                WeeklyPersonShift.source_tab,
+                WeeklyPersonShift.source_cell,
+            )
             .filter(
                 WeeklyPersonShift.week_start.in_(week_starts),
                 WeeklyPersonShift.event_type.in_(["staffed", "ot"]),
                 WeeklyPersonShift.included_in_aggregates == 1,
                 WeeklyPersonShift.unit_code.notin_(EXTRA_UNIT_CODES),
             )
-            .group_by(WeeklyPersonShift.role)
             .all()
         )
-        for role, count in rows:
-            if role in counts:
-                counts[role] = int(count)
+        seen: set[tuple] = set()
+        for row_id, role, week_start, shift_date, source_tab, source_cell in rows:
+            if role not in counts:
+                continue
+            # One worked shift per grid cell; rows without cell provenance
+            # (manually backfilled detail) still count individually.
+            if source_cell:
+                key = (role, week_start, shift_date, source_tab or "", source_cell)
+            else:
+                key = (role, "row", row_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            counts[role] += 1
     result = []
     for role, per_week in ROLE_CAPACITY_PER_WEEK.items():
         capacity = per_week * n
