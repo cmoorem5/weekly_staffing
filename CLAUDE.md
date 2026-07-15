@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Keep this file in sync with the code.** Before finishing any change that alters something documented here — commands, architecture, the import-pipeline gotchas, report-generator constraints, shared constants, testing conventions — update the relevant section in the same commit series. Don't touch it for changes it doesn't describe.
+
 ## What this is
 
 Board-level staffing KPI tooling for Boston MedFlight: a standalone `staffing_tool` Python package (CLI, schedule-import parser, Excel/PDF/HTML report builders) plus a Django project (`bmf_staffing/`) with two apps — `dashboard` (the KPI/weekly-staffing workflow) and `crew_hub` (AOC Daily Report, Comm Center / duty officer scheduling, payroll, time off). Both apps sit on top of `staffing_tool`. Python 3.12+, Django 6.0.
