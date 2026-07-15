@@ -237,7 +237,7 @@ def load_quarter_report_data(
         total_cap = str(TOTAL_PERSON_SHIFTS * n)
         period_volumes = [
             (
-                "RN (Flight Nurse)",
+                "RN",
                 rn_cap,
                 EM,
                 rn_cap,

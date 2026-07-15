@@ -26,7 +26,7 @@ TOTAL_PERSON_SHIFTS = 217
 
 # Person-shift capacity per role per week (matches WeeklyPersonShift.role).
 ROLE_CAPACITY_PER_WEEK = {"RN": 84, "MEDIC": 84, "EMT": 49}
-ROLE_FILL_LABELS = {"RN": "RN (Flight Nurse)", "MEDIC": "Paramedic", "EMT": "EMT"}
+ROLE_FILL_LABELS = {"RN": "RN", "MEDIC": "Paramedic", "EMT": "EMT"}
 
 # Canonical base display order for report tables (weekly/monthly/quarterly).
 BASE_DISPLAY_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymouth"]

@@ -196,7 +196,8 @@ class HtmlReportExportTests(unittest.TestCase):
         html = Path(path).read_text(encoding="utf-8")
         self.assertIn("DAY / NIGHT", html)
         self.assertIn("Day (56 required)", html)
-        self.assertIn("RN (Flight Nurse)", html)
+        self.assertIn(">RN</td>", html)
+        self.assertNotIn("Flight Nurse", html)
 
     def test_quarterly_html_export(self):
         path = export_quarterly_staffing_html(self.db_path, 2026, 2, self.out_dir)
