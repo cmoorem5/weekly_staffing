@@ -121,6 +121,67 @@ class HtmlReportExportTests(unittest.TestCase):
             fill = {rf.role: rf for rf in compute_role_fill(session, ["2025-12-07"])}
         self.assertEqual(fill["EMT"].worked, 1)
 
+    def test_compute_role_fill_counts_emt_pair_cell_once(self):
+        # EMT partner rows list two people for one grid cell;
+        # weekly_person_shift_mappings writes one row per person. The seat
+        # was worked once, so role fill must count the cell, not the rows.
+        with session_scope(self.db_path) as session:
+            for person in ("Chatigny, Aaron", "Belliveau, Kelly"):
+                session.add(
+                    WeeklyPersonShift(
+                        week_start="2025-12-07",
+                        person_display=person,
+                        shift_date="2025-12-08",
+                        role="EMT",
+                        event_type="staffed",
+                        unit_code="GR",
+                        source_tab="EMT",
+                        source_cell="C3",
+                        included_in_aggregates=1,
+                    )
+                )
+            session.commit()
+            fill = {rf.role: rf for rf in compute_role_fill(session, ["2025-12-07"])}
+        self.assertEqual(fill["EMT"].worked, 1)
+
+    def test_compute_role_fill_pair_cell_once_end_to_end(self):
+        from datetime import date
+
+        from openpyxl import Workbook
+        from staffing_tool.schedule_import import (
+            _parse_grid,
+            weekly_person_shift_mappings,
+        )
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "EMT"
+        ws["C1"] = date(2025, 12, 7)
+        ws["D1"] = date(2025, 12, 8)
+        ws["A3"] = "1-Chatigny, Aaron"
+        ws["B3"] = "Belliveau, Kelly"
+        ws["C3"] = "GR"
+        ws["D3"] = "NG"
+        records, issues = _parse_grid(
+            ws=ws,
+            header_row_idx=1,
+            first_row_idx=3,
+            last_row_idx=3,
+            role="EMT",
+            sheet_label="EMT",
+            week_start_date=date(2025, 12, 7),
+            week_end_date=date(2025, 12, 13),
+        )
+        self.assertEqual(issues, [])
+        rows = weekly_person_shift_mappings("2025-12-07", records)
+        # Two people per staffed cell → four person rows for two seat-days.
+        self.assertEqual(len(rows), 4)
+        with session_scope(self.db_path) as session:
+            session.bulk_insert_mappings(WeeklyPersonShift, rows)
+            session.commit()
+            fill = {rf.role: rf for rf in compute_role_fill(session, ["2025-12-07"])}
+        self.assertEqual(fill["EMT"].worked, 2)
+
     def test_monthly_html_has_day_night_and_role_fill(self):
         path = export_monthly_report_html(
             self.db_path, "2025-12-01", "2025-12-31", self.out_dir
