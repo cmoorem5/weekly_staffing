@@ -33,7 +33,6 @@ from staffing_tool.metrics import (
     REQUIRED_DAY,
     REQUIRED_NIGHT,
     REQUIRED_TOTAL,
-    TOTAL_PERSON_SHIFTS,
     compute_role_fill,
     compute_week_metrics,
 )
@@ -397,8 +396,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
                 ("Shift Exception %", _pct(metrics.leave_exposure)),
                 ("System RW %", _pct(metrics.system_rw_pct)),
                 ("System GR %", _pct(metrics.system_gr_pct)),
-                ("Person-Shifts", str(TOTAL_PERSON_SHIFTS)),
-                ("Training Shifts", str(int(ws.training_shifts or 0))),
+                ("Training Events", str(int(ws.training_shifts or 0))),
             ],
             daily_data=daily_data,
             daily_totals=(
