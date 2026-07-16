@@ -22,7 +22,7 @@
     <div class="card bmf-card shadow-sm">
       <div class="card-header bmf-card-header">Step 1 &middot; Upload workbook</div>
       <div class="card-body">
-        <form method="post" enctype="multipart/form-data">
+        <form method="post" enctype="multipart/form-data" data-busy-label="Uploading &amp; parsing…">
           {% csrf_token %}
           <div class="mb-3">
             <label class="form-label" for="id_schedule_file">Schedule Excel file</label>

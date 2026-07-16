@@ -15,16 +15,21 @@
 </div>
 
 {% if weeks %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <input type="search" id="weekFilter" class="form-control form-control-sm" style="max-width: 16rem;"
+         placeholder="Filter weeks… e.g. 2026-05" aria-label="Filter weeks">
+  <span id="weekFilterCount" class="small text-muted"></span>
+</div>
 <div class="card bmf-card shadow-sm">
   <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0 bg-white">
+    <table class="table table-sm align-middle mb-0 bg-white" id="weekTable">
       <thead>
         <tr>
-          <th scope="col">Week (Sun)</th>
-          <th scope="col" class="text-end">Staffing rate</th>
-          <th scope="col" class="text-end">OT dep</th>
-          <th scope="col" class="text-end">Shift exc</th>
-          <th scope="col">Status</th>
+          <th scope="col" class="bmf-sortable" data-sort="text" aria-sort="descending" role="button">Week (Sun)</th>
+          <th scope="col" class="text-end bmf-sortable" data-sort="num" role="button">Staffing rate</th>
+          <th scope="col" class="text-end bmf-sortable" data-sort="num" role="button">OT dep</th>
+          <th scope="col" class="text-end bmf-sortable" data-sort="num" role="button">Shift exc</th>
+          <th scope="col" class="bmf-sortable" data-sort="text" role="button">Status</th>
           <th scope="col" class="text-end">Actions</th>
         </tr>
       </thead>
@@ -61,5 +66,59 @@
     <a class="btn btn-outline-secondary" href="{% url 'week_add' %}">Add week manually</a>
   </div>
 </div>
+{% endif %}
+
+{% if weeks %}
+<style>
+  #weekTable th.bmf-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  #weekTable th.bmf-sortable::after { content: "\2195"; opacity: 0.35; margin-left: 0.3em; font-size: 0.85em; }
+  #weekTable th.bmf-sortable[aria-sort="ascending"]::after { content: "\2191"; opacity: 1; }
+  #weekTable th.bmf-sortable[aria-sort="descending"]::after { content: "\2193"; opacity: 1; }
+</style>
+<script>
+(function () {
+  var table = document.getElementById('weekTable');
+  var tbody = table.tBodies[0];
+  var filter = document.getElementById('weekFilter');
+  var count = document.getElementById('weekFilterCount');
+  var total = tbody.rows.length;
+
+  filter.addEventListener('input', function () {
+    var q = filter.value.trim().toLowerCase();
+    var shown = 0;
+    Array.prototype.forEach.call(tbody.rows, function (row) {
+      var hit = !q || row.cells[0].textContent.toLowerCase().indexOf(q) !== -1
+        || row.cells[4].textContent.toLowerCase().indexOf(q) !== -1;
+      row.hidden = !hit;
+      if (hit) shown++;
+    });
+    count.textContent = q ? shown + ' of ' + total + ' weeks' : '';
+  });
+
+  var headers = table.tHead.rows[0].cells;
+  Array.prototype.forEach.call(headers, function (th, idx) {
+    if (!th.classList.contains('bmf-sortable')) return;
+    th.addEventListener('click', function () {
+      var dir = th.getAttribute('aria-sort') === 'ascending' ? 'descending' : 'ascending';
+      Array.prototype.forEach.call(headers, function (h) { h.removeAttribute('aria-sort'); });
+      th.setAttribute('aria-sort', dir);
+      var numeric = th.dataset.sort === 'num';
+      var rows = Array.prototype.slice.call(tbody.rows);
+      rows.sort(function (a, b) {
+        var av = a.cells[idx].textContent.trim();
+        var bv = b.cells[idx].textContent.trim();
+        var cmp;
+        if (numeric) {
+          cmp = (parseFloat(av) || 0) - (parseFloat(bv) || 0);
+        } else {
+          cmp = av.localeCompare(bv);
+        }
+        return dir === 'ascending' ? cmp : -cmp;
+      });
+      rows.forEach(function (r) { tbody.appendChild(r); });
+    });
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}

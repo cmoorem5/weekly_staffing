@@ -565,24 +565,39 @@
     </header>
 
     <main class="container my-4">
+      {# Flash messages render as stacked toasts (top-right) so confirmations
+         are visible without scrolling on long pages. Success/info auto-hide;
+         warnings/errors stay until dismissed. #}
       {% if messages %}
-      <div class="mb-3 no-print">
+      <div class="toast-container position-fixed top-0 end-0 p-3 no-print" style="z-index: 1080;" aria-live="polite" aria-atomic="false">
         {% for message in messages %}
           {% if 'success' in message.tags %}
-            <div class="alert alert-success d-flex align-items-start gap-2 mb-2" role="alert">
-              <span aria-hidden="true">&#10003;</span><div>{{ message }}</div>
+            <div class="toast text-bg-success border-0 bmf-toast" role="status" data-bs-delay="6000">
+              <div class="d-flex">
+                <div class="toast-body"><span aria-hidden="true" class="me-1">&#10003;</span>{{ message }}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+              </div>
             </div>
           {% elif 'warning' in message.tags %}
-            <div class="alert alert-warning d-flex align-items-start gap-2 mb-2" role="alert">
-              <span aria-hidden="true">&#9888;</span><div>{{ message }}</div>
+            <div class="toast text-bg-warning border-0 bmf-toast" role="alert" data-bs-autohide="false">
+              <div class="d-flex">
+                <div class="toast-body"><span aria-hidden="true" class="me-1">&#9888;</span>{{ message }}</div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+              </div>
             </div>
           {% elif 'error' in message.tags %}
-            <div class="alert alert-danger d-flex align-items-start gap-2 mb-2" role="alert">
-              <span aria-hidden="true">&#9888;</span><div>{{ message }}</div>
+            <div class="toast text-bg-danger border-0 bmf-toast" role="alert" data-bs-autohide="false">
+              <div class="d-flex">
+                <div class="toast-body"><span aria-hidden="true" class="me-1">&#9888;</span>{{ message }}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+              </div>
             </div>
           {% else %}
-            <div class="alert alert-secondary d-flex align-items-start gap-2 mb-2" role="alert">
-              <span aria-hidden="true">&#8505;</span><div>{{ message }}</div>
+            <div class="toast text-bg-secondary border-0 bmf-toast" role="status" data-bs-delay="6000">
+              <div class="d-flex">
+                <div class="toast-body"><span aria-hidden="true" class="me-1">&#8505;</span>{{ message }}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+              </div>
             </div>
           {% endif %}
         {% endfor %}
@@ -621,22 +636,49 @@
 
   <script src="{% static 'dashboard/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
   <script>
-    // Loading affordance: dim a form and show "Working…" on the clicked submit
-    // button so long imports/report builds feel responsive. Skips file inputs
-    // with no chosen file so native required-validation still fires.
+    // Loading affordance: dim a form and show a spinner + label on the clicked
+    // submit button so long imports/report builds feel responsive. Skips file
+    // inputs with no chosen file so native required-validation still fires.
+    // Opt out per form with data-no-loading; customize the label with
+    // data-busy-label (e.g. "Generating report…").
+    function bmfResetForm(form) {
+      delete form.dataset.submitting;
+      form.classList.remove('bmf-submitting');
+      form.querySelectorAll('[data-busy]').forEach(function (b) {
+        delete b.dataset.busy;
+        if (b.dataset.originalHtml !== undefined) {
+          b.innerHTML = b.dataset.originalHtml;
+          delete b.dataset.originalHtml;
+        }
+      });
+    }
     document.addEventListener('submit', function (e) {
       var form = e.target;
       if (!(form instanceof HTMLFormElement) || form.dataset.noLoading) return;
       if (typeof form.checkValidity === 'function' && !form.checkValidity()) return;
+      if (form.dataset.submitting) { e.preventDefault(); return; } // no double submits
+      form.dataset.submitting = '1';
       var btn = e.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
       if (btn && !btn.dataset.busy) {
         btn.dataset.busy = '1';
         if (btn.tagName === 'BUTTON') {
           btn.dataset.originalHtml = btn.innerHTML;
-          btn.innerHTML = 'Working\u2026';
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>'
+            + (form.dataset.busyLabel || 'Working\u2026');
         }
         form.classList.add('bmf-submitting');
       }
+      // File-download responses never navigate away, so restore the form
+      // once the export has had plenty of time to come back.
+      setTimeout(function () { bmfResetForm(form); }, 30000);
+    });
+    // Back/forward-cache restores would otherwise show a stuck spinner.
+    window.addEventListener('pageshow', function (e) {
+      if (e.persisted) document.querySelectorAll('form').forEach(bmfResetForm);
+    });
+    // Show flash-message toasts (rendered server-side in the toast container).
+    document.querySelectorAll('.bmf-toast').forEach(function (el) {
+      bootstrap.Toast.getOrCreateInstance(el).show();
     });
   </script>
 </body>
