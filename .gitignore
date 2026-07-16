@@ -26,5 +26,8 @@ archive/
 .env
 .env.local
 
+# Local AI-assistant data (Claude Code settings, session/checkpoint files)
+.claude/
+
 # Optional: ignore schedule inputs if large (uncomment if needed)
 # *.xlsx
