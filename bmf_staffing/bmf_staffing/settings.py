@@ -60,6 +60,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Serves static files from any WSGI server (waitress in the desktop
+    # deployment) — runserver's static handling only exists in dev.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -122,6 +125,18 @@ TIME_ZONE = "America/New_York"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "/static/"
+# collectstatic target (gitignored); Update_Crew_Hub.bat runs collectstatic.
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    # Non-manifest compressed storage: keeps serving even if a stale
+    # reference survives a partial collectstatic on the laptop deployment.
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
+if DEBUG:
+    # Serve straight from app static/ dirs in dev — no collectstatic needed.
+    WHITENOISE_USE_FINDERS = True
+    WHITENOISE_AUTOREFRESH = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Hardening that only applies once DEBUG is off (i.e. a real deployment).
@@ -202,3 +217,56 @@ CREW_HUB_WEATHER_STATIONS = [
 # station list explicitly when they exercise the weather path).
 if "test" in sys.argv:
     CREW_HUB_WEATHER_STATIONS = []
+
+# --- Logging ------------------------------------------------------------
+# Errors go to a rotating file in output/ (crew_hub_app.log — distinct from
+# the crew_hub_server*.log console redirects written by the launcher) and,
+# when DJANGO_ADMINS is set and DEBUG is off, to email via mail_admins.
+ADMINS = [
+    ("Crew Hub admin", addr.strip())
+    for addr in os.environ.get("DJANGO_ADMINS", "").split(",")
+    if addr.strip()
+]
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+os.makedirs(STAFFING_OUTPUT_DIR, exist_ok=True)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
+    },
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": os.path.join(STAFFING_OUTPUT_DIR, "crew_hub_app.log"),
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 5,
+            "delay": True,
+            "formatter": "verbose",
+        },
+        "mail_admins": {
+            "class": "django.utils.log.AdminEmailHandler",
+            "level": "ERROR",
+            "filters": ["require_debug_false"],
+        },
+    },
+    "root": {"handlers": ["console", "file"], "level": "INFO"},
+    "loggers": {
+        "django.request": {
+            "handlers": ["console", "file", "mail_admins"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}

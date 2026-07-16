@@ -11,6 +11,7 @@ env/
 **/db.sqlite3
 
 # Outputs and generated data
+staticfiles/
 Staffing_Summary/
 BMF_Executive_Dashboard_*.xlsx
 staffing.db

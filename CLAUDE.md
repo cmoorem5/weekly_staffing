@@ -44,7 +44,7 @@ python scripts/backfill_schedules.py --dry-run
 cd bmf_staffing && python manage.py runserver
 ```
 
-No build step (no frontend bundler; templates are server-rendered Django/Bootstrap).
+No build step (no frontend bundler; templates are server-rendered Django/Bootstrap). The Windows deployment serves via waitress + whitenoise (`scripts/launch_crew_hub.ps1`), so `Update_Crew_Hub.bat` runs `collectstatic`; `manage.py runserver` remains the dev workflow and needs no collectstatic (`WHITENOISE_USE_FINDERS` under `DEBUG`).
 
 ## Architecture
 

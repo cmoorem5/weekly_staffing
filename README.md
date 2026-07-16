@@ -285,16 +285,18 @@ Report workflow and adds real scheduling for the pieces we own:
 
 **Windows laptop (recommended):** double-click **`Update_Crew_Hub.bat`** —
 it pulls the latest code, creates the virtual environment, installs
-dependencies, creates `.env` if missing, applies migrations, and walks you
-through creating the first admin login. Then run
+dependencies, creates `.env` if missing, applies migrations, collects
+static files, and walks you through creating the first admin login. Then run
 **`Create Desktop Shortcut.bat`** once: the **Crew Hub** desktop icon starts
 the server *silently* (no command-prompt windows, like a native app) and
 opens `/hub/` in an Edge app-mode window — no address bar or tabs, just the
-dashboard. Closing that window stops the server again automatically, so it
-doesn't sit running in the background. Server output goes to
-`output\crew_hub_server.log`; **`Stop_Crew_Hub.bat`** is a manual fallback
-if you ever need to force it down. Re-run `Update_Crew_Hub.bat` any time to
-update.
+dashboard. The server is **waitress** (a production WSGI server; static
+files come from whitenoise), not Django's dev server. Closing that window
+stops the server again automatically, so it doesn't sit running in the
+background. Console output goes to `output\crew_hub_server*.log` and the
+app writes a rotating `output\crew_hub_app.log`;
+**`Stop_Crew_Hub.bat`** is a manual fallback if you ever need to force it
+down. Re-run `Update_Crew_Hub.bat` any time to update.
 
 **Setup (manual):** copy `.env.example` to `.env` (gitignored) and adjust. With no
 `.env`, dev defaults apply and email uses the **console backend** (prints to

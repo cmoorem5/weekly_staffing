@@ -1,14 +1,17 @@
-# Silent Crew Hub launcher: starts the Django server hidden (no console
-# window) and opens the dashboard in an Edge "app mode" window (no address
-# bar/tabs, its own taskbar icon — feels like a native app, not a browser
-# tab). Server output goes to output\crew_hub_*.log.
+# Silent Crew Hub launcher: starts the server hidden (no console window)
+# and opens the dashboard in an Edge "app mode" window (no address bar/tabs,
+# its own taskbar icon — feels like a native app, not a browser tab).
+# The server is waitress (a production WSGI server), not manage.py
+# runserver — the Django dev server isn't meant to face real users.
+# Console output goes to output\crew_hub_server*.log; the Django app also
+# writes a rotating output\crew_hub_app.log (see LOGGING in settings.py).
 # Invoked by scripts\launch_crew_hub.vbs via the desktop shortcut.
 #
-# Auto-stop: if THIS launch is the one that started the Django server, the
-# server is stopped again as soon as the app window is closed, so it isn't
-# left running in the background eating RAM. If the server was already
-# running before this launch (e.g. a previous window is still open), it's
-# left alone — use Stop_Crew_Hub.bat to force it down.
+# Auto-stop: if THIS launch is the one that started the server, the server
+# is stopped again as soon as the app window is closed, so it isn't left
+# running in the background eating RAM. If the server was already running
+# before this launch (e.g. a previous window is still open), it's left
+# alone — use Stop_Crew_Hub.bat to force it down.
 
 $ErrorActionPreference = "SilentlyContinue"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -47,11 +50,11 @@ if (-not (Test-Port8000)) {
     $logDir = Join-Path $RepoRoot "output"
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-    # --noreload: one clean process (no autoreload child), so we can stop it
-    # reliably by PID. Logs replace the console you would otherwise see.
+    # waitress runs as one clean process, so we can stop it reliably by PID.
+    # cwd must be bmf_staffing\ so "bmf_staffing.wsgi" is importable.
     $djangoProcess = Start-Process -FilePath $python `
-        -ArgumentList "bmf_staffing\manage.py", "runserver", "--noreload" `
-        -WorkingDirectory $RepoRoot `
+        -ArgumentList "-m", "waitress", "--listen=127.0.0.1:8000", "--threads=8", "bmf_staffing.wsgi:application" `
+        -WorkingDirectory (Join-Path $RepoRoot "bmf_staffing") `
         -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $logDir "crew_hub_server.log") `
         -RedirectStandardError (Join-Path $logDir "crew_hub_server_error.log") `
