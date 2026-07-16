@@ -2,7 +2,8 @@
 Admin-managed training/education codes for schedule import.
 
 Rows are stored in staffing.db (training_code table) and edited via Settings
-> Training codes. Additive on top of schedule_import.SKIP_TRAINING_VALUES --
+> Training codes. Additive on top of schedule_import.SKIP_TRAINING_VALUES
+(defined in schedule_cells.py) --
 this is for a new code (class, sim type, etc.) staff start using that the
 built-in list doesn't know about yet, not a replacement for it.
 """

@@ -65,7 +65,7 @@ class ManagerRosterLastName(Base):
 class TrainingCode(Base):
     """Admin-added training/education codes (Settings > Training codes).
 
-    Additive on top of the built-in SKIP_TRAINING_VALUES in schedule_import.py --
+    Additive on top of the built-in SKIP_TRAINING_VALUES in schedule_cells.py --
     lets new class names (e.g. a code we haven't seen before) be recognized
     as training without a code change.
     """
