@@ -7,12 +7,36 @@
   <title>{% block title %}BMF Staffing{% endblock %}</title>
   <!-- Bookmark bar / favicon: BMF Coastal logo -->
   <link rel="icon" type="image/png" href="{% static 'dashboard/images/BMF_Coastal_Logos.png' %}">
-  <!-- BMF typography: Barlow (fallback Arial, Helvetica) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link href="{% static 'dashboard/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
   <style>
+    /* BMF typography: Barlow + IBM Plex Mono, self-hosted (no external CDN —
+       the app must render correctly on a laptop with no internet). Weight
+       ranges map missing weights to the nearest shipped face. */
+    @font-face {
+      font-family: "Barlow"; font-style: normal; font-weight: 400 500;
+      font-display: swap;
+      src: url("{% static 'dashboard/fonts/Barlow-Regular.woff2' %}") format("woff2");
+    }
+    @font-face {
+      font-family: "Barlow"; font-style: normal; font-weight: 600;
+      font-display: swap;
+      src: url("{% static 'dashboard/fonts/Barlow-SemiBold.woff2' %}") format("woff2");
+    }
+    @font-face {
+      font-family: "Barlow"; font-style: normal; font-weight: 700;
+      font-display: swap;
+      src: url("{% static 'dashboard/fonts/Barlow-Bold.woff2' %}") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400 500;
+      font-display: swap;
+      src: url("{% static 'dashboard/fonts/IBMPlexMono-Regular.woff2' %}") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600 700;
+      font-display: swap;
+      src: url("{% static 'dashboard/fonts/IBMPlexMono-Bold.woff2' %}") format("woff2");
+    }
     /* BMF brand colors */
     :root {
       --bmf-blue: #2a4492;
@@ -151,6 +175,9 @@
       }
       body.bmf-sidebar-open .bmf-sidebar { left: 0; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.35); }
       .bmf-topbar { display: flex; }
+      /* Wide KPI tables scroll inside their card instead of blowing out
+         the page width on phones/tablets. */
+      .card-body { overflow-x: auto; }
     }
     .btn-primary {
       background-color: var(--bmf-blue);
