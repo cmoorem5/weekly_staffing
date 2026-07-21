@@ -10,6 +10,7 @@ default in local dev, so no mail leaves the machine).
 from __future__ import annotations
 
 import logging
+from email.mime.image import MIMEImage
 
 from django.conf import settings
 from django.core.mail import EmailMessage
@@ -19,6 +20,9 @@ from . import shifts
 from .models import DailyReport, ReportAuditLog
 
 logger = logging.getLogger(__name__)
+
+LOGO_CONTENT_ID = "bmf_logo"
+LOGO_PATH = settings.WEEKLY_STAFFING_ROOT / "assets" / "bmf_coastal_logo.png"
 
 
 def build_report_context(report: DailyReport) -> dict:
@@ -136,6 +140,13 @@ def send_report_email(report: DailyReport, user=None) -> tuple[bool, str]:
         to=recipients,
     )
     message.content_subtype = "html"
+    if LOGO_PATH.exists():
+        logo = MIMEImage(LOGO_PATH.read_bytes())
+        logo.add_header("Content-ID", f"<{LOGO_CONTENT_ID}>")
+        logo.add_header("Content-Disposition", "inline", filename=LOGO_PATH.name)
+        message.attach(logo)
+    else:
+        logger.warning("BMF logo not found at %s; sending report without it", LOGO_PATH)
     try:
         message.send(fail_silently=False)
     except Exception as exc:  # noqa: BLE001 - surface any backend failure

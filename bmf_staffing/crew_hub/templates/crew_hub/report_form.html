@@ -82,10 +82,6 @@
         </div>
         {% endfor %}
       </div>
-      <div style="margin-top:10px;">
-        <label class="ch-label">Weather</label>
-        <input class="ch-input" type="text" name="weather" value="{{ report.weather }}" placeholder="e.g. Mostly sunny. High 81°F. No weather impacts anticipated.">
-      </div>
     </div>
   </div>
 
@@ -263,7 +259,7 @@
         {% endfor %}
       </div>
 
-      <div class="rf-sec-title">System misses</div>
+      <div class="rf-sec-title">System activity</div>
       <div class="ch-note" style="margin-bottom:6px;">Category labels are editable — overwrite any to match the actual reason.</div>
       <table class="rf-table" id="miss_table">
         <thead><tr><th>Category</th><th style="width:70px; text-align:right;">Count</th></tr></thead>
@@ -280,7 +276,7 @@
         {% if not report.is_submitted %}
         <button type="button" class="ch-btn ch-btn-outline" style="font-size:12px; padding:4px 12px;" onclick="addMissRow()">+ Add row</button>
         {% else %}<span></span>{% endif %}
-        <div style="font-size:12px; color:#052C47; font-weight:bold;">Total misses: <span id="miss_total">{{ miss_total }}</span></div>
+        <div style="font-size:12px; color:#052C47; font-weight:bold;">Total activity: <span id="miss_total">{{ miss_total }}</span></div>
       </div>
     </div>
   </div>
