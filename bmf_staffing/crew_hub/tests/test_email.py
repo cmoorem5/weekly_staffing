@@ -2,9 +2,10 @@
 
 import datetime as dt
 
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 
-from crew_hub.emailer import render_report_email
+from crew_hub.emailer import LOGO_CONTENT_ID, render_report_email, send_report_email
 from crew_hub.models import MissCategoryCount, PendingTransport
 from crew_hub.services import get_or_create_report
 
@@ -25,7 +26,7 @@ class EmailRenderTests(TestCase):
             "Sick Calls",
             "Outreach",
             "Completed by Base",
-            "System Misses",
+            "System Activity",
             "Complex / Complicated Logistical Calls",
         ):
             self.assertIn(section, html, section)
@@ -66,7 +67,7 @@ class EmailRenderTests(TestCase):
         self.assertIn("RN Test-Alpha", html)
         self.assertIn("Pending: 2", html)
         self.assertIn("Completed: 5", html)
-        self.assertIn("System Misses: 4", html)
+        self.assertIn("System Activity: 4", html)
         self.assertIn("Test Hospital", html)
 
     def test_vehicle_status_coloring(self):
@@ -88,3 +89,33 @@ class EmailRenderTests(TestCase):
         html = render_report_email(self.report)
         self.assertIn('style="', html)
         self.assertNotIn("<link", html)
+
+    def test_header_references_embedded_logo(self):
+        html = render_report_email(self.report)
+        self.assertIn(f"cid:{LOGO_CONTENT_ID}", html)
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    CREW_HUB_REPORT_RECIPIENTS=["ops-test@example.org"],
+)
+class EmailLogoAttachmentTests(TestCase):
+    def setUp(self):
+        self.report, _ = get_or_create_report(DATE)
+
+    def test_logo_is_attached_inline(self):
+        ok, error = send_report_email(self.report)
+        self.assertTrue(ok, error)
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        # EmailMessage.attach() with a MIMEImage stores the raw MIMEBase part
+        # directly in .attachments rather than the (filename, content, mimetype)
+        # tuple form used for plain attachments.
+        self.assertTrue(
+            any(
+                a.get("Content-ID") == f"<{LOGO_CONTENT_ID}>"
+                for a in sent.attachments
+                if hasattr(a, "get")
+            )
+        )
+

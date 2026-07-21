@@ -7,7 +7,7 @@
   <!-- Header -->
   <tr><td style="background-color:#052C47;padding:10px 14px;border-radius:6px 6px 0 0;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td width="48" style="vertical-align:middle;font-size:22px;font-weight:bold;color:#ffffff;line-height:1;">BMF</td>
+      <td width="40" style="vertical-align:middle;"><img src="cid:bmf_logo" width="36" height="36" alt="BMF" style="display:block;width:36px;height:36px;"></td>
       <td style="color:#ffffff;font-size:15px;font-weight:bold;vertical-align:middle;padding-left:10px;">Boston MedFlight<br><span style="font-size:11px;font-weight:normal;color:#A8BCE8;">Daily AOC Report</span></td>
       <td style="color:#A8BCE8;font-size:12px;text-align:right;vertical-align:middle;">{{ report.report_date|date:"l, F j, Y" }}</td>
     </tr></table>
@@ -135,7 +135,7 @@
 
   <!-- Transports -->
   <tr><td style="background-color:#052C47;padding:7px 14px;">
-    <span style="font-size:11px;font-weight:bold;color:#ffffff;text-transform:uppercase;letter-spacing:0.6px;">Transports &mdash; Pending: {{ summary.pending_count }} &nbsp;|&nbsp; Completed: {{ completed_total }} &nbsp;|&nbsp; System Misses: {{ miss_total }}</span>
+    <span style="font-size:11px;font-weight:bold;color:#ffffff;text-transform:uppercase;letter-spacing:0.6px;">Transports &mdash; Pending: {{ summary.pending_count }} &nbsp;|&nbsp; Completed: {{ completed_total }} &nbsp;|&nbsp; System Activity: {{ miss_total }}</span>
   </td></tr>
 
   <!-- Pending -->
@@ -195,9 +195,9 @@
     </table>
   </td></tr>
 
-  <!-- System Misses -->
+  <!-- System Activity -->
   <tr><td style="border:1px solid #CBC7D1;border-top:none;padding:8px 14px;">
-    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">System Misses</span>
+    <span style="font-size:11px;font-weight:bold;color:#5a6a7a;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">System Activity</span>
     <table width="60%" cellpadding="0" cellspacing="0">
       {% for row in miss_counts %}
       <tr style="background:{% cycle '#ffffff' '#E6E6E6' %};">
