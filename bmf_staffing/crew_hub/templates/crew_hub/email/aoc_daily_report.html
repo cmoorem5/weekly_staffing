@@ -17,13 +17,10 @@
   <tr><td style="background-color:#2A4492;padding:7px 14px;">
     <table cellpadding="0" cellspacing="0"><tr>
       {% for row in duty_roles %}
-      <td style="color:#fff;font-size:12px;padding-right:16px;"><span style="color:#A8BCE8;">{{ row.label }}</span>&nbsp;{{ row.entry.name|default:"N/A" }}</td>
+      <td style="color:#fff;font-size:12px;padding:0 14px;{% if forloop.first %}padding-left:0;{% endif %}{% if not forloop.last %}border-right:1px solid #4C63A8;{% endif %}"><span style="color:#A8BCE8;">{{ row.label }}</span>&nbsp;{{ row.entry.name|default:"N/A" }}</td>
       {% endfor %}
     </tr></table>
   </td></tr>
-
-  <!-- Weather -->
-  <tr><td style="background-color:#F0EFF4;padding:6px 14px;border-bottom:1px solid #CBC7D1;font-size:12px;color:#4a5a6a;"><b>Weather:</b> {{ report.weather|default:"N/A" }}</td></tr>
 
   <!-- Field Staffing -->
   <tr><td style="background-color:#052C47;padding:7px 14px;">
