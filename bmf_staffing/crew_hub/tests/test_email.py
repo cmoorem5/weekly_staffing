@@ -118,4 +118,3 @@ class EmailLogoAttachmentTests(TestCase):
                 if hasattr(a, "get")
             )
         )
-
