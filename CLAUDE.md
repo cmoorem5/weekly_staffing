@@ -87,6 +87,16 @@ From `docs/report-generator-spec.md`, enforced by a Cursor rule (`.cursor/rules/
 
 Shared display/staffing constants live in `staffing_tool/metrics.py` — `BASE_DISPLAY_ORDER` (base order for report tables), `ROLE_CAPACITY_PER_WEEK`, `REQUIRED_DAY/NIGHT/TOTAL`, `TOTAL_PERSON_SHIFTS`, `SYSTEM_GR_MAX_SHIFTS_PER_WEEK`. Import them; don't redeclare literals in report modules (the Excel/PDF/HTML builders all already import from there). The "no Excel conditional formatting" rule applies to heat shading too — `monthly_report._heat_fill_and_font` computes gradient fills per cell in code.
 
+The BMF logo is resolved in one place — `staffing_tool/paths.resolve_logo_path()` (`assets/bmf_coastal_logo.png`, overridable with the `WEEKLY_STAFFING_LOGO` env var). The Excel and HTML builders both go through it; don't re-derive the path.
+
+### HTML/email report constraints
+
+The weekly, monthly, and quarterly HTML exports exist to be **copied and pasted into Outlook**, which re-renders them through Word's HTML engine. That engine is far more limited than a browser, so:
+
+- **No `<div>` backgrounds for anything visual.** Word drops `background`/`background-color` on a `<div>` and collapses empty ones, which is how the Share-column bars silently vanished on paste. Draw bars, fills, and swatches with table cells carrying the legacy `bgcolor` attribute plus an inline `background-color`, a `height` attribute, and a `&nbsp;` so the cell can't collapse — see `report_html.share_bar`.
+- **Images must be inline `data:` URIs.** A `file://`, `http://`, or CID src arrives broken for the recipient. `report_html.logo_data_uri()` base64-encodes the logo the same way `fig_to_png_base64` handles charts.
+- **Header/banner markup lives in `report_html.title_banner`**, used by `report_shell` (monthly, quarterly) and by `weekly_pdf_report.build_html`. Don't hand-roll a second navy header — that duplication is what let the weekly report drift from the other two.
+
 ### Data safety
 
 Before any destructive write (applying a schedule import, which replaces that week's data, or deleting a week), the dashboard snapshots `staffing.db` to `archive/staffing_autobackup_<timestamp>.db` (`backup_staffing_db_before_write`, keeps the most recent `STAFFING_BACKUP_KEEP`, default 30; manual backups are never pruned).

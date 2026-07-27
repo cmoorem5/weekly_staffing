@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from staffing_tool import report_html as rh
 from staffing_tool.db import get_engine, init_db, session_scope
 from staffing_tool.metrics import compute_role_fill
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
@@ -197,6 +198,46 @@ class HtmlReportExportTests(unittest.TestCase):
         self.assertIn("DAY / NIGHT", html)
         self.assertIn("Day (56 required)", html)
         self.assertIn("RN (Flight Nurse)", html)
+
+    def test_weekly_html_header_embeds_logo(self):
+        path = export_weekly_staffing_html(self.db_path, "2025-12-07", self.out_dir)
+        html = Path(path).read_text(encoding="utf-8")
+        self.assertIn('alt="Boston MedFlight"', html)
+        # Inline data URI, so the logo survives being pasted into an email.
+        self.assertIn('<img src="data:image/png;base64,', html)
+
+    def test_share_bars_use_email_safe_table_cells(self):
+        # Outlook drops CSS backgrounds on <div>, so the Share column bars
+        # have to be table cells carrying the bgcolor attribute.
+        path = export_weekly_staffing_html(self.db_path, "2025-12-07", self.out_dir)
+        html = Path(path).read_text(encoding="utf-8")
+        self.assertIn(f'<td bgcolor="{rh.RED}"', html)  # AT/SICK are the top 2
+        self.assertIn(f'<td bgcolor="{rh.LGRAY}"', html)  # unfilled track
+        self.assertNotIn('<div style="background:#E6E6E6;height:14px', html)
+
+    def test_share_bar_zero_and_full(self):
+        empty = rh.share_bar(0, rh.RED)
+        self.assertNotIn(rh.RED, empty)
+        self.assertEqual(empty.count("<td"), 1)  # track only
+        full = rh.share_bar(100, rh.RED)
+        self.assertEqual(full.count("<td"), 1)  # fill only, no 0%-wide cell
+        self.assertIn(f'bgcolor="{rh.RED}"', full)
+        partial = rh.share_bar(40, rh.BLUE)
+        self.assertIn('width="40%"', partial)
+        self.assertIn('width="60%"', partial)
+
+    def test_monthly_and_quarterly_headers_share_the_banner(self):
+        monthly = Path(
+            export_monthly_report_html(
+                self.db_path, "2025-12-01", "2025-12-31", self.out_dir
+            )
+        ).read_text(encoding="utf-8")
+        quarterly = Path(
+            export_quarterly_staffing_html(self.db_path, 2026, 2, self.out_dir)
+        ).read_text(encoding="utf-8")
+        for html in (monthly, quarterly):
+            self.assertIn('alt="Boston MedFlight"', html)
+            self.assertIn("CLINICAL OPERATIONS", html)
 
     def test_quarterly_html_export(self):
         path = export_quarterly_staffing_html(self.db_path, 2026, 2, self.out_dir)

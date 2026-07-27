@@ -20,6 +20,7 @@ from .metrics import (
 from .models import (
     KpiThreshold,
 )
+from .paths import resolve_logo_path
 from .rag import RAG
 
 # ----- Boston MedFlight brand (Clinical Operations guidelines) -----
@@ -257,26 +258,8 @@ def _resolve_logo_path() -> str | None:
     Boston MedFlight coastal logo PNG for Excel (optional).
     Set WEEKLY_STAFFING_LOGO to a file path, or place assets/bmf_coastal_logo.png in the project root.
     """
-    env = os.environ.get("WEEKLY_STAFFING_LOGO", "").strip()
-    if env and os.path.isfile(env):
-        return env
-    root = _project_root()
-    candidates = [
-        os.path.join(root, "assets", "bmf_coastal_logo.png"),
-        os.path.join(
-            root,
-            "bmf_staffing",
-            "dashboard",
-            "static",
-            "dashboard",
-            "images",
-            "BMF_Coastal_Logos.png",
-        ),
-    ]
-    for p in candidates:
-        if os.path.isfile(p):
-            return p
-    return None
+    path = resolve_logo_path()
+    return str(path) if path else None
 
 
 def _add_logo(ws, anchor: str = "A1", max_height_px: int = 88) -> bool:
