@@ -87,7 +87,7 @@ From `docs/report-generator-spec.md`, enforced by a Cursor rule (`.cursor/rules/
 
 Shared display/staffing constants live in `staffing_tool/metrics.py` — `BASE_DISPLAY_ORDER` (base order for report tables), `ROLE_CAPACITY_PER_WEEK`, `REQUIRED_DAY/NIGHT/TOTAL`, `TOTAL_PERSON_SHIFTS`, `SYSTEM_GR_MAX_SHIFTS_PER_WEEK`. Import them; don't redeclare literals in report modules (the Excel/PDF/HTML builders all already import from there). The "no Excel conditional formatting" rule applies to heat shading too — `monthly_report._heat_fill_and_font` computes gradient fills per cell in code.
 
-The BMF logo is resolved in one place — `staffing_tool/paths.resolve_logo_path()` (`assets/bmf_coastal_logo.png`, overridable with the `WEEKLY_STAFFING_LOGO` env var). The Excel and HTML builders both go through it; don't re-derive the path.
+The BMF logo is resolved in one place — `staffing_tool/paths.resolve_logo_path()` (`assets/bmf_coastal_logo.png`, overridable with the `WEEKLY_STAFFING_LOGO` env var). The Excel, HTML, and PDF builders all go through it; don't re-derive the path. `report_style.title_banner()` (weekly + quarterly PDF covers) embeds it as a scaled `reportlab` `Image` next to the title text via `report_style._logo_image()`; the banner degrades gracefully to text-only when the asset is missing.
 
 ### HTML/email report constraints
 
