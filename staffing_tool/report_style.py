@@ -10,6 +10,7 @@ import matplotlib
 
 from staffing_tool.paths import FONT_DIR as _FONT_DIR
 from staffing_tool.paths import OUTPUT_DIR as _OUTPUT_DIR
+from staffing_tool.paths import resolve_logo_path
 
 matplotlib.use("Agg")
 from io import BytesIO
@@ -134,6 +135,28 @@ def section_bar(text):
     return t
 
 
+LOGO_MAX_HEIGHT_PT = 64
+
+
+def _logo_image(max_height_pt: float = LOGO_MAX_HEIGHT_PT):
+    """BMF logo scaled to a max height, preserving aspect ratio; None if missing."""
+    path = resolve_logo_path()
+    if path is None:
+        return None
+    try:
+        from PIL import Image as PILImage
+
+        with PILImage.open(path) as im:
+            w_px, h_px = im.size
+    except (OSError, ImportError):
+        return None
+    if not h_px:
+        return None
+    height = max_height_pt
+    width = height * (w_px / h_px)
+    return Image(str(path), width=width, height=height)
+
+
 def title_banner(title_text, subtitle_text, meta_line=None):
     """Navy cover banner with BMF branding — matches Expansion report polish."""
     rows = [[title_text], [subtitle_text]]
@@ -186,7 +209,29 @@ def title_banner(title_text, subtitle_text, meta_line=None):
         ("BOTTOMPADDING", (0, brand_start + 1), (0, brand_start + 1), 14),
     ]
     t.setStyle(TableStyle(style))
-    return t
+
+    logo = _logo_image()
+    if logo is None:
+        return t
+
+    outer = Table(
+        [[t, logo]], colWidths=[USABLE_W - logo.drawWidth - 12, logo.drawWidth + 12]
+    )
+    outer.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), NAVY),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (1, 0), (1, 0), 12),
+            ]
+        )
+    )
+    return outer
 
 
 def kpi_row(kpi_list):

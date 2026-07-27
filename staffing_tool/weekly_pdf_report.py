@@ -20,6 +20,7 @@ import matplotlib.ticker as mticker
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle
 
+from staffing_tool import report_html as rh
 from staffing_tool import report_style as style
 from staffing_tool.db import session_scope
 from staffing_tool.leave_grid import (
@@ -893,10 +894,14 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
             f'<td style="padding:6px 4px;text-align:right;border:1px solid {mgray};">{count}</td>'
             f'<td style="padding:6px 4px;text-align:right;border:1px solid {mgray};">{pct}</td>'
             f'<td style="padding:6px 8px;border:1px solid {mgray};">'
-            f'<div style="background:{lgray};height:14px;border-radius:2px;">'
-            f'<div style="background:{color};width:{bar_w}%;height:14px;"></div>'
-            f"</div></td></tr>"
+            f"{rh.share_bar(bar_w, color)}</td></tr>"
         )
+
+    banner = rh.title_banner(
+        title="WEEKLY STAFFING REPORT",
+        subtitle=f"Week of {ctx.week_of} &nbsp;|&nbsp; {ctx.week_dates}",
+        meta=f"Prepared {ctx.prepared_date} &middot; CONFIDENTIAL",
+    )
 
     grid_label = " &middot; ".join(EXCEPTION_GRID_COLS)
 
@@ -1034,13 +1039,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 <tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;">
 
-<tr><td style="background:{navy};color:#ffffff;padding:20px 24px;">
-<div style="font-size:20px;font-weight:bold;letter-spacing:0.5px;">WEEKLY STAFFING REPORT</div>
-<div style="font-size:13px;color:{lgray};margin-top:6px;">Week of {ctx.week_of} &nbsp;|&nbsp; {ctx.week_dates}</div>
-<div style="font-size:11px;color:{mgray};margin-top:8px;">Prepared {ctx.prepared_date} &middot; CONFIDENTIAL</div>
-<div style="font-size:10px;color:#ffffff;margin-top:12px;font-weight:bold;">BOSTON MEDFLIGHT</div>
-<div style="font-size:10px;color:{lgray};">CLINICAL OPERATIONS</div>
-</td></tr>
+{banner}
 
 {_html_section_bar("KEY PERFORMANCE INDICATORS", navy)}
 <tr><td style="padding:12px 16px;">

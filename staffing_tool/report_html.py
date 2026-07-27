@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import base64
 import io
+from functools import lru_cache
+
+from staffing_tool.paths import resolve_logo_path
 
 NAVY = "#052C47"
 BLUE = "#2A4492"
@@ -21,6 +24,9 @@ LGRAY = "#E6E6E6"
 MGRAY = "#CBC7D1"
 
 EM = "—"  # em dash placeholder for empty cells
+
+BAR_HEIGHT_PX = 14
+LOGO_WIDTH_PX = 104
 
 
 def fig_to_png_base64(fig) -> str:
@@ -34,6 +40,49 @@ def fig_to_png_base64(fig) -> str:
 
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+@lru_cache(maxsize=1)
+def logo_data_uri() -> str:
+    """Base64 ``data:`` URI for the BMF logo, or "" when the asset is missing.
+
+    Reports are pasted into email, so the logo has to travel inside the
+    HTML — a file:// or http:// src would arrive broken for the recipient.
+    """
+    path = resolve_logo_path()
+    if path is None:
+        return ""
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return ""
+    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+
+
+def title_banner(*, title: str, subtitle: str, meta: str) -> str:
+    """Navy header row: title/subtitle/meta on the left, BMF logo on the right."""
+    logo_cell = ""
+    uri = logo_data_uri()
+    if uri:
+        logo_cell = (
+            f'<td align="right" valign="top" width="{LOGO_WIDTH_PX + 16}" '
+            f'style="padding-left:16px;">'
+            f'<img src="{uri}" alt="Boston MedFlight" width="{LOGO_WIDTH_PX}" '
+            f'style="display:block;width:{LOGO_WIDTH_PX}px;height:auto;border:0;'
+            f'outline:none;text-decoration:none;" /></td>'
+        )
+    return (
+        f'<tr><td style="background:{NAVY};color:#ffffff;padding:20px 24px;">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td align="left" valign="top" style="color:#ffffff;">'
+        f'<div style="font-size:20px;font-weight:bold;letter-spacing:0.5px;">{title}</div>'
+        f'<div style="font-size:13px;color:{LGRAY};margin-top:6px;">{subtitle}</div>'
+        f'<div style="font-size:11px;color:{MGRAY};margin-top:8px;">{meta}</div>'
+        f'<div style="font-size:10px;color:#ffffff;margin-top:12px;font-weight:bold;">'
+        f"BOSTON MEDFLIGHT</div>"
+        f'<div style="font-size:10px;color:{LGRAY};">CLINICAL OPERATIONS</div>'
+        f"</td>{logo_cell}</tr></table></td></tr>"
+    )
 
 
 def section_bar(title: str) -> str:
@@ -123,6 +172,37 @@ def delta_html(current: float, prior: float, *, higher_is_better: bool = True) -
     return f'<span style="color:{color};font-weight:bold;">{arrow} {abs(diff):.1f} pts</span>'
 
 
+def _bar_cell(color: str, width_pct: int) -> str:
+    return (
+        f'<td bgcolor="{color}" width="{width_pct}%" height="{BAR_HEIGHT_PX}" '
+        f'style="background-color:{color};width:{width_pct}%;height:{BAR_HEIGHT_PX}px;'
+        f"line-height:{BAR_HEIGHT_PX}px;font-size:1px;mso-line-height-rule:exactly;"
+        f'border:0;">&nbsp;</td>'
+    )
+
+
+def share_bar(fill_pct: int, color: str) -> str:
+    """Horizontal share bar built from table cells, not styled <div>s.
+
+    Outlook renders with Word's HTML engine, which drops CSS backgrounds on
+    a <div> and collapses empty ones — that is why the bars disappeared when
+    a report was copied into an email. Table cells carrying the legacy
+    ``bgcolor`` attribute (plus a non-breaking space so the cell can't
+    collapse) survive the paste in every client.
+    """
+    fill_pct = max(0, min(100, int(fill_pct)))
+    cells = ""
+    if fill_pct:
+        cells += _bar_cell(color, fill_pct)
+    if fill_pct < 100:
+        cells += _bar_cell(LGRAY, 100 - fill_pct)
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'border="0" style="border-collapse:collapse;table-layout:fixed;width:100%;">'
+        f"<tr>{cells}</tr></table>"
+    )
+
+
 def share_bar_rows(
     breakdown: list[tuple[str, int]], highlight: set[str]
 ) -> tuple[str, int]:
@@ -142,9 +222,7 @@ def share_bar_rows(
             f'<td style="padding:6px 4px;text-align:right;border:1px solid {MGRAY};">{count}</td>'
             f'<td style="padding:6px 4px;text-align:right;border:1px solid {MGRAY};">{pct}</td>'
             f'<td style="padding:6px 8px;border:1px solid {MGRAY};">'
-            f'<div style="background:{LGRAY};height:14px;border-radius:2px;">'
-            f'<div style="background:{color};width:{bar_w}%;height:14px;"></div>'
-            f"</div></td></tr>"
+            f"{share_bar(bar_w, color)}</td></tr>"
         )
     return rows, total
 
@@ -181,6 +259,7 @@ def report_shell(
     doc_title: str,
 ) -> str:
     """Complete HTML document: navy banner + sections + confidential footer."""
+    banner = title_banner(title=title, subtitle=subtitle, meta=meta)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -193,13 +272,7 @@ def report_shell(
 <tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;">
 
-<tr><td style="background:{NAVY};color:#ffffff;padding:20px 24px;">
-<div style="font-size:20px;font-weight:bold;letter-spacing:0.5px;">{title}</div>
-<div style="font-size:13px;color:{LGRAY};margin-top:6px;">{subtitle}</div>
-<div style="font-size:11px;color:{MGRAY};margin-top:8px;">{meta}</div>
-<div style="font-size:10px;color:#ffffff;margin-top:12px;font-weight:bold;">BOSTON MEDFLIGHT</div>
-<div style="font-size:10px;color:{LGRAY};">CLINICAL OPERATIONS</div>
-</td></tr>
+{banner}
 
 {body}
 
