@@ -72,8 +72,7 @@ def _comm_events(profile, start: dt.date, end: dt.date, stamp: str) -> list[str]
     )
     for a in assignments:
         seat = _SEAT_BY_CODE.get(a.seat)
-        label = seat.label if seat else a.seat
-        summary = f"Comm {label}"
+        summary = f"Comm {shifts.comm_seat_label(a.seat)}"
         tag = a.WORK_TYPE_TAGS.get(a.work_type)
         if tag:
             summary += f" ({tag})"
@@ -108,7 +107,7 @@ def _duty_events(profile, start: dt.date, end: dt.date, stamp: str) -> list[str]
         officer=profile, date__gte=start, date__lte=end
     )
     for a in assignments:
-        summary = f"Duty {shifts.DUTY_ROLE_LABELS.get(a.role, a.role)}"
+        summary = f"Duty {shifts.duty_role_label(a.role)}"
         tag = a.WORK_TYPE_TAGS.get(a.work_type)
         if tag:
             summary += f" ({tag})"

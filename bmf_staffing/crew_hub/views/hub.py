@@ -13,24 +13,29 @@ from .helpers import local_today
 def hub_home(request):
     today = local_today()
 
+    # Both schedulers let several people share a seat/role, so names are
+    # joined per slot rather than one name overwriting another.
     duty_by_role: dict[str, list[str]] = {}
     for assignment in DutyAssignment.objects.filter(date=today).select_related(
         "officer"
     ):
-        if assignment.name:
+        if assignment.name and assignment.role:
             duty_by_role.setdefault(assignment.role, []).append(assignment.name)
     duty_rows = [
         {"label": label, "names": " / ".join(duty_by_role.get(code, [])) or "—"}
         for code, label in shifts.DUTY_ROLE_CHOICES
     ]
 
-    comm_by_seat = {
-        a.seat: a.name
-        for a in CommShiftAssignment.objects.filter(date=today).select_related("member")
-    }
-    comm_filled = sum(1 for code in comm_by_seat.values() if code)
+    comm_by_seat: dict[str, list[str]] = {}
+    for a in CommShiftAssignment.objects.filter(date=today).select_related("member"):
+        if a.name and a.seat:
+            comm_by_seat.setdefault(a.seat, []).append(a.name)
+    comm_filled = len(comm_by_seat)
     comm_rows = [
-        {"label": seat.label, "name": comm_by_seat.get(seat.code, "") or "—"}
+        {
+            "label": seat.label,
+            "name": " / ".join(comm_by_seat.get(seat.code, [])) or "—",
+        }
         for seat in shifts.COMM_SEATS
     ]
 

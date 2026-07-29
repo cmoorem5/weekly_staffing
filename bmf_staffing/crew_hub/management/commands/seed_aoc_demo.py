@@ -115,18 +115,17 @@ class Command(BaseCommand):
                 defaults={"display_name": ""},
             )
 
+        # Seats are no longer exclusive, so replace the demo day's rows
+        # outright instead of upserting on (date, seat).
+        CommShiftAssignment.objects.filter(date=date, seat__in=COMM_DEMO).delete()
         for seat, name in COMM_DEMO.items():
             if name == "OPEN":
-                CommShiftAssignment.objects.update_or_create(
-                    date=date,
-                    seat=seat,
-                    defaults={"member": None, "display_name": "OPEN"},
+                CommShiftAssignment.objects.create(
+                    date=date, seat=seat, member=None, display_name="OPEN"
                 )
                 continue
             member, _ = CommStaffMember.objects.get_or_create(name=name)
-            CommShiftAssignment.objects.update_or_create(
-                date=date, seat=seat, defaults={"member": member, "display_name": ""}
-            )
+            CommShiftAssignment.objects.create(date=date, seat=seat, member=member)
 
         Vehicle.ensure_fleet()
         for identifier, status in VEHICLE_DEMO.items():

@@ -121,6 +121,16 @@ DUTY_ROLE_CHOICES = [
 DUTY_ROLE_LABELS = dict(DUTY_ROLE_CHOICES)
 DUTY_ROLE_ORDER = [code for code, _ in DUTY_ROLE_CHOICES]
 
+# Shown wherever a scheduled person has no seat/role picked yet. Assignments
+# are person-first: someone can sit on a day before anyone decides which
+# seat or role they cover.
+UNASSIGNED_LABEL = "Unassigned"
+
+
+def duty_role_label(code: str) -> str:
+    """Display label for a duty role, tolerating the blank ('unassigned') code."""
+    return DUTY_ROLE_LABELS.get(code) or UNASSIGNED_LABEL
+
 
 # --- Comm Center seats -------------------------------------------------
 
@@ -153,6 +163,18 @@ COMM_SEAT_CHOICES = [(s.code, s.label) for s in COMM_SEATS]
 COMM_SEAT_INDEX = {s.code: s for s in COMM_SEATS}
 # Two-column layout used by the reference form/email: day-side, night-side.
 COMM_SEAT_COLUMNS = (["D", "D2", "S", "S2", "S3"], ["N", "N2", "P", "P2", "EXTRA"])
+
+
+def comm_seat_label(code: str) -> str:
+    """Display label for a Comm seat, tolerating the blank ('unassigned') code."""
+    seat = COMM_SEAT_INDEX.get(code)
+    return seat.label if seat else UNASSIGNED_LABEL
+
+
+def comm_seat_time(code: str) -> str:
+    """Shift window for a Comm seat; empty for Extra and unassigned rows."""
+    seat = COMM_SEAT_INDEX.get(code)
+    return seat.time if seat else ""
 
 
 # --- Vehicle fleet -----------------------------------------------------

@@ -79,30 +79,63 @@ class RotationPatternTests(TestCase):
         rotation.active = False
         self.assertFalse(rotation.works_on(dt.date(2026, 7, 15)))
 
-    def test_apply_creates_assignments_without_overwriting(self):
-        CommRotation.objects.create(
-            member=self.member,
-            seat="D",
+    def _four_on_four_off(self, member=None, seat="D"):
+        return CommRotation.objects.create(
+            member=member or self.member,
+            seat=seat,
             pattern_type=CommRotation.PATTERN_CYCLE,
             days_on=4,
             days_off=4,
             anchor_date=JULY_1,
         )
-        # A manual entry on a rotation day must survive.
-        other = CommStaffMember.objects.create(name="Comms Test-Bravo")
-        CommShiftAssignment.objects.create(date=JULY_1, seat="D", member=other)
+
+    def test_apply_skips_days_the_person_already_works(self):
+        self._four_on_four_off()
+        # A manual entry for this person must survive untouched, whatever
+        # seat it is in — they are already on the schedule that day.
+        CommShiftAssignment.objects.create(
+            date=JULY_1, seat="N", member=self.member, note="manual"
+        )
 
         created, skipped = apply_rotations_for_range(JULY_1, JULY_31)
         # July has 16 on-days for 4/4 anchored on the 1st; one was taken.
         self.assertEqual(created, 15)
         self.assertEqual(skipped, 1)
-        self.assertEqual(
-            CommShiftAssignment.objects.get(date=JULY_1, seat="D").member, other
-        )
+        july_1 = CommShiftAssignment.objects.get(date=JULY_1, member=self.member)
+        self.assertEqual(july_1.seat, "N")
+        self.assertEqual(july_1.note, "manual")
         # Re-applying is a no-op.
         created2, skipped2 = apply_rotations_for_range(JULY_1, JULY_31)
         self.assertEqual(created2, 0)
         self.assertEqual(skipped2, 16)
+
+    def test_apply_lets_two_people_share_one_seat(self):
+        """Seats are not exclusive: neither rotation loses its days."""
+        other = CommStaffMember.objects.create(name="Comms Test-Bravo")
+        self._four_on_four_off()
+        self._four_on_four_off(member=other)
+
+        created, skipped = apply_rotations_for_range(JULY_1, JULY_31)
+        self.assertEqual(created, 32)
+        self.assertEqual(skipped, 0)
+        july_1_seat_d = CommShiftAssignment.objects.filter(date=JULY_1, seat="D")
+        self.assertEqual(july_1_seat_d.count(), 2)
+        self.assertEqual(
+            {a.member.name for a in july_1_seat_d},
+            {"Comms Test-Alpha", "Comms Test-Bravo"},
+        )
+
+    def test_apply_ignores_free_text_rows_when_deduping(self):
+        """A typed-in name has no roster identity, so it blocks nobody."""
+        self._four_on_four_off()
+        CommShiftAssignment.objects.create(date=JULY_1, seat="D", display_name="OPEN")
+
+        created, skipped = apply_rotations_for_range(JULY_1, JULY_31)
+        self.assertEqual(created, 16)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(
+            CommShiftAssignment.objects.filter(date=JULY_1, seat="D").count(), 2
+        )
 
 
 class RotationFormTests(TestCase):
@@ -142,7 +175,8 @@ class RotationFormTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CommRotation.objects.exists())
 
-    def test_overlapping_same_seat_rotation_warns(self):
+    def test_overlapping_same_seat_rotation_is_not_a_conflict(self):
+        """Sharing a seat is legal now, so adding one raises no warning."""
         other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
         CommRotation.objects.create(
             member=other_member,
@@ -152,30 +186,8 @@ class RotationFormTests(TestCase):
         )
         response = self._add(pattern_type="pitman", follow=True)
         messages = [str(m) for m in response.context["messages"]]
-        self.assertTrue(
-            any("Comms Test-Bravo" in m and "overlaps" in m for m in messages)
-        )
-
-    def test_non_overlapping_same_seat_rotation_no_warning(self):
-        other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
-        # Anchored on Bravo's off days relative to Alpha's pitman cycle.
-        CommRotation.objects.create(
-            member=other_member,
-            seat="D",
-            pattern_type=CommRotation.PATTERN_CYCLE,
-            days_on=2,
-            days_off=2,
-            anchor_date=dt.date(2026, 7, 21),
-        )
-        response = self._add(
-            pattern_type="cycle",
-            days_on=2,
-            days_off=2,
-            anchor_date="2026-07-19",
-            follow=True,
-        )
-        messages = [str(m) for m in response.context["messages"]]
         self.assertFalse(any("overlaps" in m for m in messages))
+        self.assertEqual(CommRotation.objects.filter(seat="D").count(), 2)
 
 
 class SeedCommTechsTests(TestCase):
@@ -227,47 +239,86 @@ class CalendarApiTests(TestCase):
         self.assignment.refresh_from_db()
         self.assertEqual(self.assignment.date, dt.date(2026, 7, 5))
 
-    def test_move_onto_occupied_seat_swaps(self):
+    def test_move_onto_occupied_seat_stacks(self):
+        """Dropping onto a taken seat joins it — nobody gets displaced."""
         other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
         other = CommShiftAssignment.objects.create(
             date=dt.date(2026, 7, 5), seat="D", member=other_member
         )
         url = reverse("crew_hub:api_comm_move", kwargs={"pk": self.assignment.pk})
         response = self._post_json(url, {"date": "2026-07-05"})
-        self.assertEqual(response.json()["result"], "swapped")
+        self.assertEqual(response.json()["result"], "moved")
         self.assignment.refresh_from_db()
         other.refresh_from_db()
         self.assertEqual(self.assignment.date, dt.date(2026, 7, 5))
-        self.assertEqual(other.date, JULY_1)
+        self.assertEqual(other.date, dt.date(2026, 7, 5))
+        self.assertEqual(
+            CommShiftAssignment.objects.filter(
+                date=dt.date(2026, 7, 5), seat="D"
+            ).count(),
+            2,
+        )
+
+    def test_move_onto_a_day_the_person_already_works_is_rejected(self):
+        CommShiftAssignment.objects.create(
+            date=dt.date(2026, 7, 5), seat="N", member=self.member
+        )
+        url = reverse("crew_hub:api_comm_move", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"date": "2026-07-05"})
+        self.assertEqual(response.status_code, 409)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.date, JULY_1)
 
     def test_reseat_to_empty_seat(self):
         url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
-        response = self._post_json(url, {"seat": "N"})
+        response = self._post_json(url, {"slot": "N"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["result"], "moved")
         self.assignment.refresh_from_db()
         self.assertEqual(self.assignment.seat, "N")
         self.assertEqual(self.assignment.date, JULY_1)
 
-    def test_reseat_onto_occupied_seat_swaps(self):
+    def test_reseat_onto_occupied_seat_shares_it(self):
         other_member = CommStaffMember.objects.create(name="Comms Test-Bravo")
         other = CommShiftAssignment.objects.create(
             date=JULY_1, seat="N", member=other_member
         )
         url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
-        response = self._post_json(url, {"seat": "N"})
-        self.assertEqual(response.json()["result"], "swapped")
+        response = self._post_json(url, {"slot": "N"})
+        self.assertEqual(response.json()["result"], "moved")
         self.assignment.refresh_from_db()
         other.refresh_from_db()
         self.assertEqual(self.assignment.seat, "N")
-        self.assertEqual(other.seat, "D")
+        self.assertEqual(other.seat, "N")
+
+    def test_reseat_to_unassigned(self):
+        """Handing a seat back keeps the person on the day."""
+        url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
+        response = self._post_json(url, {"slot": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.seat, "")
+        self.assertEqual(self.assignment.date, JULY_1)
 
     def test_reseat_unknown_seat_rejected(self):
         url = reverse("crew_hub:api_comm_reseat", kwargs={"pk": self.assignment.pk})
-        response = self._post_json(url, {"seat": "BOGUS"})
+        response = self._post_json(url, {"slot": "BOGUS"})
         self.assertEqual(response.status_code, 400)
         self.assignment.refresh_from_db()
         self.assertEqual(self.assignment.seat, "D")
+
+    def test_duty_rerole_api(self):
+        from crew_hub.models import DutyAssignment, DutyOfficer
+
+        officer = DutyOfficer.objects.create(name="Duty Test-Alpha", role="AOC")
+        assignment = DutyAssignment.objects.create(
+            date=JULY_1, role="AOC", officer=officer
+        )
+        url = reverse("crew_hub:api_duty_rerole", kwargs={"pk": assignment.pk})
+        response = self._post_json(url, {"slot": "MDOC"})
+        self.assertEqual(response.status_code, 200)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.role, "MDOC")
 
     def test_reseat_requires_manage_permission(self):
         User.objects.create_user("viewer", password="pw")

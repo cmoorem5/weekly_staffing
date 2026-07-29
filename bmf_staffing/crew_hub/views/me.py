@@ -36,12 +36,11 @@ def _upcoming_assignments(user, start: dt.date, end: dt.date) -> list[dict]:
         for a in CommShiftAssignment.objects.filter(
             member=comm_profile, date__gte=start, date__lte=end
         ):
-            seat = shifts.COMM_SEAT_INDEX[a.seat]
             rows.append(
                 {
                     "date": a.date,
-                    "what": f"Comm {seat.label}",
-                    "time": seat.time,
+                    "what": f"Comm {shifts.comm_seat_label(a.seat)}",
+                    "time": shifts.comm_seat_time(a.seat),
                     "work_type": a.get_work_type_display(),
                     "work_type_code": a.work_type,
                     "note": a.note,
@@ -55,7 +54,7 @@ def _upcoming_assignments(user, start: dt.date, end: dt.date) -> list[dict]:
             rows.append(
                 {
                     "date": a.date,
-                    "what": f"Duty {shifts.DUTY_ROLE_LABELS[a.role]}",
+                    "what": f"Duty {shifts.duty_role_label(a.role)}",
                     "time": "all day",
                     "work_type": a.get_work_type_display(),
                     "work_type_code": a.work_type,
@@ -166,7 +165,7 @@ def _conflicts_for(time_off: TimeOffRequest) -> list[str]:
             date__lte=time_off.end_date,
         ):
             conflicts.append(
-                f"{a.date:%a %b} {a.date.day}: Comm {a.get_seat_display()}"
+                f"{a.date:%a %b} {a.date.day}: Comm {shifts.comm_seat_label(a.seat)}"
             )
     duty_profile = getattr(time_off.user, "duty_profile", None)
     if duty_profile:
@@ -176,7 +175,7 @@ def _conflicts_for(time_off: TimeOffRequest) -> list[str]:
             date__lte=time_off.end_date,
         ):
             conflicts.append(
-                f"{a.date:%a %b} {a.date.day}: Duty {shifts.DUTY_ROLE_LABELS[a.role]}"
+                f"{a.date:%a %b} {a.date.day}: Duty {shifts.duty_role_label(a.role)}"
             )
     return conflicts
 

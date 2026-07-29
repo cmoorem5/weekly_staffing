@@ -1,4 +1,11 @@
-"""Comm Center and duty officer schedulers: month calendars + day editors."""
+"""Comm Center and duty officer schedulers: month calendars + day editors.
+
+Both schedulers are person-first: a day holds any number of people, and
+each person's slot (Comm seat / duty role), work type, and paid hours are
+attributes you edit on their row. Nothing forces a person into a distinct
+slot just to get them onto the day — that is what ``_day_editor`` below
+implements for both kinds from one code path.
+"""
 
 from __future__ import annotations
 
@@ -31,6 +38,7 @@ from .helpers import (
 )
 
 MAX_REPEAT_DAYS = 62  # Guardrail for "apply through" ranges.
+MAX_ASSIGNMENT_HOURS = 24.0
 
 
 def _repeat_dates(start: dt.date, repeat_until_raw: str) -> list[dt.date]:
@@ -46,6 +54,299 @@ def _repeat_dates(start: dt.date, repeat_until_raw: str) -> list[dt.date]:
             day += dt.timedelta(days=1)
             dates.append(day)
     return dates
+
+
+# --- Shared person-first day editor ------------------------------------
+
+# Everything the day editor and month calendar need per scheduler kind.
+SCHEDULER_KINDS = {
+    "comm": {
+        "assignment_model": CommShiftAssignment,
+        "person_model": CommStaffMember,
+        "person_field": "member",
+        "slot_field": "seat",
+        "slot_codes": set(shifts.COMM_SEAT_INDEX),
+        "slot_label": "Seat",
+        "person_label": "Comm Center staff",
+        "title": "Comm Center",
+        "day_url": "crew_hub:comm_day",
+        "month_url": "crew_hub:comm_month",
+        "roster_url": "crew_hub:comm_staff",
+        "month_path": "/hub/comm/",
+    },
+    "duty": {
+        "assignment_model": DutyAssignment,
+        "person_model": DutyOfficer,
+        "person_field": "officer",
+        "slot_field": "role",
+        "slot_codes": set(shifts.DUTY_ROLE_LABELS),
+        "slot_label": "Role",
+        "person_label": "Duty officers",
+        "title": "Duty officers",
+        "day_url": "crew_hub:duty_day",
+        "month_url": "crew_hub:duty_month",
+        "roster_url": "crew_hub:duty_roster",
+        "month_path": "/hub/duty/",
+    },
+}
+
+
+def _slot_options(kind: str) -> list[tuple[str, str]]:
+    """Slot dropdown choices, always led by the blank 'unassigned' option."""
+    if kind == "comm":
+        slots = [
+            (seat.code, f"{seat.label} ({seat.time})" if seat.time else seat.label)
+            for seat in shifts.COMM_SEATS
+        ]
+    else:
+        slots = list(shifts.DUTY_ROLE_CHOICES)
+    return [("", f"— {shifts.UNASSIGNED_LABEL} —")] + slots
+
+
+def _slot_sort_key(kind: str):
+    """Order rows by slot, with unassigned people first so they get seated."""
+    order = (
+        {seat.code: i for i, seat in enumerate(shifts.COMM_SEATS)}
+        if kind == "comm"
+        else {role: i for i, role in enumerate(shifts.DUTY_ROLE_ORDER)}
+    )
+
+    def key(assignment):
+        slot = getattr(assignment, SCHEDULER_KINDS[kind]["slot_field"])
+        # -1 sorts blank slots above every real slot.
+        return (order.get(slot, 99) if slot else -1, assignment.name.lower())
+
+    return key
+
+
+def _parse_hours(raw: str) -> float | None:
+    """Read an hours box: blank means 'use the slot's standard hours'."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        hours = float(raw)
+    except ValueError:
+        return None
+    if hours < 0 or hours > MAX_ASSIGNMENT_HOURS:
+        return None
+    return hours
+
+
+def _clone_fields(cfg) -> tuple[str, ...]:
+    return (
+        cfg["slot_field"],
+        f"{cfg['person_field']}_id",
+        "display_name",
+        "work_type",
+        "hours",
+        "note",
+    )
+
+
+def _save_day_rows(request, cfg, date: dt.date) -> int:
+    """Apply the inline edits to every row on ``date``; returns rows removed."""
+    model = cfg["assignment_model"]
+    slot_field = cfg["slot_field"]
+    person_field = cfg["person_field"]
+
+    keep, remove_pks = [], []
+    for assignment in model.objects.filter(date=date):
+        if request.POST.get(f"remove_{assignment.pk}"):
+            remove_pks.append(assignment.pk)
+            continue
+        slot = request.POST.get(f"slot_{assignment.pk}", "").strip()
+        setattr(assignment, slot_field, slot if slot in cfg["slot_codes"] else "")
+        work_type = request.POST.get(f"wt_{assignment.pk}", "").strip()
+        assignment.work_type = (
+            work_type if work_type in VALID_WORK_TYPES else model.WORK_REGULAR
+        )
+        assignment.hours = _parse_hours(request.POST.get(f"hours_{assignment.pk}", ""))
+        assignment.note = request.POST.get(f"note_{assignment.pk}", "").strip()[:256]
+        keep.append(assignment)
+
+    # A roster person may hold a slot once per day (the DutyAssignment
+    # unique constraint enforces it). Drop the edit rather than 500 if two
+    # rows were pointed at the same slot for the same person.
+    seen, saveable = set(), []
+    for assignment in keep:
+        person_id = getattr(assignment, f"{person_field}_id")
+        key = (getattr(assignment, slot_field), person_id)
+        if person_id is not None and key in seen:
+            messages.warning(
+                request,
+                f"{assignment.name} was already in that "
+                f"{cfg['slot_label'].lower()} — the duplicate row was left "
+                "unchanged.",
+            )
+            continue
+        seen.add(key)
+        saveable.append(assignment)
+
+    if remove_pks:
+        model.objects.filter(pk__in=remove_pks).delete()
+    if saveable:
+        model.objects.bulk_update(saveable, [slot_field, "work_type", "hours", "note"])
+    return len(remove_pks)
+
+
+def _add_people(request, cfg, date: dt.date) -> int:
+    """Put the checked roster people (and any typed name) on ``date``."""
+    model = cfg["assignment_model"]
+    person_field = cfg["person_field"]
+    slot_field = cfg["slot_field"]
+
+    taken = set(
+        model.objects.filter(date=date).values_list(f"{person_field}_id", flat=True)
+    )
+    wanted = [pk for pk in request.POST.getlist("add_person") if pk.isdigit()]
+    people = cfg["person_model"].objects.filter(pk__in=wanted, active=True)
+
+    new_rows, already = [], []
+    for person in people:
+        if person.pk in taken:
+            already.append(person.name)
+            continue
+        # Duty officers land in the role they are rostered for; Comm staff
+        # start unassigned because seats are picked per day.
+        default_slot = getattr(person, "role", "") if slot_field == "role" else ""
+        new_rows.append(
+            model(
+                date=date,
+                **{person_field: person, slot_field: default_slot},
+            )
+        )
+
+    typed = request.POST.get("add_name", "").strip()
+    if typed:
+        new_rows.append(model(date=date, display_name=typed[:128]))
+
+    if new_rows:
+        model.objects.bulk_create(new_rows)
+    if already:
+        messages.info(
+            request,
+            f"{', '.join(already)} {'was' if len(already) == 1 else 'were'} "
+            "already on this day.",
+        )
+    if not new_rows and not already:
+        messages.error(
+            request,
+            "Pick at least one person to add, or type a name for someone "
+            "who is not on the roster.",
+        )
+    return len(new_rows)
+
+
+def _repeat_day(cfg, date: dt.date, targets: list[dt.date]) -> None:
+    """Replace each target day with a copy of ``date``'s people."""
+    model = cfg["assignment_model"]
+    fields = _clone_fields(cfg)
+    source = list(model.objects.filter(date=date))
+    model.objects.filter(date__in=targets).delete()
+    model.objects.bulk_create(
+        [
+            model(date=target, **{f: getattr(a, f) for f in fields})
+            for target in targets
+            for a in source
+        ]
+    )
+
+
+@login_required
+def _day_editor(request, kind: str, date_str: str):
+    """Person-first day editor shared by both schedulers."""
+    cfg = SCHEDULER_KINDS[kind]
+    date = parse_date_or_404(date_str)
+    model = cfg["assignment_model"]
+
+    if request.method == "POST":
+        if not can_manage_schedules(request.user):
+            messages.error(request, PERM_DENIED_MSG)
+            return redirect(cfg["day_url"], date_str=date_str)
+
+        action = request.POST.get("action", "save")
+        with transaction.atomic():
+            removed = _save_day_rows(request, cfg, date)
+            if action == "add":
+                added = _add_people(request, cfg, date)
+            else:
+                added = 0
+                targets = _repeat_dates(
+                    date, request.POST.get("repeat_until", "").strip()
+                )[1:]
+                if targets:
+                    _repeat_day(cfg, date, targets)
+                    messages.success(
+                        request,
+                        f"Copied this day to {len(targets)} following day(s), "
+                        f"through {targets[-1]}.",
+                    )
+
+        if action == "add":
+            if added:
+                messages.success(
+                    request,
+                    f"Added {added} {'person' if added == 1 else 'people'} to "
+                    f"{date}. Pick their {cfg['slot_label'].lower()} and hours "
+                    "below, then save.",
+                )
+            return redirect(cfg["day_url"], date_str=date_str)
+
+        note = f" ({removed} removed)" if removed else ""
+        messages.success(request, f"{cfg['title']} schedule saved for {date}{note}.")
+        return redirect(f"{cfg['month_path']}?month={date.year:04d}-{date.month:02d}")
+
+    assignments = sorted(
+        model.objects.filter(date=date).select_related(cfg["person_field"]),
+        key=_slot_sort_key(kind),
+    )
+    on_day_ids = {
+        getattr(a, f"{cfg['person_field']}_id")
+        for a in assignments
+        if getattr(a, f"{cfg['person_field']}_id")
+    }
+    slot_field = cfg["slot_field"]
+    rows = [
+        {
+            "pk": a.pk,
+            "name": a.name or "(no name)",
+            "slot": getattr(a, slot_field),
+            "unassigned": not getattr(a, slot_field),
+            "work_type": a.work_type,
+            "hours": a.hours,
+            "default_hours": a.default_hours,
+            "note": a.note,
+            "roster_linked": bool(getattr(a, f"{cfg['person_field']}_id")),
+        }
+        for a in assignments
+    ]
+    return render(
+        request,
+        "crew_hub/schedule_day.html",
+        {
+            "kind": kind,
+            "title": cfg["title"],
+            "slot_label": cfg["slot_label"],
+            "person_label": cfg["person_label"],
+            "date": date,
+            "rows": rows,
+            "unassigned_count": sum(1 for r in rows if r["unassigned"]),
+            "slot_options": _slot_options(kind),
+            "work_type_choices": WORK_TYPE_CHOICES,
+            "available": [
+                p
+                for p in cfg["person_model"].objects.filter(active=True)
+                if p.pk not in on_day_ids
+            ],
+            "month_url": cfg["month_url"],
+            "roster_url": cfg["roster_url"],
+            "day_url": cfg["day_url"],
+            "can_manage": can_manage_schedules(request.user),
+            "prev_day": date - dt.timedelta(days=1),
+            "next_day": date + dt.timedelta(days=1),
+        },
+    )
 
 
 # --- Comm Center -------------------------------------------------------
@@ -66,24 +367,26 @@ def comm_month(request):
     for a in assignments:
         by_day.setdefault(a.date, []).append(a)
 
-    seat_order = {seat.code: i for i, seat in enumerate(shifts.COMM_SEATS)}
+    sort_key = _slot_sort_key("comm")
     day_cells = {}
     for day, items in by_day.items():
-        filled = [a for a in items if a.name]
-        filled.sort(key=lambda a: seat_order.get(a.seat, 99))
+        filled = sorted([a for a in items if a.name], key=sort_key)
         selected_pk = int(member_id) if member_id.isdigit() else None
         chips = [
             {
                 "pk": a.pk,
-                "seat": a.get_seat_display(),
+                "seat": a.slot_label,
                 "name": a.name,
                 "work_type": a.work_type,
+                "unassigned": not a.seat,
                 "mine": bool(selected_pk and a.member_id == selected_pk),
             }
             for a in filled
         ]
+        # Coverage counts seats that are actually covered — several people
+        # may share one seat, and Extra/unassigned rows are not coverage.
         day_cells[day] = {
-            "filled": len([a for a in filled if a.seat != "EXTRA"]),
+            "filled": len({a.seat for a in filled if a.seat and a.seat != "EXTRA"}),
             "chips": chips,
             "mine": any(chip["mine"] for chip in chips),
         }
@@ -100,80 +403,16 @@ def comm_month(request):
             "nav": month_nav(year, month),
             "today": local_today(),
             "seat_total": len([s for s in shifts.COMM_SEATS if s.code != "EXTRA"]),
-            "seat_options": shifts.COMM_SEAT_CHOICES,
+            "slot_label": SCHEDULER_KINDS["comm"]["slot_label"],
+            "slot_options": _slot_options("comm"),
             "members": CommStaffMember.objects.filter(active=True),
             "selected_member": member_id,
         },
     )
 
 
-@login_required
 def comm_day(request, date_str):
-    date = parse_date_or_404(date_str)
-    members = list(CommStaffMember.objects.filter(active=True))
-
-    if request.method == "POST":
-        if not can_manage_schedules(request.user):
-            messages.error(request, PERM_DENIED_MSG)
-            return redirect("crew_hub:comm_day", date_str=date_str)
-        dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
-        valid_work_types = VALID_WORK_TYPES
-        with transaction.atomic():
-            for target in dates:
-                for seat in shifts.COMM_SEATS:
-                    member_raw = request.POST.get(f"member_{seat.code}", "").strip()
-                    name_raw = request.POST.get(f"name_{seat.code}", "").strip()
-                    note = request.POST.get(f"note_{seat.code}", "").strip()
-                    work_type = request.POST.get(f"wt_{seat.code}", "").strip()
-                    if work_type not in valid_work_types:
-                        work_type = CommShiftAssignment.WORK_REGULAR
-                    member = None
-                    if member_raw.isdigit():
-                        member = next(
-                            (m for m in members if m.pk == int(member_raw)), None
-                        )
-                    if member is None and not name_raw:
-                        CommShiftAssignment.objects.filter(
-                            date=target, seat=seat.code
-                        ).delete()
-                        continue
-                    CommShiftAssignment.objects.update_or_create(
-                        date=target,
-                        seat=seat.code,
-                        defaults={
-                            "member": member,
-                            "display_name": name_raw if member is None else "",
-                            "note": note,
-                            "work_type": work_type,
-                        },
-                    )
-        messages.success(
-            request,
-            f"Comm Center schedule saved for {len(dates)} day(s) starting {date}.",
-        )
-        month_param = f"?month={date.year:04d}-{date.month:02d}"
-        return redirect(f"{'/hub/comm/'}{month_param}")
-
-    existing = {
-        a.seat: a
-        for a in CommShiftAssignment.objects.filter(date=date).select_related("member")
-    }
-    rows = [
-        {"seat": seat, "assignment": existing.get(seat.code)}
-        for seat in shifts.COMM_SEATS
-    ]
-    return render(
-        request,
-        "crew_hub/comm_day.html",
-        {
-            "date": date,
-            "rows": rows,
-            "members": members,
-            "work_type_choices": WORK_TYPE_CHOICES,
-            "prev_day": date - dt.timedelta(days=1),
-            "next_day": date + dt.timedelta(days=1),
-        },
-    )
+    return _day_editor(request, "comm", date_str)
 
 
 def _linkable_users():
@@ -410,20 +649,20 @@ def duty_month(request):
     for a in assignments:
         by_day.setdefault(a.date, []).append(a)
 
-    role_order = {role: i for i, role in enumerate(shifts.DUTY_ROLE_ORDER)}
+    sort_key = _slot_sort_key("duty")
     day_cells = {}
     for day, items in by_day.items():
-        filled = [a for a in items if a.name]
-        filled.sort(key=lambda a: (role_order.get(a.role, 99), a.pk))
-        roles = {a.role for a in filled}
+        filled = sorted([a for a in items if a.name], key=sort_key)
         day_cells[day] = {
-            "filled": len(roles),
+            # Roles covered — several officers may share one (split MDOC).
+            "filled": len({a.role for a in filled if a.role}),
             "chips": [
                 {
                     "pk": a.pk,
-                    "seat": shifts.DUTY_ROLE_LABELS[a.role],
+                    "seat": a.slot_label,
                     "name": a.name,
                     "work_type": a.work_type,
+                    "unassigned": not a.role,
                     "mine": False,
                 }
                 for a in filled
@@ -443,95 +682,16 @@ def duty_month(request):
             "nav": month_nav(year, month),
             "today": local_today(),
             "seat_total": len(shifts.DUTY_ROLE_ORDER),
+            "slot_label": SCHEDULER_KINDS["duty"]["slot_label"],
+            "slot_options": _slot_options("duty"),
             "members": None,
             "selected_member": "",
         },
     )
 
 
-@login_required
 def duty_day(request, date_str):
-    date = parse_date_or_404(date_str)
-    officers = list(DutyOfficer.objects.filter(active=True))
-
-    if request.method == "POST":
-        if not can_manage_schedules(request.user):
-            messages.error(request, PERM_DENIED_MSG)
-            return redirect("crew_hub:duty_day", date_str=date_str)
-        dates = _repeat_dates(date, request.POST.get("repeat_until", "").strip())
-        valid_work_types = VALID_WORK_TYPES
-        with transaction.atomic():
-            for target in dates:
-                for role in shifts.DUTY_ROLE_ORDER:
-                    DutyAssignment.objects.filter(date=target, role=role).delete()
-                    officer_raw = request.POST.get(f"officer_{role}", "").strip()
-                    second_raw = request.POST.get(f"second_{role}", "").strip()
-                    work_type = request.POST.get(f"wt_{role}", "").strip()
-                    if work_type not in valid_work_types:
-                        work_type = DutyAssignment.WORK_REGULAR
-                    if officer_raw.isdigit():
-                        officer = next(
-                            (o for o in officers if o.pk == int(officer_raw)), None
-                        )
-                        if officer:
-                            DutyAssignment.objects.create(
-                                date=target,
-                                role=role,
-                                officer=officer,
-                                work_type=work_type,
-                            )
-                    if second_raw:
-                        DutyAssignment.objects.create(
-                            date=target,
-                            role=role,
-                            display_name=second_raw,
-                            work_type=work_type,
-                        )
-        messages.success(
-            request,
-            f"Duty rotation saved for {len(dates)} day(s) starting {date}.",
-        )
-        return redirect(f"/hub/duty/?month={date.year:04d}-{date.month:02d}")
-
-    existing: dict[str, list[DutyAssignment]] = {}
-    for a in DutyAssignment.objects.filter(date=date).select_related("officer"):
-        existing.setdefault(a.role, []).append(a)
-
-    rows = []
-    for code, label in shifts.DUTY_ROLE_CHOICES:
-        items = existing.get(code, [])
-        primary = next((a for a in items if a.officer_id), None)
-        second = next((a for a in items if not a.officer_id and a.display_name), None)
-        primary_id = primary.officer_id if primary else None
-        # Picker: people assigned this role, people with no role yet, and
-        # whoever currently holds the seat (even after a role change).
-        options = [
-            o for o in officers if o.role == code or not o.role or o.pk == primary_id
-        ]
-        rows.append(
-            {
-                "role": code,
-                "label": label,
-                "primary_id": primary_id,
-                "options": options,
-                "second_name": second.display_name if second else "",
-                "work_type": (primary or second).work_type
-                if (primary or second)
-                else DutyAssignment.WORK_REGULAR,
-            }
-        )
-
-    return render(
-        request,
-        "crew_hub/duty_day.html",
-        {
-            "date": date,
-            "rows": rows,
-            "work_type_choices": WORK_TYPE_CHOICES,
-            "prev_day": date - dt.timedelta(days=1),
-            "next_day": date + dt.timedelta(days=1),
-        },
-    )
+    return _day_editor(request, "duty", date_str)
 
 
 @login_required

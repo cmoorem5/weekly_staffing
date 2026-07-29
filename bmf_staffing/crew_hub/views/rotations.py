@@ -1,9 +1,10 @@
 """Rotation management and calendar interaction APIs (comm + duty).
 
 CrewSense-style behavior shared by both schedulers: rotations are
-repeating patterns that materialize into assignments, right-click sets
-the work type (sick / swap / overtime), and drag-and-drop moves or swaps
-assignments on the month calendar.
+repeating patterns that materialize into assignments, clicking a chip
+sets its slot or work type (sick / swap / overtime), and drag-and-drop
+moves an assignment to another day. Slots are shared rather than
+exclusive, so moving someone never displaces whoever is already there.
 """
 
 from __future__ import annotations
@@ -204,46 +205,8 @@ def _add_rotation(request, cfg) -> None:
         messages.warning(
             request,
             f"Heads up: {person.name} is rostered as "
-            f"{shifts.DUTY_ROLE_LABELS.get(person_role, person_role)} but this "
-            f"rotation covers {shifts.DUTY_ROLE_LABELS.get(slot, slot)}.",
-        )
-    if cfg["slot_field"] == "seat":
-        _warn_seat_conflicts(request, model, rotation, cfg)
-
-
-# How far ahead to scan for overlapping same-seat rotations (about 2 months
-# — long enough to catch nearly any cycle/weekly overlap without walking
-# an unbounded date range).
-SEAT_CONFLICT_LOOKAHEAD_DAYS = 60
-
-
-def _warn_seat_conflicts(request, model, rotation, cfg) -> None:
-    """Warn if another active rotation already claims this seat on the same
-    days — only one person can hold a seat per day, so whichever rotation
-    is applied second gets silently skipped."""
-    others = model.objects.filter(seat=rotation.seat, active=True).exclude(
-        pk=rotation.pk
-    )
-    if not others:
-        return
-    window_start = rotation.anchor_date
-    conflicting = set()
-    for other in others:
-        for offset in range(SEAT_CONFLICT_LOOKAHEAD_DAYS):
-            day = window_start + dt.timedelta(days=offset)
-            if rotation.works_on(day) and other.works_on(day):
-                conflicting.add(getattr(other, cfg["person_field"]).name)
-                break
-    if conflicting:
-        messages.warning(
-            request,
-            f"Heads up: {', '.join(sorted(conflicting))} also "
-            f"{'has' if len(conflicting) == 1 else 'have'} an active rotation "
-            f"in the {rotation.get_seat_display()} seat that overlaps with "
-            f"this one. Only one person can hold a seat per day, so whichever "
-            "rotation you apply first wins and the other gets skipped as "
-            "“already assigned.” Give each person a different seat, "
-            "or pause/delete the one that shouldn't apply.",
+            f"{shifts.duty_role_label(person_role)} but this rotation covers "
+            f"{shifts.duty_role_label(slot)}.",
         )
 
 
@@ -299,7 +262,14 @@ def duty_rotations_apply(request):
     return _rotation_apply(request, "duty")
 
 
-# --- Calendar chip APIs (work type / move / remove) --------------------
+# --- Calendar chip APIs (work type / move / re-slot / remove) ----------
+
+# Roster FK on each assignment model, used to keep one person from being
+# scheduled twice on the same day.
+_PERSON_FIELD = {
+    CommShiftAssignment: "member",
+    DutyAssignment: "officer",
+}
 
 
 def _get_or_404_json(model, pk, request=None):
@@ -354,7 +324,11 @@ def _remove(request, model, pk):
 
 
 def _move(request, model, pk, slot_field: str):
-    """Move an assignment to another day (same seat/role); swap if occupied."""
+    """Move an assignment to another day, keeping its seat/role.
+
+    Slots are shared, so the person simply joins whoever is already on the
+    target day — there is no occupant to displace.
+    """
     assignment, error = _get_or_404_json(model, pk, request)
     if error:
         return error
@@ -367,47 +341,23 @@ def _move(request, model, pk, slot_field: str):
     if target == assignment.date:
         return JsonResponse({"ok": True, "result": "unchanged"})
 
-    slot_value = getattr(assignment, slot_field)
+    person_id = getattr(assignment, f"{_PERSON_FIELD[model]}_id")
     with transaction.atomic():
-        occupants = list(
-            model.objects.select_for_update()
-            .filter(date=target, **{slot_field: slot_value})
+        if person_id is not None and (
+            model.objects.filter(
+                date=target, **{f"{_PERSON_FIELD[model]}_id": person_id}
+            )
             .exclude(pk=assignment.pk)
-        )
-        if len(occupants) > 1:
+            .exists()
+        ):
             return JsonResponse(
                 {
                     "ok": False,
-                    "error": "That day has multiple people in this slot — "
-                    "edit it from the day editor instead.",
+                    "error": f"{assignment.name} is already scheduled on {target}.",
                 },
                 status=409,
             )
         source_date = assignment.date
-        if occupants:
-            occupant = occupants[0]
-            # Park the occupant on a sentinel date to dodge unique
-            # constraints, then exchange the two days.
-            occupant.date = dt.date(1900, 1, 1)
-            occupant.save(update_fields=["date"])
-            assignment.date = target
-            assignment.save(update_fields=["date"])
-            occupant.date = source_date
-            occupant.save(update_fields=["date"])
-            actor = request.user.get_username()
-            _notify_owner(
-                request,
-                assignment,
-                f"Your shift moved from {source_date} to {target} "
-                f"(swap made by {actor}).",
-            )
-            _notify_owner(
-                request,
-                occupant,
-                f"Your shift moved from {target} to {source_date} "
-                f"(swap made by {actor}).",
-            )
-            return JsonResponse({"ok": True, "result": "swapped"})
         assignment.date = target
         assignment.save(update_fields=["date"])
         _notify_owner(
@@ -455,65 +405,73 @@ def api_duty_move(request, pk):
     return _move(request, DutyAssignment, pk, "role")
 
 
-# Placeholder seat value while dodging the (date, seat) unique constraint
-# during a same-day seat swap. Never persisted outside one transaction.
-_RESEAT_SENTINEL = "_TMP_"
+def _reslot(request, model, pk, slot_field: str):
+    """Change an assignment's seat/role for the same day.
 
-
-@login_required
-@require_POST
-def api_comm_reseat(request, pk):
-    """Change a Comm Center assignment's seat for the same day (swap if taken)."""
-    assignment, error = _get_or_404_json(CommShiftAssignment, pk, request)
+    Slots are shared, so this is a plain reassignment — nobody has to be
+    displaced to make room. The blank slot ("unassigned") is accepted so a
+    seat can be handed back without deleting the person from the day.
+    """
+    assignment, error = _get_or_404_json(model, pk, request)
     if error:
         return error
     try:
         payload = json.loads(request.body or "{}")
     except json.JSONDecodeError:
         payload = {}
-    new_seat = payload.get("seat", "")
-    if new_seat not in shifts.COMM_SEAT_INDEX:
-        return JsonResponse({"ok": False, "error": "Unknown seat."}, status=400)
-    old_seat = assignment.seat
-    if new_seat == old_seat:
+    new_slot = payload.get("slot", payload.get("seat", payload.get("role", "")))
+    valid = shifts.COMM_SEAT_INDEX if slot_field == "seat" else shifts.DUTY_ROLE_LABELS
+    if new_slot and new_slot not in valid:
+        return JsonResponse(
+            {"ok": False, "error": f"Unknown {slot_field}."}, status=400
+        )
+    old_slot = getattr(assignment, slot_field)
+    if new_slot == old_slot:
         return JsonResponse({"ok": True, "result": "unchanged"})
 
-    date = assignment.date
-    old_label = shifts.COMM_SEAT_INDEX[old_seat].label
-    new_label = shifts.COMM_SEAT_INDEX[new_seat].label
-    actor = request.user.get_username()
-    with transaction.atomic():
-        occupant = (
-            CommShiftAssignment.objects.select_for_update()
-            .filter(date=date, seat=new_seat)
-            .exclude(pk=assignment.pk)
-            .first()
+    # Legacy rows can have the same person on a day twice; don't let a
+    # re-slot collide them into one slot (DutyAssignment forbids it).
+    person_id_field = f"{_PERSON_FIELD[model]}_id"
+    person_id = getattr(assignment, person_id_field)
+    if (
+        person_id is not None
+        and model.objects.filter(
+            date=assignment.date,
+            **{person_id_field: person_id, slot_field: new_slot},
         )
-        if occupant:
-            occupant.seat = _RESEAT_SENTINEL
-            occupant.save(update_fields=["seat"])
-            assignment.seat = new_seat
-            assignment.save(update_fields=["seat"])
-            occupant.seat = old_seat
-            occupant.save(update_fields=["seat"])
-            _notify_owner(
-                request,
-                assignment,
-                f"Your {date} shift moved from {old_label} to {new_label} "
-                f"(swap made by {actor}).",
-            )
-            _notify_owner(
-                request,
-                occupant,
-                f"Your {date} shift moved from {new_label} to {old_label} "
-                f"(swap made by {actor}).",
-            )
-            return JsonResponse({"ok": True, "result": "swapped"})
-        assignment.seat = new_seat
-        assignment.save(update_fields=["seat"])
-        _notify_owner(
-            request,
-            assignment,
-            f"Your {date} shift moved from {old_label} to {new_label} by {actor}.",
+        .exclude(pk=assignment.pk)
+        .exists()
+    ):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": f"{assignment.name} is already in that slot on "
+                f"{assignment.date}.",
+            },
+            status=409,
         )
+
+    label = shifts.comm_seat_label if slot_field == "seat" else shifts.duty_role_label
+    setattr(assignment, slot_field, new_slot)
+    assignment.save(update_fields=[slot_field])
+    _notify_owner(
+        request,
+        assignment,
+        f"Your {assignment.date} shift moved from {label(old_slot)} to "
+        f"{label(new_slot)} by {request.user.get_username()}.",
+    )
     return JsonResponse({"ok": True, "result": "moved"})
+
+
+@login_required
+@require_POST
+def api_comm_reseat(request, pk):
+    """Change a Comm Center assignment's seat for the same day."""
+    return _reslot(request, CommShiftAssignment, pk, "seat")
+
+
+@login_required
+@require_POST
+def api_duty_rerole(request, pk):
+    """Change a duty assignment's role for the same day."""
+    return _reslot(request, DutyAssignment, pk, "role")

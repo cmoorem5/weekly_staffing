@@ -1,0 +1,130 @@
+{% extends "crew_hub/base.html" %}
+
+{% block page_title %}{{ title }} — {{ date|date:"l, F j, Y" }}{% endblock %}
+{% block page_subtitle %}Add everyone working this day, then set each person's {{ slot_label|lower }}, hours, and work type on their row. Several people can share the same {{ slot_label|lower }}.{% endblock %}
+
+{% block hub_content %}
+<style>
+  .ch-day-people { display: flex; flex-wrap: wrap; gap: 6px; max-height: 190px; overflow-y: auto; padding: 2px; }
+  .ch-day-people label { display: flex; align-items: center; gap: 5px; font-size: 12px; border: 1px solid #CBC7D1; border-radius: 999px; padding: 4px 11px; cursor: pointer; background: #fff; }
+  .ch-day-people label:hover { background: #E8EEF8; border-color: #2A4492; }
+  .ch-day-people input:checked + span { font-weight: bold; color: #2A4492; }
+  .ch-day-rows { width: 100%; border-collapse: collapse; }
+  .ch-day-rows th { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #5a6a7a; text-align: left; padding: 4px 8px 6px 0; font-weight: bold; }
+  .ch-day-rows td { padding: 5px 8px 5px 0; border-top: 1px solid #F0EFF4; vertical-align: middle; }
+  .ch-day-rows tr.unassigned td { background: #fdf3e7; }
+  .ch-row-name { font-size: 12px; font-weight: bold; color: #052C47; }
+  .ch-pill { font-size: 9px; text-transform: uppercase; letter-spacing: .4px; border-radius: 999px; padding: 1px 6px; margin-left: 5px; background: #F0EFF4; color: #5a6a7a; border: 1px solid #CBC7D1; }
+  .ch-pill.warn { background: #fdf3e7; color: #b35e00; border-color: #E8761A; }
+</style>
+
+<div class="ch-cal-nav no-print" style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+  <a class="ch-btn ch-btn-outline" href="{% url day_url date_str=prev_day|date:'Y-m-d' %}">← {{ prev_day|date:"D n/j" }}</a>
+  <a class="ch-btn ch-btn-outline" href="{% url month_url %}?month={{ date|date:'Y-m' }}">Month view</a>
+  <a class="ch-btn ch-btn-outline" href="{% url day_url date_str=next_day|date:'Y-m-d' %}">{{ next_day|date:"D n/j" }} →</a>
+  <span style="flex:1;"></span>
+  <a class="ch-btn ch-btn-outline" href="{% url roster_url %}">Roster</a>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+
+  <div class="ch-card" style="margin-bottom:14px;">
+    <div class="ch-card-header blue">Add people to {{ date|date:"D, M j" }}</div>
+    <div class="ch-card-body">
+      {% if available %}
+        <input class="ch-input" type="search" id="person_filter" placeholder="Filter {{ person_label|lower }}…" style="margin-bottom:10px;" autocomplete="off">
+        <div class="ch-day-people" id="person_list">
+          {% for person in available %}
+            <label data-name="{{ person.name|lower }}">
+              <input type="checkbox" name="add_person" value="{{ person.pk }}">
+              <span>{{ person.name }}{% if person.role %} · {{ person.role_label }}{% endif %}</span>
+            </label>
+          {% endfor %}
+        </div>
+      {% else %}
+        <span class="ch-note">Everyone active on the roster is already on this day. <a href="{% url roster_url %}">Manage the roster →</a></span>
+      {% endif %}
+      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input class="ch-input" style="width:230px;" type="text" name="add_name" placeholder="…or type a name (non-roster)">
+        <button type="submit" name="action" value="add" class="ch-btn ch-btn-secondary">+ Add to this day</button>
+        <span class="ch-note">Added people start with no {{ slot_label|lower }} — pick it below.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ch-card">
+    <div class="ch-card-header">
+      Working {{ date|date:"D, M j" }}
+      <span style="float:right; font-weight:normal; font-size:11px;">{{ rows|length }} scheduled{% if unassigned_count %} · {{ unassigned_count }} without a {{ slot_label|lower }}{% endif %}</span>
+    </div>
+    <div class="ch-card-body">
+      {% if rows %}
+        <table class="ch-day-rows">
+          <tr>
+            <th style="width:24%;">Person</th>
+            <th style="width:22%;">{{ slot_label }}</th>
+            <th style="width:14%;">Work type</th>
+            <th style="width:11%;">Hours</th>
+            <th>Note</th>
+            <th style="width:70px; text-align:center;">Remove</th>
+          </tr>
+          {% for row in rows %}
+          <tr class="{% if row.unassigned %}unassigned{% endif %}">
+            <td>
+              <span class="ch-row-name">{{ row.name }}</span>
+              {% if not row.roster_linked %}<span class="ch-pill">typed in</span>{% endif %}
+              {% if row.unassigned %}<span class="ch-pill warn">needs a {{ slot_label|lower }}</span>{% endif %}
+            </td>
+            <td>
+              <select class="ch-select" name="slot_{{ row.pk }}">
+                {% for code, label in slot_options %}
+                  <option value="{{ code }}" {% if row.slot == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select class="ch-select" name="wt_{{ row.pk }}">
+                {% for code, label in work_type_choices %}
+                  <option value="{{ code }}" {% if row.work_type == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <input class="ch-input" type="number" name="hours_{{ row.pk }}" value="{{ row.hours|default_if_none:'' }}"
+                     step="0.25" min="0" max="24" placeholder="{{ row.default_hours|floatformat:"-2" }}"
+                     title="Blank uses the standard {{ row.default_hours|floatformat:"-2" }} h for this {{ slot_label|lower }}">
+            </td>
+            <td><input class="ch-input" type="text" name="note_{{ row.pk }}" value="{{ row.note }}"></td>
+            <td style="text-align:center;"><input type="checkbox" name="remove_{{ row.pk }}" title="Remove {{ row.name }} from this day"></td>
+          </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <span class="ch-note">Nobody is scheduled yet. Add people above.</span>
+      {% endif %}
+
+      <div style="margin-top:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <button type="submit" name="action" value="save" class="ch-btn ch-btn-primary">Save day</button>
+        <span class="ch-note">Repeat through
+          <input class="ch-input" style="width:140px; display:inline-block;" type="date" name="repeat_until" min="{{ date|date:'Y-m-d' }}">
+          (optional — replaces every day up to that date with a copy of this one)</span>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+(function () {
+  var filter = document.getElementById('person_filter');
+  if (!filter) return;
+  filter.addEventListener('input', function () {
+    var needle = this.value.trim().toLowerCase();
+    document.querySelectorAll('#person_list label').forEach(function (label) {
+      var hit = !needle || label.dataset.name.indexOf(needle) !== -1;
+      label.style.display = hit ? '' : 'none';
+    });
+  });
+})();
+</script>
+{% endblock %}

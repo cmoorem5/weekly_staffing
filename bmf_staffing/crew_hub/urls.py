@@ -9,6 +9,7 @@ from .views import (
     api_comm_work_type,
     api_duty_move,
     api_duty_remove,
+    api_duty_rerole,
     api_duty_work_type,
     calendar_feed,
     calendar_feed_reset,
@@ -81,6 +82,11 @@ urlpatterns = [
         name="api_duty_work_type",
     ),
     path("duty/api/assignment/<int:pk>/move/", api_duty_move, name="api_duty_move"),
+    path(
+        "duty/api/assignment/<int:pk>/reseat/",
+        api_duty_rerole,
+        name="api_duty_rerole",
+    ),
     path(
         "duty/api/assignment/<int:pk>/remove/",
         api_duty_remove,

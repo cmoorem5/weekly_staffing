@@ -35,7 +35,7 @@ class DutyOfficerAdmin(admin.ModelAdmin):
 
 @admin.register(DutyAssignment)
 class DutyAssignmentAdmin(admin.ModelAdmin):
-    list_display = ("date", "role", "name", "work_type", "note")
+    list_display = ("date", "role", "name", "work_type", "hours", "note")
     list_filter = ("role", "work_type")
     date_hierarchy = "date"
 
@@ -75,7 +75,7 @@ class NotificationAdmin(admin.ModelAdmin):
 
 @admin.register(CommShiftAssignment)
 class CommShiftAssignmentAdmin(admin.ModelAdmin):
-    list_display = ("date", "seat", "name", "work_type", "note")
+    list_display = ("date", "seat", "name", "work_type", "hours", "note")
     list_filter = ("seat", "work_type")
     date_hierarchy = "date"
 

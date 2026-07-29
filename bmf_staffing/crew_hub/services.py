@@ -36,18 +36,24 @@ def _duty_names_for(date: dt.date) -> dict[str, str]:
     for assignment in DutyAssignment.objects.filter(date=date).select_related(
         "officer"
     ):
-        if assignment.name:
+        # Officers with no role picked yet have no row on the report.
+        if assignment.name and assignment.role:
             names.setdefault(assignment.role, []).append(assignment.name_with_tag)
     return {role: " / ".join(people) for role, people in names.items()}
 
 
 def _comm_names_for(date: dt.date) -> dict[str, str]:
-    """Seat -> name (with Sick/Swap/OT tag) from the Comm Center scheduler."""
-    return {
-        a.seat: a.name_with_tag
-        for a in CommShiftAssignment.objects.filter(date=date).select_related("member")
-        if a.name
-    }
+    """Seat -> joined names (with Sick/Swap/OT tags) from the Comm scheduler.
+
+    A seat can hold several people (preceptor plus orientee, a split
+    shift), so names are joined the same way duty roles are. People with
+    no seat picked yet have nowhere to land on the report and are skipped.
+    """
+    names: dict[str, list[str]] = {}
+    for a in CommShiftAssignment.objects.filter(date=date).select_related("member"):
+        if a.name and a.seat:
+            names.setdefault(a.seat, []).append(a.name_with_tag)
+    return {seat: " / ".join(people) for seat, people in names.items()}
 
 
 def _apply_rotations(
@@ -60,17 +66,20 @@ def _apply_rotations(
 ) -> tuple[int, int]:
     """Materialize active rotations into assignments for one scheduler.
 
-    Returns (created, skipped). Existing assignments always win — a
-    rotation never overwrites a manual entry or another rotation's row,
-    so re-applying after edits is safe (CrewSense-style behavior).
+    Returns (created, skipped). A person already scheduled on a day is
+    skipped — whatever slot they are in, and whoever put them there, so
+    manual edits survive and re-applying is a no-op. Slots are not
+    exclusive, so two people whose rotations land on the same seat both
+    get scheduled instead of one silently losing the day.
     """
     rotations = list(
         rotation_model.objects.filter(active=True).select_related(person_field)
     )
-    existing = {
-        (a.date, getattr(a, slot_field))
+    person_id_field = f"{person_field}_id"
+    scheduled = {
+        (a.date, getattr(a, person_id_field))
         for a in assignment_model.objects.filter(date__gte=first, date__lte=last).only(
-            "date", slot_field
+            "date", person_id_field
         )
     }
     created = 0
@@ -81,19 +90,19 @@ def _apply_rotations(
         for rotation in rotations:
             if not rotation.works_on(day):
                 continue
-            slot = getattr(rotation, slot_field)
-            key = (day, slot)
-            if key in existing:
+            person = getattr(rotation, person_field)
+            key = (day, person.pk)
+            if key in scheduled:
                 skipped += 1
                 continue
-            existing.add(key)
+            scheduled.add(key)
             to_create.append(
                 assignment_model(
                     date=day,
                     note=rotation.note,
                     **{
-                        slot_field: slot,
-                        person_field: getattr(rotation, person_field),
+                        slot_field: getattr(rotation, slot_field),
+                        person_field: person,
                     },
                 )
             )
