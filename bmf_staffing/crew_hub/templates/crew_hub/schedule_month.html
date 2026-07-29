@@ -2,7 +2,7 @@
 {% load crew_hub_extras %}
 
 {% block page_title %}{{ title }}{% endblock %}
-{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a chip to change its seat or work type for that day; drag a chip to move or swap it to another day; click a day number to open the full day editor{% endblock %}
+{% block page_subtitle %}{{ nav.current|date:"F Y" }} — click a chip to change its {{ slot_label|lower }} or work type for that day; drag a chip onto another day to move it; click a day number to open the day editor and add people{% endblock %}
 
 {% block hub_content %}
 <style>
@@ -26,6 +26,8 @@
   .ch-chip.wt-overtime { background: #fdf3e7; border-color: #E8761A; color: #8a4a05; }
   .ch-chip.wt-leave { background: #f2ecf9; border-color: #6b3fa0; color: #4b2b70; }
   .ch-chip.mine { outline: 2px solid #2A4492; outline-offset: -2px; }
+  .ch-chip.unassigned { border-style: dashed; border-color: #E8761A; }
+  .ch-chip.unassigned .seat { color: #b35e00; font-style: italic; }
   .ch-chip.dragging { opacity: .4; }
   .ch-cal-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
   .ch-legend { display: flex; gap: 10px; align-items: center; font-size: 10px; color: #5a6a7a; margin: 8px 0 0; flex-wrap: wrap; }
@@ -81,9 +83,9 @@
               <span class="ch-fill {% if info and info.filled >= seat_total %}full{% elif info and info.filled > 0 %}partial{% else %}none{% endif %}">{{ info.filled|default:0 }}/{{ seat_total }}</span>
               {% if info.chips %}
                 {% for chip in info.chips %}
-                  <div class="ch-chip wt-{{ chip.work_type }} {% if chip.mine %}mine{% endif %}"
+                  <div class="ch-chip wt-{{ chip.work_type }} {% if chip.mine %}mine{% endif %} {% if chip.unassigned %}unassigned{% endif %}"
                        draggable="true" data-pk="{{ chip.pk }}" data-name="{{ chip.name }}" data-seat="{{ chip.seat }}"
-                       title="{{ chip.seat }}: {{ chip.name }} — click to change seat/work type, drag to move to another day">
+                       title="{{ chip.seat }}: {{ chip.name }} — click to change {{ slot_label|lower }}/work type, drag to move to another day">
                     <span class="seat">{{ chip.seat }}</span>{{ chip.name }}
                   </div>
                 {% endfor %}
@@ -106,17 +108,15 @@
   <span><span class="swatch" style="background:#E8EEF8; border-color:#2A4492;"></span>Swap</span>
   <span><span class="swatch" style="background:#fdf3e7; border-color:#E8761A;"></span>Overtime</span>
   <span><span class="swatch" style="background:#f2ecf9; border-color:#6b3fa0;"></span>Leave (LT)</span>
-  <span style="margin-left:auto;">Click a chip to change its seat or work type. Drag a chip onto another day to move it — dropping on an occupied seat swaps the two days.</span>
+  <span style="margin-left:auto;">Click a chip to change its {{ slot_label|lower }} or work type. Drag a chip onto another day to move it — people can share a {{ slot_label|lower }}, so nothing gets displaced.</span>
 </div>
 
 <div id="ctx_menu">
   <div class="hdr" id="ctx_title">&nbsp;</div>
-  {% if kind == "comm" %}
-    <div class="hdr">Move to seat (same day)</div>
-    {% for code, label in seat_options %}
-      <button type="button" data-seat="{{ code }}">{{ label }}</button>
-    {% endfor %}
-  {% endif %}
+  <div class="hdr">Move to {{ slot_label|lower }} (same day)</div>
+  {% for code, label in slot_options %}
+    <button type="button" data-slot-btn="1" data-slot="{{ code }}">{{ label }}</button>
+  {% endfor %}
   <div class="hdr">Work type</div>
   <button type="button" data-wt="regular">Regular</button>
   <button type="button" data-wt="sick">Sick leave</button>
@@ -165,8 +165,9 @@
       var req;
       if (btn.dataset.remove) {
         req = post(API + menuPk + '/remove/');
-      } else if (btn.dataset.seat) {
-        req = post(API + menuPk + '/reseat/', { seat: btn.dataset.seat });
+      } else if (btn.dataset.slotBtn) {
+        // data-slot is "" for the Unassigned option, so key off the marker.
+        req = post(API + menuPk + '/reseat/', { slot: btn.dataset.slot });
       } else {
         req = post(API + menuPk + '/work-type/',
                    { work_type: btn.dataset.wt });

@@ -42,34 +42,6 @@ from .dashboard_filters import (
 from .helpers import DB_PATH, FY_AND_PAY_PERIOD_POLICY_NOTE, _ensure_db
 
 
-def _parse_multi_param(request, key: str) -> list[str]:
-    """
-    Read a multi-select query param.
-    Supports repeated params (?k=a&k=b) and comma-separated (?k=a,b).
-    """
-    vals = []
-    if hasattr(request.GET, "getlist"):
-        vals.extend([v for v in request.GET.getlist(key) if v is not None])
-    raw = (request.GET.get(key) or "").strip()
-    if raw:
-        vals.extend(raw.split(","))
-    out: list[str] = []
-    for v in vals:
-        s = str(v).strip()
-        if not s:
-            continue
-        out.append(s)
-    # de-dupe preserving order
-    seen = set()
-    deduped: list[str] = []
-    for v in out:
-        if v in seen:
-            continue
-        seen.add(v)
-        deduped.append(v)
-    return deduped
-
-
 def _exception_type_key_map() -> dict[str, list[str]]:
     """
     UI exception types -> WeeklyLeaveDetail.leave_type keys.
@@ -79,38 +51,6 @@ def _exception_type_key_map() -> dict[str, list[str]]:
     base = {k: list(v) for k, v in EXCEPTION_COL_BREAKDOWN_KEYS.items()}
     base["ALL"] = sorted({t for keys in base.values() for t in keys})
     return base
-
-
-def _normalize_exception_types(selected: list[str]) -> list[str]:
-    mapping = _exception_type_key_map()
-    normalized: list[str] = []
-    for s in selected:
-        key = s.strip().upper()
-        if key == "SL":
-            key = "SICK"
-        if key == "SICK/SL":
-            key = "SICK"
-        if key in mapping:
-            normalized.append(key)
-    # de-dupe
-    seen = set()
-    out: list[str] = []
-    for v in normalized:
-        if v in seen:
-            continue
-        seen.add(v)
-        out.append(v)
-    return out
-
-
-def _exc_types_label(exc_types: list[str]) -> str:
-    if not exc_types:
-        return ""
-    if "ALL" in exc_types:
-        return "All exceptions"
-    if len(exc_types) == 1:
-        return exc_types[0]
-    return ", ".join(exc_types)
 
 
 # Exception chart/table series order (matches leave grid columns + Other for unmapped).

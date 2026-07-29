@@ -21,19 +21,17 @@ import importlib
 from django.test import Client
 from django.urls import reverse
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
 from staffing_tool.models import BaseConfig, WeeklyOpsViewDay, WeeklyStaffing
+from tests._temp_db import TempDbTestCase
 
 # The function re-exported by dashboard.views shadows the submodule name.
 heatmap_mod = importlib.import_module("dashboard.views.coverage_heatmap")
 
 
-class CoverageHeatmapTests(unittest.TestCase):
+class CoverageHeatmapTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "heatmap.db")
@@ -67,16 +65,6 @@ class CoverageHeatmapTests(unittest.TestCase):
                 )
             )
             session.commit()
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def _get(self, params=""):
         with patch.object(heatmap_mod, "DB_PATH", self.db_path):

@@ -16,6 +16,7 @@ from staffing_tool.manager_names import backfill_canonical_manager_shift_names
 from staffing_tool.manager_roster import default_manager_last_names_upper
 from staffing_tool.models import WeeklyManagerShift, WeeklyStaffing
 from staffing_tool.schedule_import import ShiftRecord, weekly_manager_shift_mappings
+from tests._temp_db import dispose_temp_db
 
 
 def _manager_shift_record(
@@ -136,13 +137,7 @@ class WeeklyManagerShiftMappingsTests(unittest.TestCase):
 
 class BackfillManagerNamesTests(unittest.TestCase):
     def _dispose_test_db(self, db_path: str) -> None:
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(db_path)
-        get_engine(db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
+        dispose_temp_db(db_path)
 
     def test_backfill_only_touches_comma_labels(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -204,13 +199,7 @@ class BackfillManagerNamesTests(unittest.TestCase):
 
 class ManagerAocAggregationTests(unittest.TestCase):
     def _dispose_test_db(self, db_path: str) -> None:
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(db_path)
-        get_engine(db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
+        dispose_temp_db(db_path)
 
     def test_aoc_count_per_manager_for_week(self):
         with tempfile.TemporaryDirectory() as tmp:

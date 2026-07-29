@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle
 
@@ -87,12 +86,11 @@ class WeeklyReportContext:
 
 
 def _pct(v: float) -> str:
-    return f"{100 * v:.1f}%"
+    return style.pct(v)
 
 
 def _short_label(iso: str) -> str:
-    d = datetime.strptime(iso, "%Y-%m-%d").date()
-    return d.strftime("%b ") + str(d.day)
+    return style.short_label(iso)
 
 
 def _exc_count(
@@ -418,17 +416,11 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
 
 
 def _leave_rows(ctx: WeeklyReportContext):
-    total = sum(c for _, c in ctx.leave_breakdown)
-    rows = []
-    for code, count in ctx.leave_breakdown:
-        pct = f"{100 * count / total:.1f}%" if total else EM
-        rows.append((code, count, pct))
-    return rows, total
+    return style.leave_rows(ctx.leave_breakdown)
 
 
 def _leave_top2(ctx: WeeklyReportContext) -> set[str]:
-    ranked = sorted(ctx.leave_breakdown, key=lambda r: r[1], reverse=True)
-    return {code for code, count in ranked[:2] if count > 0}
+    return style.leave_top2(ctx.leave_breakdown)
 
 
 def _daily_table(ctx: WeeklyReportContext):
@@ -477,85 +469,11 @@ def _daily_table(ctx: WeeklyReportContext):
 
 
 def _base_coverage_table(ctx: WeeklyReportContext):
-    headers = ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"]
-    col_w = style.full_width_col_widths([1.5, 1.25, 1.25, 1.25, 2.25])
-    rows = [headers] + [list(r) for r in ctx.base_coverage]
-    t = Table(rows, colWidths=col_w)
-    t.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
-                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
-                ("FONTSIZE", (0, 0), (-1, 0), 8),
-                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
-                ("FONTSIZE", (0, 1), (-1, -1), 8),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
-                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-            ]
-            + style.num_style_cells([1, 2, 3, 4])
-        )
-    )
-    return t
+    return style.base_coverage_table(ctx.base_coverage, [1.5, 1.25, 1.25, 1.25, 2.25])
 
 
 def _exception_table(ctx: WeeklyReportContext):
-    headers = ["Exception Type", "Count", "% of Total"]
-    col_w = style.full_width_col_widths([4.0, 1.5, 2.0])
-    leave_rows, total = _leave_rows(ctx)
-    rows = [headers] + [[code, str(count), pct] for code, count, pct in leave_rows]
-    rows.append(["Total", str(total), "100%" if total else EM])
-    total_row = len(rows) - 1
-    top2 = _leave_top2(ctx)
-    red_rules = []
-    for i, (code, _count, _pct) in enumerate(leave_rows, start=1):
-        if code in top2:
-            red_rules += [
-                ("TEXTCOLOR", (1, i), (2, i), style.RED),
-                ("FONTNAME", (1, i), (2, i), style.F("IBMPlexMonoBold")),
-            ]
-    t = Table(rows, colWidths=col_w)
-    t.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), style.NAVY),
-                ("TEXTCOLOR", (0, 0), (-1, 0), style.WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), style.F("BarlowBold")),
-                ("FONTSIZE", (0, 0), (-1, 0), 8),
-                ("FONTNAME", (0, 1), (-1, -1), style.F("BarlowRegular")),
-                ("FONTSIZE", (0, 1), (-1, -1), 8),
-                (
-                    "ROWBACKGROUNDS",
-                    (0, 1),
-                    (-1, total_row - 1),
-                    [style.WHITE, style.LGRAY],
-                ),
-                ("GRID", (0, 0), (-1, -1), 0.5, style.MGRAY),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (1, 0), (2, -1), "CENTER"),
-                ("BACKGROUND", (0, total_row), (-1, total_row), style.MGRAY),
-                (
-                    "FONTNAME",
-                    (0, total_row),
-                    (-1, total_row),
-                    style.F("IBMPlexMonoBold"),
-                ),
-            ]
-            + style.num_style_cells([1, 2])
-            + red_rules
-        )
-    )
-    return t
+    return style.exception_table(ctx.leave_breakdown)
 
 
 def _ot_by_role_table(ctx: WeeklyReportContext):
@@ -665,68 +583,9 @@ def _fig_to_png_base64(fig) -> str:
 
 
 def _build_trend_fig(ctx: WeeklyReportContext):
-    labels = [r[0] for r in ctx.trend_data]
-    staffing = [r[1] for r in ctx.trend_data]
-    ot_dep = [r[2] for r in ctx.trend_data]
-    exc_pct = [r[3] for r in ctx.trend_data]
-    x = range(len(labels))
-
-    fig, ax1 = plt.subplots(figsize=(7.5, 2.4))
-    fig.patch.set_facecolor("white")
-    ax1.set_facecolor("white")
-    ax1.bar(
-        x,
-        exc_pct,
-        color=style.C_MGRAY,
-        width=0.55,
-        alpha=0.55,
-        label="Exception % (left)",
-        zorder=1,
+    return style.trend_fig(
+        ctx.trend_data, height_in=2.4, exception_label="Exception % (left)"
     )
-    ax1.plot(
-        x,
-        staffing,
-        color=style.C_BLUE,
-        linewidth=2,
-        marker="o",
-        markersize=4,
-        label="Staffing Rate % (left)",
-        zorder=3,
-    )
-    ax1.set_ylabel("Staffing / Exception %", fontsize=7, color="#333333")
-    ax1.set_ylim(0, 110)
-    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
-
-    ax2 = ax1.twinx()
-    ax2.plot(
-        x,
-        ot_dep,
-        color=style.C_RED,
-        linewidth=1.5,
-        marker="s",
-        markersize=3,
-        linestyle="--",
-        label="OT Dependency % (right)",
-        zorder=3,
-    )
-    ax2.set_ylabel("OT Dependency %", fontsize=7, color=style.C_RED)
-    ax2.set_ylim(0, 30)
-    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
-    ax2.spines["right"].set_color(style.C_RED)
-    ax2.tick_params(axis="y", colors=style.C_RED, labelsize=7)
-
-    ax1.set_xticks(list(x))
-    ax1.set_xticklabels(labels, fontsize=7)
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["left"].set_color(style.C_MGRAY)
-    ax1.spines["bottom"].set_color(style.C_MGRAY)
-    ax1.tick_params(colors="#333333", labelsize=7)
-    ax1.yaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle="--")
-    ax1.set_axisbelow(True)
-
-    style.apply_below_chart_legend(fig, ax1, ax2)
-    fig.tight_layout(pad=0.3, rect=(0, 0.10, 1, 1))
-    return fig
 
 
 def _trend_chart(ctx: WeeklyReportContext):
@@ -734,25 +593,7 @@ def _trend_chart(ctx: WeeklyReportContext):
 
 
 def _build_exception_bar_fig(ctx: WeeklyReportContext):
-    codes = [code for code, _ in ctx.leave_breakdown]
-    counts = [count for _, count in ctx.leave_breakdown]
-    top2 = _leave_top2(ctx)
-    bar_colors = [style.C_RED if code in top2 else style.C_BLUE for code in codes]
-
-    fig, ax = style.base_figure(7.5, 1.8)
-    y = range(len(codes))
-    ax.barh(list(y), counts, color=bar_colors, height=0.5)
-    ax.set_yticks(list(y))
-    ax.set_yticklabels(codes, fontsize=7)
-    ax.set_xlabel("Shift exceptions (count)", fontsize=7, color="#333333")
-    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-    ax.xaxis.grid(True, color=style.C_MGRAY, linewidth=0.5, linestyle="--")
-    ax.set_axisbelow(True)
-    for i, v in enumerate(counts):
-        if v:
-            ax.text(v + 0.1, i, str(v), va="center", fontsize=7, color="#333333")
-    fig.tight_layout(pad=0.4)
-    return fig
+    return style.exception_bar_fig(ctx.leave_breakdown)
 
 
 def _exception_bar_chart(ctx: WeeklyReportContext):
@@ -832,35 +673,16 @@ def _html_data_table(
     headers: list[str],
     rows: list[list[str]],
     *,
-    navy: str,
-    lgray: str,
-    mgray: str,
+    navy: str = rh.NAVY,
+    lgray: str = rh.LGRAY,
+    mgray: str = rh.MGRAY,
     right_cols: set[int] | None = None,
     total_row: bool = False,
 ) -> str:
-    right_cols = right_cols or set()
-    th = "".join(
-        f'<th style="padding:6px 8px;text-align:{"right" if i in right_cols else "left"};">{h}</th>'
-        for i, h in enumerate(headers)
-    )
-    body = ""
-    for ri, row in enumerate(rows):
-        is_total = total_row and ri == len(rows) - 1
-        bg = mgray if is_total else (lgray if ri % 2 else "#ffffff")
-        fw = "font-weight:bold;" if is_total else ""
-        cells = ""
-        for ci, cell in enumerate(row):
-            align = "right" if ci in right_cols else ("left" if ci == 0 else "center")
-            cells += (
-                f'<td style="padding:6px 8px;text-align:{align};border:1px solid {mgray};{fw}">'
-                f"{cell}</td>"
-            )
-        body += f'<tr style="background:{bg};">{cells}</tr>'
-    return (
-        f'<table width="100%" cellpadding="0" cellspacing="0" '
-        f'style="font-size:12px;border-collapse:collapse;">'
-        f'<tr style="background:{navy};color:#ffffff;">{th}</tr>{body}</table>'
-    )
+    # Colors are fixed by report_html; the parameters remain for callers
+    # that still pass them explicitly.
+    del navy, lgray, mgray
+    return rh.data_table(headers, rows, right_cols=right_cols, total_row=total_row)
 
 
 def build_html(ctx: WeeklyReportContext, output_path: str) -> str:

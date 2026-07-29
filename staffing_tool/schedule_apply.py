@@ -167,17 +167,6 @@ def week_has_current_import(session: Session, week_start: str) -> bool:
     return row is not None and row.parser_version == PARSER_VERSION
 
 
-def week_has_existing_data(session: Session, week_start: str) -> bool:
-    """True when weekly_staffing or schedule_imports has this week."""
-    if (
-        session.query(WeeklyStaffing)
-        .filter(WeeklyStaffing.week_start == week_start)
-        .first()
-    ):
-        return True
-    return week_already_imported(session, week_start)
-
-
 def apply_schedule_workbook(
     session: Session,
     *,

@@ -4,16 +4,17 @@ import os
 import tempfile
 import unittest
 
-from staffing_tool.db import get_engine, init_db, session_scope
+from staffing_tool.db import init_db, session_scope
 from staffing_tool.models import WeeklyStaffing
 from staffing_tool.quarterly_pdf_report import (
     export_quarterly_staffing_pdf,
     list_fiscal_quarters,
     load_quarter_report_data,
 )
+from tests._temp_db import TempDbTestCase
 
 
-class QuarterlyPdfReportTests(unittest.TestCase):
+class QuarterlyPdfReportTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp.name, "test.db")
@@ -33,10 +34,6 @@ class QuarterlyPdfReportTests(unittest.TestCase):
                 )
             )
             session.commit()
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        self.tmp.cleanup()
 
     def test_list_and_load_quarter(self):
         quarters = list_fiscal_quarters(self.db_path)

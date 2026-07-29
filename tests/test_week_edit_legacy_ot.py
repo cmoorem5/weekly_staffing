@@ -27,13 +27,11 @@ from django.test import Client
 from django.urls import reverse
 from staffing_tool.db import (
     DEFAULT_BASES,
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
 from staffing_tool.models import WeeklyStaffing
+from tests._temp_db import TempDbTestCase
 
 from dashboard import context_processors
 from dashboard.views import helpers, weeks
@@ -57,7 +55,7 @@ def _coverage_post(prefix="cov"):
     return data
 
 
-class WeekEditLegacyOtTests(unittest.TestCase):
+class WeekEditLegacyOtTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "legacy_ot.db")
@@ -70,18 +68,6 @@ class WeekEditLegacyOtTests(unittest.TestCase):
         for p in self._patchers:
             p.start()
         self.client = Client(HTTP_HOST="localhost")
-
-    def tearDown(self):
-        for p in self._patchers:
-            p.stop()
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def _add_week(self, **ot_fields):
         with session_scope(self.db_path) as session:

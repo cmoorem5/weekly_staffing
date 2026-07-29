@@ -105,22 +105,6 @@ def staff_roster_index_from_session(session: Session) -> StaffRosterMatchIndex:
     return index
 
 
-def list_active_roster_entries(
-    session: Session,
-    *,
-    role: str | None = None,
-) -> list[StaffRosterEntry]:
-    """Active roster rows, optionally filtered by role."""
-    q = session.query(StaffRosterEntry).filter(StaffRosterEntry.active == 1)
-    if role:
-        q = q.filter(StaffRosterEntry.role == role)
-    return q.order_by(
-        StaffRosterEntry.role,
-        StaffRosterEntry.last_name,
-        StaffRosterEntry.first_name,
-    ).all()
-
-
 def match_parsed_person_to_roster(
     parsed_display: str,
     role: str,

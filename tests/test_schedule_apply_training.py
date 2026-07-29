@@ -8,9 +8,10 @@ from datetime import date
 from pathlib import Path
 
 from openpyxl import Workbook
-from staffing_tool.db import get_engine, init_db, session_scope
+from staffing_tool.db import init_db, session_scope
 from staffing_tool.models import TrainingCode, WeeklyStaffing
 from staffing_tool.schedule_apply import apply_schedule_workbook
+from tests._temp_db import TempDbTestCase
 
 WEEK_START = "2024-01-07"
 
@@ -43,17 +44,13 @@ def _build_workbook(path: Path, *, extra_code: str | None = None) -> None:
     wb.save(str(path))
 
 
-class ScheduleApplyTrainingTests(unittest.TestCase):
+class ScheduleApplyTrainingTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp.name, "test.db")
         init_db(self.db_path)
         self.upload_path = Path(self.tmp.name) / "schedule.xlsx"
         _build_workbook(self.upload_path)
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        self.tmp.cleanup()
 
     def test_training_shifts_persisted_on_import(self):
         with session_scope(self.db_path) as session:

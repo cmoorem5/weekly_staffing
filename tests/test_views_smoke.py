@@ -25,11 +25,9 @@ django.setup()
 from django.test import Client
 from django.urls import reverse
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
 )
+from tests._temp_db import TempDbTestCase
 
 from dashboard import context_processors
 from dashboard.views import (
@@ -69,21 +67,11 @@ _SMOKE_URL_NAMES = [
 ]
 
 
-class DashboardSmokeTests(unittest.TestCase):
+class DashboardSmokeTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "smoke.db")
         init_db(self.db_path)
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_core_pages_render_with_empty_db(self):
         with contextlib.ExitStack() as stack:

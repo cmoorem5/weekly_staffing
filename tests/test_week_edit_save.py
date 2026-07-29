@@ -28,9 +28,6 @@ from django.test import Client
 from django.urls import reverse
 from staffing_tool.db import (
     DEFAULT_BASES,
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
@@ -40,6 +37,7 @@ from staffing_tool.models import (
     WeeklyPersonShift,
     WeeklyStaffing,
 )
+from tests._temp_db import TempDbTestCase
 
 from dashboard import context_processors
 from dashboard.views import helpers, weeks
@@ -64,7 +62,7 @@ def _coverage_post(prefix="cov", *, rw_day=0, gr_by_base=None):
     return data
 
 
-class WeekEditBlockedSaveTests(unittest.TestCase):
+class WeekEditBlockedSaveTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "week_edit.db")
@@ -91,18 +89,6 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
         for p in self._patchers:
             p.start()
         self.client = Client(HTTP_HOST="localhost")
-
-    def tearDown(self):
-        for p in self._patchers:
-            p.stop()
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def _post_edit(self, *, filled_day, filled_night, notes, training_shifts=0):
         data = {
@@ -213,7 +199,7 @@ class WeekEditBlockedSaveTests(unittest.TestCase):
         self.assertIn("CCT (1)", html)
 
 
-class ZeroCapBaseStaffingTests(unittest.TestCase):
+class ZeroCapBaseStaffingTests(TempDbTestCase):
     """Staffing a base with no configured total (e.g. Plymouth ground, an
     opportunistic/extra base not part of the formal GR totals) must not be a
     hard, no-override block -- it should behave like exceeding a configured
@@ -251,18 +237,6 @@ class ZeroCapBaseStaffingTests(unittest.TestCase):
         for p in self._patchers:
             p.start()
         self.client = Client(HTTP_HOST="localhost")
-
-    def tearDown(self):
-        for p in self._patchers:
-            p.stop()
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def _post_edit(self, *, notes):
         data = {

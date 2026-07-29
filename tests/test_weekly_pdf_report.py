@@ -4,12 +4,13 @@ import os
 import tempfile
 import unittest
 
-from staffing_tool.db import get_engine, init_db, session_scope
+from staffing_tool.db import init_db, session_scope
 from staffing_tool.models import WeeklyStaffing
 from staffing_tool.weekly_pdf_report import export_weekly_staffing_both
+from tests._temp_db import TempDbTestCase
 
 
-class WeeklyPdfReportTests(unittest.TestCase):
+class WeeklyPdfReportTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp.name, "test.db")
@@ -36,10 +37,6 @@ class WeeklyPdfReportTests(unittest.TestCase):
                 )
             )
             session.commit()
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        self.tmp.cleanup()
 
     def test_export_weekly_pdf_and_html(self):
         pdf_path, html_path = export_weekly_staffing_both(

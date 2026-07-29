@@ -79,7 +79,14 @@ VALID_WORK_TYPES = {code for code, _ in WORK_TYPE_CHOICES}
 
 class AssignmentBase(models.Model):
     """Shared shape of a scheduled day: free-text fallback name, work-type
-    coding, and note. Subclasses add the date/slot/person fields."""
+    coding, note, and an optional paid-hours override.
+
+    Subclasses add the date/slot/person fields. Assignments are
+    person-first: any number of people can be scheduled on a day, and the
+    slot (Comm seat / duty role) is an editable attribute of each row
+    rather than the key rows are created against. A blank slot means
+    "on today, seat not decided yet".
+    """
 
     WORK_REGULAR = WORK_REGULAR
     WORK_SICK = WORK_SICK
@@ -98,6 +105,12 @@ class AssignmentBase(models.Model):
     work_type = models.CharField(
         max_length=16, choices=WORK_TYPE_CHOICES, default=WORK_REGULAR
     )
+    hours = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Paid hours for this person on this day. Blank uses the "
+        "slot's standard hours.",
+    )
     note = models.CharField(max_length=256, blank=True, default="")
 
     class Meta:
@@ -111,12 +124,29 @@ class AssignmentBase(models.Model):
             return f"{self.name} ({tag})"
         return self.name
 
+    @property
+    def default_hours(self) -> float:
+        """Standard paid hours for this row's slot; subclasses override."""
+        return 0.0
+
+    @property
+    def paid_hours(self) -> float:
+        """Hours to bill: the per-person override, else the slot standard."""
+        return self.default_hours if self.hours is None else self.hours
+
 
 class DutyAssignment(AssignmentBase):
-    """One duty role seat on one date. MDOC may carry two rows (two names)."""
+    """One duty officer scheduled on one date.
+
+    Any number of officers can share a role on a day (split MDOC coverage,
+    an overlapping handover, a trainee shadowing). ``role`` may be blank
+    while nobody has decided which seat the person is covering.
+    """
 
     date = models.DateField(db_index=True)
-    role = models.CharField(max_length=16, choices=shifts.DUTY_ROLE_CHOICES)
+    role = models.CharField(
+        max_length=16, choices=shifts.DUTY_ROLE_CHOICES, blank=True, default=""
+    )
     officer = models.ForeignKey(
         DutyOfficer, null=True, blank=True, on_delete=models.CASCADE
     )
@@ -124,6 +154,9 @@ class DutyAssignment(AssignmentBase):
     class Meta:
         ordering = ["date", "role", "id"]
         constraints = [
+            # Guards against scheduling the same officer twice in the same
+            # role on a day. Distinct officers (and free-text rows, whose
+            # NULL officer never collides) may share the role freely.
             models.UniqueConstraint(
                 fields=["date", "role", "officer"],
                 name="uniq_duty_assignment_officer",
@@ -131,11 +164,15 @@ class DutyAssignment(AssignmentBase):
         ]
 
     def __str__(self) -> str:
-        return f"{self.date} {self.role}: {self.name}"
+        return f"{self.date} {self.role or 'unassigned'}: {self.name}"
 
     @property
     def name(self) -> str:
         return self.display_name or (self.officer.name if self.officer else "")
+
+    @property
+    def slot_label(self) -> str:
+        return shifts.duty_role_label(self.role)
 
 
 class CommStaffMember(models.Model):
@@ -163,26 +200,41 @@ class CommStaffMember(models.Model):
 
 
 class CommShiftAssignment(AssignmentBase):
-    """One Comm Center seat on one date."""
+    """One Comm Center specialist scheduled on one date.
+
+    A seat is not exclusive: several people can share one (an orientee
+    alongside their preceptor, a partial-shift handover, extra coverage on
+    a busy day), and ``seat`` may be blank while nobody has decided which
+    seat the person is taking.
+    """
 
     date = models.DateField(db_index=True)
-    seat = models.CharField(max_length=8, choices=shifts.COMM_SEAT_CHOICES)
+    seat = models.CharField(
+        max_length=8, choices=shifts.COMM_SEAT_CHOICES, blank=True, default=""
+    )
     member = models.ForeignKey(
         CommStaffMember, null=True, blank=True, on_delete=models.CASCADE
     )
 
     class Meta:
-        ordering = ["date", "seat"]
-        constraints = [
-            models.UniqueConstraint(fields=["date", "seat"], name="uniq_comm_seat_day"),
-        ]
+        ordering = ["date", "seat", "id"]
 
     def __str__(self) -> str:
-        return f"{self.date} {self.seat}: {self.name}"
+        return f"{self.date} {self.seat or 'unassigned'}: {self.name}"
 
     @property
     def name(self) -> str:
         return self.display_name or (self.member.name if self.member else "")
+
+    @property
+    def slot_label(self) -> str:
+        return shifts.comm_seat_label(self.seat)
+
+    @property
+    def default_hours(self) -> float:
+        """A seat's standard shift length; unassigned rows count nothing."""
+        seat = shifts.COMM_SEAT_INDEX.get(self.seat)
+        return seat.hours if seat else 0.0
 
 
 class RotationPattern(models.Model):

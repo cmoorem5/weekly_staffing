@@ -92,8 +92,9 @@ def build_hours_report(
             continue
         if needle and needle not in person.lower():
             continue
-        seat = shifts.COMM_SEAT_INDEX[assignment.seat]
-        hours = seat.hours
+        # Blank uses the seat's standard shift; an unassigned row counts
+        # nothing unless someone typed the hours in.
+        hours = assignment.paid_hours
         row_totals = totals_for(person)
         row_totals.shifts += 1
         if assignment.work_type == WORK_SICK:
@@ -106,12 +107,13 @@ def build_hours_report(
             row_totals.swap += hours
         else:
             row_totals.regular += hours
+        seat_time = shifts.comm_seat_time(assignment.seat)
         report.detail.append(
             {
                 "date": assignment.date,
                 "person": person,
-                "assignment": f"Comm {seat.label}"
-                + (f" ({seat.time})" if seat.time else ""),
+                "assignment": f"Comm {shifts.comm_seat_label(assignment.seat)}"
+                + (f" ({seat_time})" if seat_time else ""),
                 "work_type": WORK_TYPE_LABELS.get(
                     assignment.work_type, assignment.work_type
                 ),
@@ -135,16 +137,32 @@ def build_hours_report(
             continue
         row_totals = totals_for(person)
         row_totals.duty_days += 1
+        # Duty is day-based coverage, so it contributes no hours unless a
+        # manager typed hours onto that specific day.
+        hours = assignment.paid_hours
+        if hours:
+            if assignment.work_type == WORK_SICK:
+                row_totals.sick += hours
+            elif assignment.work_type == WORK_LEAVE:
+                row_totals.leave += hours
+            elif assignment.work_type == WORK_OT:
+                row_totals.overtime += hours
+            elif assignment.work_type == WORK_SWAP:
+                row_totals.swap += hours
+            else:
+                row_totals.regular += hours
         report.detail.append(
             {
                 "date": assignment.date,
                 "person": person,
-                "assignment": f"Duty {shifts.DUTY_ROLE_LABELS[assignment.role]}",
+                "assignment": f"Duty {shifts.duty_role_label(assignment.role)}",
                 "work_type": WORK_TYPE_LABELS.get(
                     assignment.work_type, assignment.work_type
                 ),
                 "work_type_code": assignment.work_type,
-                "hours": 0.0,
+                "hours": (
+                    0.0 if assignment.work_type in (WORK_SICK, WORK_LEAVE) else hours
+                ),
             }
         )
 

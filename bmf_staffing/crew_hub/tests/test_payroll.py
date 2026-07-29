@@ -24,19 +24,21 @@ class DutyRotationTests(TestCase):
     def setUp(self):
         self.officer = DutyOfficer.objects.create(name="Duty Test-Alpha")
 
-    def test_apply_fills_role_without_overwriting(self):
-        DutyRotation.objects.create(
-            officer=self.officer,
-            role="AOC",
+    def _seven_on_seven_off(self, officer=None, role="AOC"):
+        return DutyRotation.objects.create(
+            officer=officer or self.officer,
+            role=role,
             pattern_type=DutyRotation.PATTERN_CYCLE,
             days_on=7,
             days_off=7,
             anchor_date=JULY_1,
         )
-        # Manual coverage on July 2 must survive.
-        other = DutyOfficer.objects.create(name="Duty Test-Bravo")
+
+    def test_apply_skips_days_the_officer_already_works(self):
+        self._seven_on_seven_off()
+        # This officer's own manual day must survive untouched.
         DutyAssignment.objects.create(
-            date=dt.date(2026, 7, 2), role="AOC", officer=other
+            date=dt.date(2026, 7, 2), role="MDOC", officer=self.officer
         )
 
         created, skipped = apply_duty_rotations_for_range(JULY_1, JULY_31)
@@ -44,11 +46,26 @@ class DutyRotationTests(TestCase):
         self.assertEqual(created, 16)
         self.assertEqual(skipped, 1)
         self.assertEqual(
-            DutyAssignment.objects.get(date=dt.date(2026, 7, 2), role="AOC").officer,
-            other,
+            DutyAssignment.objects.get(
+                date=dt.date(2026, 7, 2), officer=self.officer
+            ).role,
+            "MDOC",
         )
         created2, _ = apply_duty_rotations_for_range(JULY_1, JULY_31)
         self.assertEqual(created2, 0)
+
+    def test_apply_lets_two_officers_share_one_role(self):
+        """Split coverage (e.g. two MDOCs) survives an apply."""
+        other = DutyOfficer.objects.create(name="Duty Test-Bravo")
+        self._seven_on_seven_off()
+        self._seven_on_seven_off(officer=other)
+
+        created, skipped = apply_duty_rotations_for_range(JULY_1, JULY_31)
+        self.assertEqual(created, 34)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(
+            DutyAssignment.objects.filter(date=JULY_1, role="AOC").count(), 2
+        )
 
     def _login_manager(self) -> User:
         user = User.objects.create_user("duty-test", password="pw")
@@ -71,7 +88,7 @@ class DutyRotationTests(TestCase):
         self.assertEqual(assignment.name_with_tag, "Duty Test-Alpha (Swap)")
         self.assertIsNotNone(user)
 
-    def test_duty_move_swaps_occupied_role(self):
+    def test_duty_move_onto_occupied_role_stacks(self):
         a = DutyAssignment.objects.create(date=JULY_1, role="AOC", officer=self.officer)
         other = DutyOfficer.objects.create(name="Duty Test-Bravo")
         b = DutyAssignment.objects.create(
@@ -82,11 +99,11 @@ class DutyRotationTests(TestCase):
         response = self.client.post(
             url, data='{"date": "2026-07-05"}', content_type="application/json"
         )
-        self.assertEqual(response.json()["result"], "swapped")
+        self.assertEqual(response.json()["result"], "moved")
         a.refresh_from_db()
         b.refresh_from_db()
         self.assertEqual(a.date, dt.date(2026, 7, 5))
-        self.assertEqual(b.date, JULY_1)
+        self.assertEqual(b.date, dt.date(2026, 7, 5))
 
 
 class HoursReportTests(TestCase):
@@ -138,6 +155,65 @@ class HoursReportTests(TestCase):
         )
         report = build_hours_report(JULY_1, JULY_31)
         self.assertNotIn("OPEN", {t.person for t in report.totals})
+
+
+class HoursOverrideTests(TestCase):
+    """Per-person hours typed on a day beat the seat's standard shift."""
+
+    def setUp(self):
+        self.member = CommStaffMember.objects.create(name="Comms Test-Alpha")
+
+    def _totals(self):
+        report = build_hours_report(JULY_1, JULY_31)
+        return {t.person: t for t in report.totals}
+
+    def test_override_replaces_the_seat_standard(self):
+        CommShiftAssignment.objects.create(
+            date=JULY_1, seat="D", member=self.member, hours=6.5
+        )
+        self.assertEqual(self._totals()["Comms Test-Alpha"].regular, 6.5)
+
+    def test_blank_override_uses_the_seat_standard(self):
+        CommShiftAssignment.objects.create(date=JULY_1, seat="D", member=self.member)
+        self.assertEqual(self._totals()["Comms Test-Alpha"].regular, 12.0)
+
+    def test_two_people_in_one_seat_are_both_paid(self):
+        other = CommStaffMember.objects.create(name="Comms Test-Bravo")
+        CommShiftAssignment.objects.create(date=JULY_1, seat="D", member=self.member)
+        CommShiftAssignment.objects.create(
+            date=JULY_1, seat="D", member=other, hours=4.0
+        )
+        totals = self._totals()
+        self.assertEqual(totals["Comms Test-Alpha"].regular, 12.0)
+        self.assertEqual(totals["Comms Test-Bravo"].regular, 4.0)
+
+    def test_unassigned_seat_counts_nothing_without_an_override(self):
+        CommShiftAssignment.objects.create(date=JULY_1, seat="", member=self.member)
+        alpha = self._totals()["Comms Test-Alpha"]
+        self.assertEqual(alpha.regular, 0.0)
+        self.assertEqual(alpha.shifts, 1)
+
+    def test_unassigned_seat_honors_an_override(self):
+        CommShiftAssignment.objects.create(
+            date=JULY_1, seat="", member=self.member, hours=8.0
+        )
+        self.assertEqual(self._totals()["Comms Test-Alpha"].regular, 8.0)
+
+    def test_duty_day_hours_are_counted_when_typed_in(self):
+        officer = DutyOfficer.objects.create(name="Comms Test-Alpha")
+        DutyAssignment.objects.create(
+            date=JULY_1, role="AOC", officer=officer, hours=10.0
+        )
+        alpha = self._totals()["Comms Test-Alpha"]
+        self.assertEqual(alpha.duty_days, 1)
+        self.assertEqual(alpha.regular, 10.0)
+
+    def test_duty_day_alone_still_reports_no_hours(self):
+        officer = DutyOfficer.objects.create(name="Comms Test-Alpha")
+        DutyAssignment.objects.create(date=JULY_1, role="AOC", officer=officer)
+        alpha = self._totals()["Comms Test-Alpha"]
+        self.assertEqual(alpha.duty_days, 1)
+        self.assertEqual(alpha.worked, 0.0)
 
 
 class HoursReportViewTests(TestCase):

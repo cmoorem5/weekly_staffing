@@ -1,7 +1,7 @@
 {% extends "crew_hub/base.html" %}
 
 {% block page_title %}{{ title }}{% endblock %}
-{% block page_subtitle %}Repeating work patterns per person. Rotations fill the calendar when you click “Apply rotations” on the month view — days already assigned are never overwritten, so manual edits always win.{% endblock %}
+{% block page_subtitle %}Repeating work patterns per person. Rotations fill the calendar when you click “Apply rotations” on the month view — anyone already scheduled that day is left exactly as they are, so manual edits always win. Two people may share a {{ slot_label|lower }}.{% endblock %}
 
 {% block hub_content %}
 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
