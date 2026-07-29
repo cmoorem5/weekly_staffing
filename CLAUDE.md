@@ -115,6 +115,8 @@ The weekly, monthly, and quarterly HTML exports exist to be **copied and pasted 
 
 Before any destructive write (applying a schedule import, which replaces that week's data, or deleting a week), the dashboard snapshots `staffing.db` to `archive/staffing_autobackup_<timestamp>.db` (`backup_staffing_db_before_write`, keeps the most recent `STAFFING_BACKUP_KEEP`, default 30; manual backups are never pruned).
 
+`Update_Crew_Hub.bat` copies **both** databases to `archive/` before running `migrate` — `crew_hub_<timestamp>.sqlite3` (the `default` DB: schedules, rotations, payroll, time off) and `staffing_<timestamp>.db`. Only the `staffing_autobackup_` prefix is auto-pruned, so these persist until deleted by hand. The Crew Hub copy deliberately keeps the `.sqlite3` extension: the dashboard's restore picker globs `archive/*.db`, and a Crew Hub database must never be restorable as `staffing.db`. That script is the only backup path for the `default` database — `Backup_Staffing_DB.bat` covers `staffing.db` only, and a PostgreSQL `default` (via `DJANGO_DB_ENGINE`) is not covered at all, which the script warns about.
+
 ## Testing conventions
 
 The root `tests/` suite is plain `unittest`, not pytest, and is **not** Django's test runner — files that touch `dashboard` views manually do `sys.path.insert(...)`, set `DJANGO_SETTINGS_MODULE`, and call `django.setup()` before importing anything from `dashboard`. Copy that boilerplate from an existing test file (e.g. `tests/test_week_edit_save.py`) rather than re-deriving it. Tests that only exercise `staffing_tool` (no Django import) skip all of that.
