@@ -6,13 +6,11 @@ from pathlib import Path
 
 from staffing_tool.data_quality import audit_kpi_data_quality
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
 from staffing_tool.models import WeeklyStaffing
+from tests._temp_db import TempDbTestCase
 
 
 def _add_week(session, week_start, **overrides):
@@ -48,21 +46,11 @@ def _add_week(session, week_start, **overrides):
     session.add(WeeklyStaffing(**fields))
 
 
-class AuditKpiDataQualityTests(unittest.TestCase):
+class AuditKpiDataQualityTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_clean_weeks_report_all_ok(self):
         with session_scope(self.db_path) as session:

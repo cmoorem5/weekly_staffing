@@ -403,3 +403,225 @@ def make_page_callbacks(footer_short_title, running_header_title):
         c._page_number_draw = draw
 
     return on_first_page, on_later_pages
+
+
+# ---------------------------------------------------------------------
+# Shared report content: helpers used by both the weekly and quarterly
+# builders. These were duplicated in weekly_pdf_report and
+# quarterly_pdf_report; the only per-report differences are passed in as
+# arguments (column widths, figure height, a legend label, tick styling).
+# tests/test_report_shared_helpers.py pins the rendered result.
+# ---------------------------------------------------------------------
+
+EM_DASH = "—"
+
+
+def pct(value: float) -> str:
+    """Fraction to a one-decimal percentage, e.g. 0.9123 -> '91.2%'."""
+    return f"{100 * value:.1f}%"
+
+
+def short_label(iso: str) -> str:
+    """'2025-12-07' -> 'Dec 7' for compact chart axes."""
+    from datetime import datetime
+
+    d = datetime.strptime(iso, "%Y-%m-%d").date()
+    return d.strftime("%b ") + str(d.day)
+
+
+def leave_rows(leave_breakdown: list[tuple[str, int]]):
+    """(code, count, share) rows plus the total, from a leave breakdown."""
+    total = sum(count for _code, count in leave_breakdown)
+    rows = [
+        (code, count, f"{100 * count / total:.1f}%" if total else EM_DASH)
+        for code, count in leave_breakdown
+    ]
+    return rows, total
+
+
+def leave_top2(leave_breakdown: list[tuple[str, int]]) -> set[str]:
+    """The two most-used exception codes (ignoring zero counts)."""
+    ranked = sorted(leave_breakdown, key=lambda r: r[1], reverse=True)
+    return {code for code, count in ranked[:2] if count > 0}
+
+
+# Shared opening commands for every data table: navy header band, Barlow
+# body text, zebra banding, grid, padding. Callers append their own
+# alignment/emphasis commands.
+def data_table_style(header_row_only=False) -> list:
+    return [
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
+        ("FONTNAME", (0, 0), (-1, 0), F("BarlowBold")),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("FONTNAME", (0, 1), (-1, -1), F("BarlowRegular")),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, MGRAY),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]
+
+
+def exception_table(
+    leave_breakdown: list[tuple[str, int]],
+    col_ratios: list[float] | None = None,
+) -> Table:
+    """Exception-type table with a totals row and the top two codes in red."""
+    headers = ["Exception Type", "Count", "% of Total"]
+    col_w = full_width_col_widths(col_ratios or [4.0, 1.5, 2.0])
+    rows_data, total = leave_rows(leave_breakdown)
+    rows = [headers] + [[code, str(count), share] for code, count, share in rows_data]
+    rows.append(["Total", str(total), "100%" if total else EM_DASH])
+    total_row = len(rows) - 1
+
+    top2 = leave_top2(leave_breakdown)
+    red_rules = []
+    for i, (code, _count, _share) in enumerate(rows_data, start=1):
+        if code in top2:
+            red_rules += [
+                ("TEXTCOLOR", (1, i), (2, i), RED),
+                ("FONTNAME", (1, i), (2, i), F("IBMPlexMonoBold")),
+            ]
+
+    t = Table(rows, colWidths=col_w)
+    t.setStyle(
+        TableStyle(
+            data_table_style()
+            + [
+                ("ROWBACKGROUNDS", (0, 1), (-1, total_row - 1), [WHITE, LGRAY]),
+                ("ALIGN", (1, 0), (2, -1), "CENTER"),
+                ("BACKGROUND", (0, total_row), (-1, total_row), MGRAY),
+                ("FONTNAME", (0, total_row), (-1, total_row), F("IBMPlexMonoBold")),
+            ]
+            + num_style_cells([1, 2])
+            + red_rules
+        )
+    )
+    return t
+
+
+def base_coverage_table(
+    base_coverage: list[tuple[str, str, str, str, str]],
+    col_ratios: list[float],
+) -> Table:
+    """Per-base RW/GR shift counts and availability percentages."""
+    headers = ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"]
+    rows = [headers] + [list(r) for r in base_coverage]
+    t = Table(rows, colWidths=full_width_col_widths(col_ratios))
+    t.setStyle(
+        TableStyle(
+            data_table_style()
+            + [
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + num_style_cells([1, 2, 3, 4])
+        )
+    )
+    return t
+
+
+def trend_fig(
+    trend: list[tuple[str, float, float, float]],
+    *,
+    height_in: float,
+    exception_label: str,
+    xtick_fontsize: int = 7,
+    xtick_rotation: int = 0,
+    xtick_ha: str = "center",
+):
+    """Staffing / exception bars plus an OT-dependency line on a twin axis."""
+    import matplotlib.ticker as mticker
+
+    labels = [r[0] for r in trend]
+    staffing = [r[1] for r in trend]
+    ot_dep = [r[2] for r in trend]
+    exc_pct = [r[3] for r in trend]
+    x = range(len(labels))
+
+    fig, ax1 = plt.subplots(figsize=(7.5, height_in))
+    fig.patch.set_facecolor("white")
+    ax1.set_facecolor("white")
+    ax1.bar(
+        x,
+        exc_pct,
+        color=C_MGRAY,
+        width=0.55,
+        alpha=0.55,
+        label=exception_label,
+        zorder=1,
+    )
+    ax1.plot(
+        x,
+        staffing,
+        color=C_BLUE,
+        linewidth=2,
+        marker="o",
+        markersize=4,
+        label="Staffing Rate % (left)",
+        zorder=3,
+    )
+    ax1.set_ylabel("Staffing / Exception %", fontsize=7, color="#333333")
+    ax1.set_ylim(0, 110)
+    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
+
+    ax2 = ax1.twinx()
+    ax2.plot(
+        x,
+        ot_dep,
+        color=C_RED,
+        linewidth=1.5,
+        marker="s",
+        markersize=3,
+        linestyle="--",
+        label="OT Dependency % (right)",
+        zorder=3,
+    )
+    ax2.set_ylabel("OT Dependency %", fontsize=7, color=C_RED)
+    ax2.set_ylim(0, 30)
+    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
+    ax2.spines["right"].set_color(C_RED)
+    ax2.tick_params(axis="y", colors=C_RED, labelsize=7)
+
+    ax1.set_xticks(list(x))
+    ax1.set_xticklabels(
+        labels, fontsize=xtick_fontsize, rotation=xtick_rotation, ha=xtick_ha
+    )
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["left"].set_color(C_MGRAY)
+    ax1.spines["bottom"].set_color(C_MGRAY)
+    ax1.tick_params(colors="#333333", labelsize=7)
+    ax1.yaxis.grid(True, color=C_MGRAY, linewidth=0.5, linestyle="--")
+    ax1.set_axisbelow(True)
+
+    apply_below_chart_legend(fig, ax1, ax2)
+    fig.tight_layout(pad=0.3, rect=(0, 0.10, 1, 1))
+    return fig
+
+
+def exception_bar_fig(leave_breakdown: list[tuple[str, int]]):
+    """Horizontal exception-count bars, top two codes in red."""
+    import matplotlib.ticker as mticker
+
+    codes = [code for code, _count in leave_breakdown]
+    counts = [count for _code, count in leave_breakdown]
+    top2 = leave_top2(leave_breakdown)
+    bar_colors = [C_RED if code in top2 else C_BLUE for code in codes]
+
+    fig, ax = base_figure(7.5, 1.8)
+    y = range(len(codes))
+    ax.barh(list(y), counts, color=bar_colors, height=0.5)
+    ax.set_yticks(list(y))
+    ax.set_yticklabels(codes, fontsize=7)
+    ax.set_xlabel("Shift exceptions (count)", fontsize=7, color="#333333")
+    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax.xaxis.grid(True, color=C_MGRAY, linewidth=0.5, linestyle="--")
+    ax.set_axisbelow(True)
+    for i, v in enumerate(counts):
+        if v:
+            ax.text(v + 0.1, i, str(v), va="center", fontsize=7, color="#333333")
+    fig.tight_layout(pad=0.4)
+    return fig

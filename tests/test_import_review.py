@@ -20,9 +20,6 @@ django.setup()
 from django.test import Client
 from django.urls import reverse
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
@@ -34,13 +31,14 @@ from staffing_tool.models import (
     WeeklyPersonShift,
     WeeklyStaffing,
 )
+from tests._temp_db import TempDbTestCase
 
 review_mod = importlib.import_module("dashboard.views.import_review")
 
 WEEK = "2026-06-07"
 
 
-class ImportReviewTests(unittest.TestCase):
+class ImportReviewTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "review.db")
@@ -85,16 +83,6 @@ class ImportReviewTests(unittest.TestCase):
                 )
             )
             session.commit()
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def _client(self):
         return Client(HTTP_HOST="localhost")

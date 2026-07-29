@@ -14,10 +14,11 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openpyxl import load_workbook
-from staffing_tool.db import get_engine, init_db, session_scope
+from staffing_tool.db import init_db, session_scope
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_report import export_monthly_report
 from staffing_tool.report import export_board_pack
+from tests._temp_db import TempDbTestCase
 
 RAG_WORDS = {"Green", "Yellow", "Red"}
 
@@ -39,7 +40,7 @@ def _spec_violations(path: str) -> list[tuple]:
     return bad
 
 
-class BoardPackExcelTests(unittest.TestCase):
+class BoardPackExcelTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp.name, "test.db")
@@ -74,10 +75,6 @@ class BoardPackExcelTests(unittest.TestCase):
                     )
                 )
             session.commit()
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        self.tmp.cleanup()
 
     def test_weekly_board_pack_structure(self):
         path = export_board_pack(self.db_path, "2026-05-10", output_dir=self.out_dir)

@@ -28,6 +28,7 @@ from staffing_tool.staff_roster import (
     suggest_roster_imports,
     sync_roster_from_import,
 )
+from tests._temp_db import TempDbTestCase
 
 
 def _staffed(
@@ -120,7 +121,7 @@ class StaffRosterMatchTests(unittest.TestCase):
             _sessionmaker_for_path.cache_clear()
 
 
-class StaffRosterImportNamesTests(unittest.TestCase):
+class StaffRosterImportNamesTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
@@ -183,12 +184,6 @@ class StaffRosterImportNamesTests(unittest.TestCase):
                     day_night="D",
                 )
             )
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        self.tmp.cleanup()
 
     def test_suggest_roster_imports_dedupes_last_name_variants(self):
         with session_scope(self.db_path) as session:
@@ -256,17 +251,11 @@ class StaffRosterImportNamesTests(unittest.TestCase):
         self.assertFalse(any("orientee" in s.display.lower() for s in suggestions))
 
 
-class SyncRosterFromImportTests(unittest.TestCase):
+class SyncRosterFromImportTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        self.tmp.cleanup()
 
     def test_sync_adds_new_person_and_links_on_persist(self):
         week = "2026-05-25"
@@ -450,19 +439,13 @@ class SyncRosterFromImportTests(unittest.TestCase):
             self.assertEqual(rows[0].first_name, "Jonathan")
 
 
-class RosterMergeTests(unittest.TestCase):
+class RosterMergeTests(TempDbTestCase):
     """Cleanup tool for duplicates that already exist (pre-fix data)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        self.tmp.cleanup()
 
     def test_finds_bare_and_full_name_pair(self):
         with session_scope(self.db_path) as session:

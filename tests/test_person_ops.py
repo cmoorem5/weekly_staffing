@@ -6,9 +6,6 @@ from datetime import date
 from pathlib import Path
 
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
@@ -22,6 +19,7 @@ from staffing_tool.person_ops import (
 )
 from staffing_tool.schedule_import import ShiftRecord, weekly_person_shift_mappings
 from staffing_tool.staff_roster import staff_roster_index_from_session
+from tests._temp_db import TempDbTestCase
 
 
 def _staffed(
@@ -148,7 +146,7 @@ class WeeklyPersonShiftMappingsTests(unittest.TestCase):
         self.assertEqual(weekly_person_shift_mappings("2026-05-25", records), [])
 
 
-class PersonOpsQueryTests(unittest.TestCase):
+class PersonOpsQueryTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
@@ -214,16 +212,6 @@ class PersonOpsQueryTests(unittest.TestCase):
                 staff_roster_index=roster_index,
             ):
                 session.add(WeeklyPersonShift(**row))
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_summary_rw_gr_and_exceptions(self):
         summary = load_person_ops_summary(

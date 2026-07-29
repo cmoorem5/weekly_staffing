@@ -10,9 +10,6 @@ from pathlib import Path
 
 from openpyxl import Workbook
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
@@ -33,6 +30,7 @@ from staffing_tool.unit_mappings import (
     resolve_unit_overrides,
     save_unit_mappings,
 )
+from tests._temp_db import TempDbTestCase
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SAMPLE = _REPO_ROOT / "uploads/schedule_upload_20260611T025001Z.xlsx"
@@ -47,20 +45,10 @@ sys.modules["backfill_schedules"] = _backfill
 _spec.loader.exec_module(_backfill)
 
 
-class BackfillPlanningTests(unittest.TestCase):
+class BackfillPlanningTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_week_start_from_filename(self):
         self.assertEqual(
@@ -143,23 +131,13 @@ class BackfillPlanningTests(unittest.TestCase):
         self.assertEqual(len(planned_ok), 1)
 
 
-class BackfillRunTests(unittest.TestCase):
+class BackfillRunTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
         self.inbox = Path(self.tmp.name) / "inbox"
         self.inbox.mkdir()
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_dry_run_lists_week_without_db_writes(self):
         if not _SAMPLE.is_file():
@@ -208,21 +186,11 @@ class BackfillRunTests(unittest.TestCase):
             self.assertEqual(count, imp.person_event_count)
 
 
-class UnitMappingBackfillTests(unittest.TestCase):
+class UnitMappingBackfillTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def _parse_unknown_with_overrides(
         self, overrides: dict[str, str]
@@ -361,23 +329,13 @@ def _write_aoc_workbook(path: Path, week_sunday: date) -> None:
     wb.close()
 
 
-class UpgradeDetailTests(unittest.TestCase):
+class UpgradeDetailTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
         self.inbox = Path(self.tmp.name) / "inbox"
         self.inbox.mkdir()
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_upgrade_preserves_manual_weekly_fields(self):
         if not _SAMPLE.is_file():

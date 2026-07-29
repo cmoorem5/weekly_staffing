@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from staffing_tool import report_html as rh
-from staffing_tool.db import get_engine, init_db, session_scope
+from staffing_tool.db import init_db, session_scope
 from staffing_tool.metrics import compute_role_fill
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_html_report import (
@@ -15,9 +15,10 @@ from staffing_tool.monthly_html_report import (
 )
 from staffing_tool.quarterly_pdf_report import export_quarterly_staffing_html
 from staffing_tool.weekly_pdf_report import export_weekly_staffing_html
+from tests._temp_db import TempDbTestCase
 
 
-class HtmlReportExportTests(unittest.TestCase):
+class HtmlReportExportTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp.name, "test.db")
@@ -57,10 +58,6 @@ class HtmlReportExportTests(unittest.TestCase):
                     )
                 )
             session.commit()
-
-    def tearDown(self):
-        get_engine(self.db_path).dispose()
-        self.tmp.cleanup()
 
     def test_monthly_board_data_includes_prior_period(self):
         data = load_monthly_board_data(self.db_path, "2025-12-01", "2025-12-31")

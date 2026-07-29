@@ -6,9 +6,6 @@ from datetime import date
 from pathlib import Path
 
 from staffing_tool.db import (
-    _get_engine_cached,
-    _sessionmaker_for_path,
-    get_engine,
     init_db,
     session_scope,
 )
@@ -37,6 +34,7 @@ from staffing_tool.schedule_import import (
     weekly_person_shift_mappings,
 )
 from staffing_tool.schedule_persistence import persist_schedule_import_detail
+from tests._temp_db import TempDbTestCase
 
 
 def _staffed(**kwargs) -> ShiftRecord:
@@ -119,21 +117,11 @@ class WeeklyPersonShiftPersistenceMappingsTests(unittest.TestCase):
         self.assertEqual(agg.leave_sick, 0)
 
 
-class PersistScheduleImportDetailTests(unittest.TestCase):
+class PersistScheduleImportDetailTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
         init_db(self.db_path)
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_persist_audit_and_person_events(self):
         week = "2026-05-25"
@@ -201,7 +189,7 @@ class PersistScheduleImportDetailTests(unittest.TestCase):
         self.assertEqual(count, 2)
 
 
-class SampleWorkbookPersistenceTests(unittest.TestCase):
+class SampleWorkbookPersistenceTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "test.db")
@@ -210,16 +198,6 @@ class SampleWorkbookPersistenceTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "uploads/schedule_upload_20260611T025001Z.xlsx"
         )
-
-    def tearDown(self):
-        import staffing_tool.db as db_mod
-
-        resolved = db_mod._resolve_db_path(self.db_path)
-        get_engine(self.db_path).dispose()
-        _get_engine_cached.cache_clear()
-        _sessionmaker_for_path.cache_clear()
-        db_mod._DB_READY_PATHS.discard(resolved)
-        self.tmp.cleanup()
 
     def test_full_import_from_sample_workbook(self):
         if not self.sample.is_file():
