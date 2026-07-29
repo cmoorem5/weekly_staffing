@@ -36,6 +36,7 @@ from .helpers import (
     parse_date_or_404,
     parse_month,
 )
+from .kinds import KINDS, slot_options, slot_sort_key
 
 MAX_REPEAT_DAYS = 62  # Guardrail for "apply through" ranges.
 MAX_ASSIGNMENT_HOURS = 24.0
@@ -57,66 +58,6 @@ def _repeat_dates(start: dt.date, repeat_until_raw: str) -> list[dt.date]:
 
 
 # --- Shared person-first day editor ------------------------------------
-
-# Everything the day editor and month calendar need per scheduler kind.
-SCHEDULER_KINDS = {
-    "comm": {
-        "assignment_model": CommShiftAssignment,
-        "person_model": CommStaffMember,
-        "person_field": "member",
-        "slot_field": "seat",
-        "slot_codes": set(shifts.COMM_SEAT_INDEX),
-        "slot_label": "Seat",
-        "person_label": "Comm Center staff",
-        "title": "Comm Center",
-        "day_url": "crew_hub:comm_day",
-        "month_url": "crew_hub:comm_month",
-        "roster_url": "crew_hub:comm_staff",
-        "month_path": "/hub/comm/",
-    },
-    "duty": {
-        "assignment_model": DutyAssignment,
-        "person_model": DutyOfficer,
-        "person_field": "officer",
-        "slot_field": "role",
-        "slot_codes": set(shifts.DUTY_ROLE_LABELS),
-        "slot_label": "Role",
-        "person_label": "Duty officers",
-        "title": "Duty officers",
-        "day_url": "crew_hub:duty_day",
-        "month_url": "crew_hub:duty_month",
-        "roster_url": "crew_hub:duty_roster",
-        "month_path": "/hub/duty/",
-    },
-}
-
-
-def _slot_options(kind: str) -> list[tuple[str, str]]:
-    """Slot dropdown choices, always led by the blank 'unassigned' option."""
-    if kind == "comm":
-        slots = [
-            (seat.code, f"{seat.label} ({seat.time})" if seat.time else seat.label)
-            for seat in shifts.COMM_SEATS
-        ]
-    else:
-        slots = list(shifts.DUTY_ROLE_CHOICES)
-    return [("", f"— {shifts.UNASSIGNED_LABEL} —")] + slots
-
-
-def _slot_sort_key(kind: str):
-    """Order rows by slot, with unassigned people first so they get seated."""
-    order = (
-        {seat.code: i for i, seat in enumerate(shifts.COMM_SEATS)}
-        if kind == "comm"
-        else {role: i for i, role in enumerate(shifts.DUTY_ROLE_ORDER)}
-    )
-
-    def key(assignment):
-        slot = getattr(assignment, SCHEDULER_KINDS[kind]["slot_field"])
-        # -1 sorts blank slots above every real slot.
-        return (order.get(slot, 99) if slot else -1, assignment.name.lower())
-
-    return key
 
 
 def _parse_hours(raw: str) -> float | None:
@@ -256,7 +197,7 @@ def _repeat_day(cfg, date: dt.date, targets: list[dt.date]) -> None:
 @login_required
 def _day_editor(request, kind: str, date_str: str):
     """Person-first day editor shared by both schedulers."""
-    cfg = SCHEDULER_KINDS[kind]
+    cfg = KINDS[kind]
     date = parse_date_or_404(date_str)
     model = cfg["assignment_model"]
 
@@ -299,7 +240,7 @@ def _day_editor(request, kind: str, date_str: str):
 
     assignments = sorted(
         model.objects.filter(date=date).select_related(cfg["person_field"]),
-        key=_slot_sort_key(kind),
+        key=slot_sort_key(kind),
     )
     on_day_ids = {
         getattr(a, f"{cfg['person_field']}_id")
@@ -328,11 +269,10 @@ def _day_editor(request, kind: str, date_str: str):
             "kind": kind,
             "title": cfg["title"],
             "slot_label": cfg["slot_label"],
-            "person_label": cfg["person_label"],
             "date": date,
             "rows": rows,
             "unassigned_count": sum(1 for r in rows if r["unassigned"]),
-            "slot_options": _slot_options(kind),
+            "slot_options": slot_options(kind),
             "work_type_choices": WORK_TYPE_CHOICES,
             "available": [
                 p
@@ -367,7 +307,7 @@ def comm_month(request):
     for a in assignments:
         by_day.setdefault(a.date, []).append(a)
 
-    sort_key = _slot_sort_key("comm")
+    sort_key = slot_sort_key("comm")
     day_cells = {}
     for day, items in by_day.items():
         filled = sorted([a for a in items if a.name], key=sort_key)
@@ -403,8 +343,8 @@ def comm_month(request):
             "nav": month_nav(year, month),
             "today": local_today(),
             "seat_total": len([s for s in shifts.COMM_SEATS if s.code != "EXTRA"]),
-            "slot_label": SCHEDULER_KINDS["comm"]["slot_label"],
-            "slot_options": _slot_options("comm"),
+            "slot_label": KINDS["comm"]["slot_label"],
+            "slot_options": slot_options("comm"),
             "members": CommStaffMember.objects.filter(active=True),
             "selected_member": member_id,
         },
@@ -649,7 +589,7 @@ def duty_month(request):
     for a in assignments:
         by_day.setdefault(a.date, []).append(a)
 
-    sort_key = _slot_sort_key("duty")
+    sort_key = slot_sort_key("duty")
     day_cells = {}
     for day, items in by_day.items():
         filled = sorted([a for a in items if a.name], key=sort_key)
@@ -682,8 +622,8 @@ def duty_month(request):
             "nav": month_nav(year, month),
             "today": local_today(),
             "seat_total": len(shifts.DUTY_ROLE_ORDER),
-            "slot_label": SCHEDULER_KINDS["duty"]["slot_label"],
-            "slot_options": _slot_options("duty"),
+            "slot_label": KINDS["duty"]["slot_label"],
+            "slot_options": slot_options("duty"),
             "members": None,
             "selected_member": "",
         },

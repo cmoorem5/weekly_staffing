@@ -25,8 +25,6 @@ BASE_CHOICES = [
     (BASE_MAN, "Mansfield"),
     (BASE_MHT, "Manchester"),
 ]
-BASE_LABELS = dict(BASE_CHOICES)
-
 # Display headers used by the reference form/email, e.g. "Bedford (BED)".
 BASE_HEADERS = {code: f"{label} ({code})" for code, label in BASE_CHOICES}
 
@@ -46,8 +44,6 @@ POSITION_CHOICES = [
     (POSITION_PILOT, "Pilot"),
     (POSITION_EMT, "EMT"),
 ]
-POSITION_LABELS = dict(POSITION_CHOICES)
-
 # Role composition rules.
 ROTOR_POSITIONS = (POSITION_RN, POSITION_EMTP, POSITION_PILOT)
 GROUND_CC_POSITIONS = (POSITION_RN, POSITION_EMTP, POSITION_EMT)

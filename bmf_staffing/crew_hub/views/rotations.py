@@ -23,16 +23,12 @@ from django.views.decorators.http import require_POST
 from .. import shifts
 from ..models import (
     VALID_WORK_TYPES,
-    CommRotation,
     CommShiftAssignment,
-    CommStaffMember,
     DutyAssignment,
-    DutyOfficer,
-    DutyRotation,
 )
 from ..notify import assignment_owner, notify
-from ..services import apply_duty_rotations_for_range, apply_rotations_for_range
 from .helpers import PERM_DENIED_MSG, can_manage_schedules, month_bounds
+from .kinds import KINDS, slot_options
 
 
 def _notify_owner(request, assignment, message: str) -> None:
@@ -52,50 +48,15 @@ WEEKDAY_OPTIONS = [
     (5, "Sat"),
 ]
 
-# Everything that differs between the two schedulers, in one place.
-ROTATION_KINDS = {
-    "comm": {
-        "rotation_model": CommRotation,
-        "person_model": CommStaffMember,
-        "person_field": "member",
-        "slot_field": "seat",
-        "slots": [
-            (seat.code, f"{seat.label}{f' ({seat.time})' if seat.time else ''}")
-            for seat in shifts.COMM_SEATS
-        ],
-        "slot_codes": set(shifts.COMM_SEAT_INDEX),
-        "slot_label": "Seat",
-        "title": "Comm Center rotations",
-        "person_label": "Staff member",
-        "manage_url": "crew_hub:comm_rotations",
-        "month_path": "/hub/comm/",
-        "apply_range": apply_rotations_for_range,
-    },
-    "duty": {
-        "rotation_model": DutyRotation,
-        "person_model": DutyOfficer,
-        "person_field": "officer",
-        "slot_field": "role",
-        "slots": list(shifts.DUTY_ROLE_CHOICES),
-        "slot_codes": set(shifts.DUTY_ROLE_LABELS),
-        "slot_label": "Role",
-        "title": "Duty officer rotations",
-        "person_label": "Duty officer",
-        "manage_url": "crew_hub:duty_rotations",
-        "month_path": "/hub/duty/",
-        "apply_range": apply_duty_rotations_for_range,
-    },
-}
-
 
 def _rotation_manage(request, kind: str):
-    cfg = ROTATION_KINDS[kind]
+    cfg = KINDS[kind]
     model = cfg["rotation_model"]
 
     if request.method == "POST":
         if not can_manage_schedules(request.user):
             messages.error(request, PERM_DENIED_MSG)
-            return redirect(cfg["manage_url"])
+            return redirect(cfg["rotations_url"])
         action = request.POST.get("action", "add")
         if action == "add":
             _add_rotation(request, cfg)
@@ -115,21 +76,21 @@ def _rotation_manage(request, kind: str):
                         f"Rotation for {person.name} deleted. Days already on "
                         "the calendar are kept.",
                     )
-        return redirect(cfg["manage_url"])
+        return redirect(cfg["rotations_url"])
 
     return render(
         request,
         "crew_hub/rotation_manage.html",
         {
             "kind": kind,
-            "title": cfg["title"],
+            "title": f"{cfg['title']} rotations",
             "person_label": cfg["person_label"],
             "slot_label": cfg["slot_label"],
-            "slots": cfg["slots"],
+            "slots": slot_options(kind, blank=False),
             "rotations": model.objects.select_related(cfg["person_field"]),
             "people": cfg["person_model"].objects.filter(active=True),
             "weekday_options": WEEKDAY_OPTIONS,
-            "manage_url": cfg["manage_url"],
+            "manage_url": cfg["rotations_url"],
             "month_path": cfg["month_path"],
             "person_field": cfg["person_field"],
         },
@@ -211,7 +172,7 @@ def _add_rotation(request, cfg) -> None:
 
 
 def _rotation_apply(request, kind: str):
-    cfg = ROTATION_KINDS[kind]
+    cfg = KINDS[kind]
     if not can_manage_schedules(request.user):
         messages.error(request, PERM_DENIED_MSG)
         return redirect(cfg["month_path"])

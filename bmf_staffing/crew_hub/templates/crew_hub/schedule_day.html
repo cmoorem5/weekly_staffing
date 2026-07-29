@@ -33,7 +33,7 @@
     <div class="ch-card-header blue">Add people to {{ date|date:"D, M j" }}</div>
     <div class="ch-card-body">
       {% if available %}
-        <input class="ch-input" type="search" id="person_filter" placeholder="Filter {{ person_label|lower }}…" style="margin-bottom:10px;" autocomplete="off">
+        <input class="ch-input" type="search" id="person_filter" placeholder="Filter people…" style="margin-bottom:10px;" autocomplete="off">
         <div class="ch-day-people" id="person_list">
           {% for person in available %}
             <label data-name="{{ person.name|lower }}">
