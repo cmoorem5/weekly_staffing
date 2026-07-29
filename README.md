@@ -285,8 +285,9 @@ Report workflow and adds real scheduling for the pieces we own:
 
 **Windows laptop (recommended):** double-click **`Update_Crew_Hub.bat`** —
 it pulls the latest code, creates the virtual environment, installs
-dependencies, creates `.env` if missing, applies migrations, collects
-static files, and walks you through creating the first admin login. Then run
+dependencies, creates `.env` if missing, **backs up both databases to
+`archive/`**, applies migrations, collects static files, and walks you
+through creating the first admin login. Then run
 **`Create Desktop Shortcut.bat`** once: the **Crew Hub** desktop icon starts
 the server *silently* (no command-prompt windows, like a native app) and
 opens `/hub/` in an Edge app-mode window — no address bar or tabs, just the
