@@ -12,10 +12,6 @@ from staffing_tool.manager_roster import (
     default_manager_last_names_upper,
     manager_last_names_upper_from_session,
 )
-from staffing_tool.staff_roster import (
-    StaffRosterMatchIndex,
-    staff_roster_index_from_session,
-)
 from staffing_tool.training_codes import training_codes_upper_from_session
 
 logger = logging.getLogger(__name__)
@@ -50,14 +46,6 @@ def _training_codes_upper_for_parse() -> frozenset[str]:
         return frozenset()
     with session_scope(DB_PATH) as session:
         return training_codes_upper_from_session(session)
-
-
-def _staff_roster_index_for_import() -> StaffRosterMatchIndex:
-    """Active staff roster for person-shift import (may be empty)."""
-    if not DB_PATH:
-        return StaffRosterMatchIndex()
-    with session_scope(DB_PATH) as session:
-        return staff_roster_index_from_session(session)
 
 
 # Uploaded schedule workbooks: `schedule_upload_<timestamp>.xlsx`

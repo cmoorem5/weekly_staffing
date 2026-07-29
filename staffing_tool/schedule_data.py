@@ -4,8 +4,6 @@ Query helpers for persisted schedule import data (future reports).
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
-
 from .db import session_scope
 from .models import (
     ScheduleImport,
@@ -135,16 +133,3 @@ def get_week_parse_issues(
             .order_by(ScheduleParseIssue.id)
             .all()
         )
-
-
-def load_import_summary(
-    session: Session,
-    week_start: str,
-) -> ScheduleImport | None:
-    """Latest import audit row for a week (within an open session)."""
-    return (
-        session.query(ScheduleImport)
-        .filter(ScheduleImport.week_start == week_start)
-        .order_by(ScheduleImport.imported_at.desc())
-        .first()
-    )

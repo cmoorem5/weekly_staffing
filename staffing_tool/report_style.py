@@ -107,10 +107,6 @@ def F(name):
     return _FONT_MAP.get(name, name)
 
 
-def ensure_output_dir():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-
 # ---------------------------------------------------------------------------
 # LAYOUT COMPONENTS
 # ---------------------------------------------------------------------------
@@ -272,33 +268,6 @@ def num_style_cells(col_indices, start_row=1, end_row=-1):
         ("FONTNAME", (col, start_row), (col, end_row), F("IBMPlexMonoRegular"))
         for col in col_indices
     ] + [("ALIGN", (col, start_row), (col, end_row), "RIGHT") for col in col_indices]
-
-
-def base_table_style(total_row=None):
-    """Return opening TableStyle commands shared by all data tables."""
-    style = [
-        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-        ("FONTNAME", (0, 0), (-1, 0), F("BarlowBold")),
-        ("FONTSIZE", (0, 0), (-1, 0), 8),
-        ("FONTNAME", (0, 1), (-1, -1), F("BarlowRegular")),
-        ("FONTSIZE", (0, 1), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.5, MGRAY),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    if total_row is not None:
-        style += [
-            ("ROWBACKGROUNDS", (0, 1), (-1, total_row - 1), [WHITE, LGRAY]),
-            ("BACKGROUND", (0, total_row), (-1, total_row), MGRAY),
-            ("FONTNAME", (0, total_row), (-1, total_row), F("IBMPlexMonoBold")),
-        ]
-    else:
-        style.append(("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]))
-    return style
 
 
 # ---------------------------------------------------------------------------

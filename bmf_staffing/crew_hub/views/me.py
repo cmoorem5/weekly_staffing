@@ -154,30 +154,61 @@ def time_off_submit(request):
     return redirect("crew_hub:my_schedule")
 
 
-def _conflicts_for(time_off: TimeOffRequest) -> list[str]:
-    """Existing assignments inside the requested window (to fix by hand)."""
-    conflicts = []
-    comm_profile = getattr(time_off.user, "comm_profile", None)
-    if comm_profile:
-        for a in CommShiftAssignment.objects.filter(
-            member=comm_profile,
-            date__gte=time_off.start_date,
-            date__lte=time_off.end_date,
-        ):
-            conflicts.append(
-                f"{a.date:%a %b} {a.date.day}: Comm {shifts.comm_seat_label(a.seat)}"
-            )
-    duty_profile = getattr(time_off.user, "duty_profile", None)
-    if duty_profile:
-        for a in DutyAssignment.objects.filter(
-            officer=duty_profile,
-            date__gte=time_off.start_date,
-            date__lte=time_off.end_date,
-        ):
-            conflicts.append(
-                f"{a.date:%a %b} {a.date.day}: Duty {shifts.duty_role_label(a.role)}"
-            )
+def _conflicts_for_many(requests: list[TimeOffRequest]) -> dict[int, list[str]]:
+    """Map request pk -> scheduled days inside its window, in two queries.
+
+    The review queue shows every pending request at once, so the
+    assignments are fetched for all of them in one pass per scheduler and
+    matched up in Python rather than querying per request.
+    """
+    conflicts: dict[int, list[str]] = {r.pk: [] for r in requests}
+    if not requests:
+        return conflicts
+
+    by_comm: dict[int, list[TimeOffRequest]] = {}
+    by_duty: dict[int, list[TimeOffRequest]] = {}
+    for r in requests:
+        comm = getattr(r.user, "comm_profile", None)
+        if comm:
+            by_comm.setdefault(comm.pk, []).append(r)
+        duty = getattr(r.user, "duty_profile", None)
+        if duty:
+            by_duty.setdefault(duty.pk, []).append(r)
+
+    window_start = min(r.start_date for r in requests)
+    window_end = max(r.end_date for r in requests)
+
+    def collect(assignments, owner_field, owners_by_person, label):
+        """One query's worth of assignments, matched to the requests they hit."""
+        for a in assignments:
+            for r in owners_by_person.get(getattr(a, owner_field), ()):
+                if r.start_date <= a.date <= r.end_date:
+                    conflicts[r.pk].append(f"{a.date:%a %b} {a.date.day}: {label(a)}")
+
+    if by_comm:
+        collect(
+            CommShiftAssignment.objects.filter(
+                member_id__in=by_comm, date__gte=window_start, date__lte=window_end
+            ),
+            "member_id",
+            by_comm,
+            lambda a: f"Comm {shifts.comm_seat_label(a.seat)}",
+        )
+    if by_duty:
+        collect(
+            DutyAssignment.objects.filter(
+                officer_id__in=by_duty, date__gte=window_start, date__lte=window_end
+            ),
+            "officer_id",
+            by_duty,
+            lambda a: f"Duty {shifts.duty_role_label(a.role)}",
+        )
     return conflicts
+
+
+def _conflicts_for(time_off: TimeOffRequest) -> list[str]:
+    """Existing assignments inside one request's window (to fix by hand)."""
+    return _conflicts_for_many([time_off])[time_off.pk]
 
 
 @login_required
@@ -186,12 +217,13 @@ def time_off_manage(request):
         messages.error(request, REVIEW_DENIED_MSG)
         return redirect("crew_hub:my_schedule")
 
-    pending = [
-        {"req": r, "conflicts": _conflicts_for(r)}
-        for r in TimeOffRequest.objects.filter(
+    pending_requests = list(
+        TimeOffRequest.objects.filter(
             status=TimeOffRequest.STATUS_PENDING
-        ).select_related("user")
-    ]
+        ).select_related("user", "user__comm_profile", "user__duty_profile")
+    )
+    conflicts = _conflicts_for_many(pending_requests)
+    pending = [{"req": r, "conflicts": conflicts[r.pk]} for r in pending_requests]
     decided = TimeOffRequest.objects.exclude(
         status=TimeOffRequest.STATUS_PENDING
     ).select_related("user", "decided_by")[:25]
