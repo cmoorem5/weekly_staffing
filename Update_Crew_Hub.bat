@@ -104,8 +104,21 @@ if errorlevel 1 goto :fail
 echo.
 
 REM --- 8) First admin account ---------------------------------------
+REM The count goes through a temp file instead of a backquoted command.
+REM cmd strips the outer quotes off a backquoted command that both starts
+REM and ends with one, so the old inline form ran a mangled path and
+REM failed with "The system cannot find the path specified".
+REM Two more guards on the output itself: -v 0 drops Django's shell
+REM auto-import banner ("N objects imported automatically"), and the
+REM CREWHUB_USERS= marker means no stray line can be read as the count.
 set "USERCOUNT="
-for /f "usebackq delims=" %%c in (`"%PYEXE%" bmf_staffing\manage.py shell -c "from django.contrib.auth import get_user_model; print(get_user_model().objects.count())"`) do set "USERCOUNT=%%c"
+set "COUNTFILE=%TEMP%\crew_hub_usercount.txt"
+del "%COUNTFILE%" >nul 2>&1
+"%PYEXE%" bmf_staffing\manage.py shell -v 0 -c "from django.contrib.auth import get_user_model; print('CREWHUB_USERS=' + str(get_user_model().objects.count()))" > "%COUNTFILE%" 2>nul
+if exist "%COUNTFILE%" (
+  for /f "usebackq tokens=2 delims==" %%c in (`findstr /B /C:"CREWHUB_USERS=" "%COUNTFILE%"`) do set "USERCOUNT=%%c"
+  del "%COUNTFILE%" >nul 2>&1
+)
 if "%USERCOUNT%"=="0" (
   echo [8/8] No login accounts exist yet. Create the first admin account:
   echo.
