@@ -13,6 +13,7 @@ from staffing_tool.monthly_html_report import (
     export_monthly_report_html,
     load_monthly_board_data,
 )
+from staffing_tool.monthly_pdf_report import export_monthly_report_pdf
 from staffing_tool.quarterly_pdf_report import export_quarterly_staffing_html
 from staffing_tool.weekly_pdf_report import export_weekly_staffing_html
 from tests._temp_db import TempDbTestCase
@@ -75,6 +76,16 @@ class HtmlReportExportTests(TempDbTestCase):
         self.assertIn("KEY PERFORMANCE INDICATORS", html)
         self.assertIn("data:image/png;base64,", html)  # embedded charts
         self.assertIn("pts</span>", html)  # prior-period delta rendered
+
+    def test_monthly_pdf_export(self):
+        path = export_monthly_report_pdf(
+            self.db_path, "2025-12-01", "2025-12-31", self.out_dir
+        )
+        self.assertTrue(os.path.isfile(path))
+        self.assertTrue(path.endswith(".pdf"))
+        self.assertGreater(os.path.getsize(path), 0)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(5), b"%PDF-")
 
     def test_monthly_html_rejects_empty_range(self):
         with self.assertRaises(ValueError):

@@ -41,6 +41,13 @@ def monthly_report(request):
                     DB_PATH, start, end, _resolve_output_dir()
                 )
                 content_type = "text/html; charset=utf-8"
+            elif fmt == "pdf":
+                from staffing_tool.monthly_pdf_report import export_monthly_report_pdf
+
+                path = export_monthly_report_pdf(
+                    DB_PATH, start, end, _resolve_output_dir()
+                )
+                content_type = "application/pdf"
             else:
                 path = export_monthly_report(
                     DB_PATH, start, end, output_dir=_resolve_output_dir()
