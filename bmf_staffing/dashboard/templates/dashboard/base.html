@@ -296,20 +296,28 @@
       box-shadow: 0 .5rem 1.25rem rgba(5, 44, 71, 0.12) !important;
     }
 
-    /* KPI cards with status accent */
+    /* KPI cards with status accent: a RAG pill under the label plus a 3px
+       accent bar along the card's bottom edge (overflow:hidden clips the
+       bar to the card's corner radius). */
     .bmf-kpi-card {
       border: 1px solid var(--bmf-medium-gray);
-      border-left: 4px solid var(--bmf-medium-gray);
-      border-radius: 0.65rem;
+      border-radius: 0.6rem;
       background: var(--bmf-white);
       height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .bmf-kpi-card-body {
+      padding: 0.9rem 0.85rem 0.8rem;
     }
     .bmf-kpi-card .bmf-kpi-value {
       font-family: "IBM Plex Mono", monospace;
       font-weight: 600;
-      font-size: 2rem;
-      line-height: 1.1;
+      font-size: 1.6rem;
+      line-height: 1.15;
       color: var(--bmf-navy);
+      white-space: nowrap;
     }
     .bmf-kpi-card .bmf-kpi-label {
       text-transform: uppercase;
@@ -318,9 +326,15 @@
       font-weight: 600;
       color: #5a6470;
     }
-    .bmf-kpi-card.bmf-accent-ontarget { border-left-color: #2e7d32; }
-    .bmf-kpi-card.bmf-accent-monitor  { border-left-color: #b7791f; }
-    .bmf-kpi-card.bmf-accent-action   { border-left-color: var(--bmf-red); }
+    .bmf-kpi-accent-bar {
+      height: 3px;
+      width: 100%;
+      margin-top: auto;
+      background: var(--bmf-medium-gray);
+    }
+    .bmf-kpi-card.bmf-accent-ontarget .bmf-kpi-accent-bar { background: #2e7d32; }
+    .bmf-kpi-card.bmf-accent-monitor  .bmf-kpi-accent-bar { background: #b7791f; }
+    .bmf-kpi-card.bmf-accent-action   .bmf-kpi-accent-bar { background: var(--bmf-red); }
 
     /* RAG status pills (labels: On target / Monitor / Action needed) */
     .bmf-rag {
