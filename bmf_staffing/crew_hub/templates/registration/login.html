@@ -27,9 +27,11 @@
           Sign in
         </button>
       </form>
-      {# TODO: Replace this form with Azure AD SSO (MSAL) once IT governance
-         approves deployment. Views stay @login_required; only the auth
-         backend and these URLs change. #}
+      {% comment %}
+        TODO: Replace this form with Azure AD SSO (MSAL) once IT governance
+        approves deployment. Views stay @login_required; only the auth
+        backend and these URLs change.
+      {% endcomment %}
       <p style="font-size: 11px; color: #5a6a7a; margin-top: 12px; margin-bottom: 0;">
         Accounts are managed in Django admin for now. Azure AD single sign-on
         will replace this screen pending IT approval.

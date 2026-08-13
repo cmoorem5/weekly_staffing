@@ -579,9 +579,11 @@
     </header>
 
     <main class="container my-4">
-      {# Flash messages render as stacked toasts (top-right) so confirmations
-         are visible without scrolling on long pages. Success/info auto-hide;
-         warnings/errors stay until dismissed. #}
+      {% comment %}
+        Flash messages render as stacked toasts (top-right) so confirmations
+        are visible without scrolling on long pages. Success/info auto-hide;
+        warnings/errors stay until dismissed.
+      {% endcomment %}
       {% if messages %}
       <div class="toast-container position-fixed top-0 end-0 p-3 no-print" style="z-index: 1080;" aria-live="polite" aria-atomic="false">
         {% for message in messages %}
