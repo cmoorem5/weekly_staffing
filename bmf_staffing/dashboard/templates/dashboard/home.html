@@ -3,17 +3,17 @@
 {% block title %}BMF Staffing – Home{% endblock %}
 {% block content %}
 
-<div class="bmf-page-head">
-  <div class="bmf-eyebrow">Boston MedFlight · Clinical Operations</div>
-  <h1 class="bmf-page-title">Weekly staffing</h1>
-  <p class="bmf-page-subtitle mb-0">
-    Import weekly schedules, review KPIs, and export board-ready reports. Weeks run
-    <strong>Sunday &rarr; Saturday</strong>.
-  </p>
-</div>
-
-{% if latest_week_start %}
-  <div class="d-flex flex-wrap gap-2 mb-4">
+<div class="bmf-page-head d-flex flex-wrap justify-content-between align-items-start gap-3">
+  <div>
+    <div class="bmf-eyebrow">Boston MedFlight · Clinical Operations</div>
+    <h1 class="bmf-page-title">Weekly staffing</h1>
+    <p class="bmf-page-subtitle mb-0">
+      Import weekly schedules, review KPIs, and export board-ready reports. Weeks run
+      <strong>Sunday &rarr; Saturday</strong>.
+    </p>
+  </div>
+  {% if latest_week_start %}
+  <div class="d-flex flex-wrap gap-2">
     <div class="bmf-stat">
       <div class="bmf-stat-value">{{ latest_week_start }}</div>
       <div class="bmf-stat-label">Latest week</div>
@@ -29,7 +29,10 @@
       <div class="bmf-stat-label">Last schedule import</div>
     </div>
   </div>
+  {% endif %}
+</div>
 
+{% if latest_week_start %}
   <h2 class="bmf-section-title">Rolling overview</h2>
   <p class="text-muted small mb-2">
     <strong>{{ overview_weeks_count }}</strong> week{{ overview_weeks_count|pluralize }} averaged
@@ -53,19 +56,20 @@
   </div>
   {% endif %}
 
-  <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 mb-4">
+  <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4">
     {% for k in overview_kpis %}
     <div class="col">
       <div class="bmf-kpi-card
         {% if k.rag == 'Green' %}bmf-accent-ontarget{% elif k.rag == 'Yellow' %}bmf-accent-monitor{% elif k.rag == 'Red' %}bmf-accent-action{% endif %}">
-        <div class="p-3">
-          <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="bmf-kpi-card-body">
+          <div class="d-flex flex-column align-items-start gap-2">
             <span class="bmf-kpi-label">{{ k.label }}</span>
             {% rag_badge k.rag %}
           </div>
           <p class="bmf-kpi-value mb-0 mt-2">{{ k.value_pct }}%</p>
           <p class="small text-muted mb-0">{{ k.pooled_pct }}% period (pooled)</p>
         </div>
+        <div class="bmf-kpi-accent-bar"></div>
       </div>
     </div>
     {% endfor %}
