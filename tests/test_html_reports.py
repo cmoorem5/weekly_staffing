@@ -205,7 +205,8 @@ class HtmlReportExportTests(TempDbTestCase):
         html = Path(path).read_text(encoding="utf-8")
         self.assertIn("DAY / NIGHT", html)
         self.assertIn("Day (56 required)", html)
-        self.assertIn("RN (Flight Nurse)", html)
+        self.assertIn(">RN</td>", html)
+        self.assertNotIn("Flight Nurse", html)
 
     def test_weekly_html_header_embeds_logo(self):
         path = export_weekly_staffing_html(self.db_path, "2025-12-07", self.out_dir)
