@@ -57,6 +57,75 @@ def _manager_row_event_type(row: WeeklyManagerShift) -> str:
     return et if et in {"line_shift", "aoc"} else "line_shift"
 
 
+def write_manager_line_shift_sheet(
+    ws, rows: list[dict[str, object]], *, include_week_start: bool
+) -> None:
+    """Shared column layout for a manager line-shift detail sheet.
+
+    Used by both this report's applied-data export (multi-week, so it
+    includes ``Week start``) and the pre-apply import-review export
+    (a single previewed week, so it omits that redundant column) —
+    keeping one writer means the two can't silently drift apart.
+    """
+    header = [
+        "Shift date",
+        "Manager",
+        "Legacy label",
+        "Role",
+        "Base",
+        "RW/GR",
+        "D/N",
+        "Unit",
+        "OT",
+        "Source value",
+    ]
+    if include_week_start:
+        header.append("Week start")
+    header += ["Source tab", "Source cell"]
+    ws.append(header)
+    for row in rows:
+        values = [
+            row.get("shift_date"),
+            row.get("person_display"),
+            row.get("raw_person_display") or "",
+            row.get("role"),
+            row.get("base_name"),
+            row.get("service_type"),
+            row.get("day_night"),
+            row.get("unit_code"),
+            "Yes" if row.get("overtime") else "",
+            row.get("raw_value"),
+        ]
+        if include_week_start:
+            values.append(row.get("week_start"))
+        values += [row.get("source_tab"), row.get("source_cell")]
+        ws.append(values)
+
+
+def write_manager_aoc_sheet(
+    ws, rows: list[dict[str, object]], *, include_week_start: bool
+) -> None:
+    """Shared column layout for a manager AOC-day detail sheet (see
+    ``write_manager_line_shift_sheet`` for why this is factored out)."""
+    header = ["Date", "Manager", "Legacy label", "Role", "Source value"]
+    if include_week_start:
+        header.append("Week start")
+    header += ["Source tab", "Source cell"]
+    ws.append(header)
+    for row in rows:
+        values = [
+            row.get("shift_date"),
+            row.get("person_display"),
+            row.get("raw_person_display") or "",
+            row.get("role"),
+            row.get("raw_value"),
+        ]
+        if include_week_start:
+            values.append(row.get("week_start"))
+        values += [row.get("source_tab"), row.get("source_cell")]
+        ws.append(values)
+
+
 # Distinct colors for stacked period chart (BMF palette + extras).
 MANAGER_CHART_COLORS = (
     "#2a4492",
@@ -700,72 +769,14 @@ def manager_shifts_export_xlsx(request):
             ws_period.append([row.get("name")] + list(counts) + [row.get("total")])
 
     ws_detail = wb.create_sheet("Detail")
-    ws_detail.append(
-        [
-            "Shift date",
-            "Manager",
-            "Legacy label",
-            "Role",
-            "Base",
-            "RW/GR",
-            "D/N",
-            "Unit",
-            "OT",
-            "Source value",
-            "Week start",
-            "Source tab",
-            "Source cell",
-        ]
-    )
-    for row in shift_rows:
-        ws_detail.append(
-            [
-                row.get("shift_date"),
-                row.get("person_display"),
-                row.get("raw_person_display") or "",
-                row.get("role"),
-                row.get("base_name"),
-                row.get("service_type"),
-                row.get("day_night"),
-                row.get("unit_code"),
-                "Yes" if row.get("overtime") else "",
-                row.get("raw_value"),
-                row.get("week_start"),
-                row.get("source_tab"),
-                row.get("source_cell"),
-            ]
-        )
+    write_manager_line_shift_sheet(ws_detail, shift_rows, include_week_start=True)
 
     aoc_rows = cast(
         list[dict[str, object]], ctx.get("all_aoc_rows") or ctx.get("aoc_rows") or []
     )
     if aoc_rows:
         ws_aoc = wb.create_sheet("AOC detail")
-        ws_aoc.append(
-            [
-                "Date",
-                "Manager",
-                "Legacy label",
-                "Role",
-                "Source value",
-                "Week start",
-                "Source tab",
-                "Source cell",
-            ]
-        )
-        for row in aoc_rows:
-            ws_aoc.append(
-                [
-                    row.get("shift_date"),
-                    row.get("person_display"),
-                    row.get("raw_person_display") or "",
-                    row.get("role"),
-                    row.get("raw_value"),
-                    row.get("week_start"),
-                    row.get("source_tab"),
-                    row.get("source_cell"),
-                ]
-            )
+        write_manager_aoc_sheet(ws_aoc, aoc_rows, include_week_start=True)
 
     out = io.BytesIO()
     wb.save(out)

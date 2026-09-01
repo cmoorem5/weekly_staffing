@@ -4,7 +4,7 @@ from .admin_tools import backup_db, database_backups, restore_db
 from .coverage_heatmap import coverage_heatmap
 from .home import home
 from .import_review import import_review
-from .import_schedule import import_schedule
+from .import_schedule import import_schedule, import_schedule_manager_export_xlsx
 from .manager_shifts import (
     manager_shifts,
     manager_shifts_export_csv,
@@ -49,6 +49,7 @@ __all__ = [
     "home",
     "import_review",
     "import_schedule",
+    "import_schedule_manager_export_xlsx",
     "kpi_thresholds_settings",
     "manager_roster_settings",
     "staff_roster_settings",

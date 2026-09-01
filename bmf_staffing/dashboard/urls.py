@@ -16,6 +16,7 @@ from .views import (
     home,
     import_review,
     import_schedule,
+    import_schedule_manager_export_xlsx,
     kpi_thresholds_settings,
     manager_roster_settings,
     manager_shifts,
@@ -87,6 +88,11 @@ urlpatterns = [
     path("base-totals/", base_totals, name="base_totals"),
     path("weeks/", week_list, name="week_list"),
     path("import-schedule/", import_schedule, name="import_schedule"),
+    path(
+        "import-schedule/manager-shifts.xlsx",
+        import_schedule_manager_export_xlsx,
+        name="import_schedule_manager_export_xlsx",
+    ),
     path("import-review/", import_review, name="import_review"),
     path("week/add/", week_add, name="week_add"),
     path(
