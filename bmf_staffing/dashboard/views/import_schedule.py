@@ -32,6 +32,7 @@ from .helpers import (
     _training_codes_upper_for_parse,
     backup_staffing_db_before_write,
 )
+from .manager_shifts import write_manager_aoc_sheet, write_manager_line_shift_sheet
 
 # Reject oversized uploads early (schedule workbooks are well under this).
 _MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -142,7 +143,6 @@ def _build_import_preview_context(
         "manager_line_count": manager_line_count,
         "manager_shift_rows": manager_shift_rows,
         "manager_aoc_rows": manager_aoc_rows,
-        "manager_aoc_count": len(manager_aoc_rows),
         "manager_summary_rows": manager_summary_rows,
         "issues": issues,
         "unknown_units": unknown_units,
@@ -151,6 +151,7 @@ def _build_import_preview_context(
 
 def import_schedule_manager_export_xlsx(request):
     """Export this previewed (not-yet-applied) week's manager line shifts + AOC days."""
+    _ensure_db()
     upload_path = request.GET.get("upload_path", "")
     week_start = (request.GET.get("week_start") or "").strip()
     if not _is_uploaded_schedule_path(upload_path):
@@ -186,64 +187,10 @@ def import_schedule_manager_export_xlsx(request):
     )
 
     ws_detail = wb.create_sheet("Line shifts")
-    ws_detail.append(
-        [
-            "Shift date",
-            "Manager",
-            "Legacy label",
-            "Role",
-            "Base",
-            "RW/GR",
-            "D/N",
-            "Unit",
-            "OT",
-            "Source value",
-            "Source tab",
-            "Source cell",
-        ]
-    )
-    for row in line_rows:
-        ws_detail.append(
-            [
-                row["shift_date"],
-                row["person_display"],
-                row["raw_person_display"],
-                row["role"],
-                row["base_name"],
-                row["service_type"],
-                row["day_night"],
-                row["unit_code"],
-                "Yes" if row["overtime"] else "",
-                row["raw_value"],
-                row["source_tab"],
-                row["source_cell"],
-            ]
-        )
+    write_manager_line_shift_sheet(ws_detail, line_rows, include_week_start=False)
 
     ws_aoc = wb.create_sheet("AOC detail")
-    ws_aoc.append(
-        [
-            "Date",
-            "Manager",
-            "Legacy label",
-            "Role",
-            "Source value",
-            "Source tab",
-            "Source cell",
-        ]
-    )
-    for row in aoc_rows:
-        ws_aoc.append(
-            [
-                row["shift_date"],
-                row["person_display"],
-                row["raw_person_display"],
-                row["role"],
-                row["raw_value"],
-                row["source_tab"],
-                row["source_cell"],
-            ]
-        )
+    write_manager_aoc_sheet(ws_aoc, aoc_rows, include_week_start=False)
 
     out = io.BytesIO()
     wb.save(out)
