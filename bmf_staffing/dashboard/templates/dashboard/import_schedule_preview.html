@@ -189,7 +189,7 @@
               <td>
                 <input type="hidden" name="raw_{{ forloop.counter0 }}" value="{{ issue.raw_value }}">
                 <input type="text" class="form-control form-control-sm" name="map_{{ forloop.counter0 }}"
-                       value="" placeholder="e.g., D7BC or D7B/LT"
+                       value="{{ issue.current_mapping }}" placeholder="e.g., D7BC or D7B/LT"
                        aria-label="Map {{ issue.raw_value }}" style="min-width: 10rem;">
               </td>
               <td class="small text-muted">{{ issue.message }}</td>
@@ -197,6 +197,10 @@
             {% endfor %}
           </tbody>
         </table>
+      </div>
+      <div class="card-footer text-muted small">
+        Entered a mapping above? Click <strong>Update preview</strong> to recalculate the counts
+        for this week before applying.
       </div>
     </div>
   {% else %}

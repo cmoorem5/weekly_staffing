@@ -109,8 +109,22 @@ def _manager_preview_rows(
     return line_rows, aoc_rows, summary_rows
 
 
+def _unit_overrides_from_post(post_data) -> dict[str, str]:
+    """Build raw_value -> mapped_code from the map_N/raw_N unit-mapping form fields."""
+    unit_overrides: dict[str, str] = {}
+    for key, map_to in post_data.items():
+        if key.startswith("map_") and map_to and map_to.strip():
+            raw_key = "raw_" + key[4:]
+            raw_val = post_data.get(raw_key)
+            if raw_val:
+                unit_overrides[raw_val.strip().upper()] = map_to.strip().upper()
+    return unit_overrides
+
+
 def _build_import_preview_context(
-    upload_path: str, week_start_hint: str
+    upload_path: str,
+    week_start_hint: str,
+    unit_overrides: dict[str, str] | None = None,
 ) -> dict | None:
     """Context for import preview, or None if no week headers were found in the file."""
     detected = detect_schedule_week_starts(upload_path)
@@ -121,6 +135,7 @@ def _build_import_preview_context(
     records, issues, _ = parse_schedule_workbook(
         upload_path,
         week_start=ws_show,
+        unit_overrides=unit_overrides,
         manager_last_names_upper=mgr_names,
         extra_training_codes=_training_codes_upper_for_parse(),
     )
@@ -131,7 +146,18 @@ def _build_import_preview_context(
         records, mgr_names
     )
     manager_line_count = len(manager_shift_rows)
-    unknown_units = [i for i in issues if i.issue_type == "unknown_unit"]
+    overrides = unit_overrides or {}
+    unknown_units = [
+        {
+            "sheet": i.sheet,
+            "cell": i.cell,
+            "raw_value": i.raw_value,
+            "message": i.message,
+            "current_mapping": overrides.get((i.raw_value or "").strip().upper(), ""),
+        }
+        for i in issues
+        if i.issue_type == "unknown_unit"
+    ]
     return {
         "week_start": ws_show,
         "detected_weeks": detected,
@@ -224,7 +250,10 @@ def import_schedule(request):
                 )
                 return redirect("import_schedule")
             week_start = (request.POST.get("week_start") or "").strip()
-            ctx = _build_import_preview_context(upload_path, week_start)
+            unit_overrides = _unit_overrides_from_post(request.POST)
+            ctx = _build_import_preview_context(
+                upload_path, week_start, unit_overrides=unit_overrides
+            )
             if ctx is None:
                 messages.error(
                     request,
@@ -251,14 +280,7 @@ def import_schedule(request):
                 )
                 return redirect("import_schedule")
 
-            # Build unit_overrides from mapping form: raw_X -> map_X
-            unit_overrides = {}
-            for key, map_to in request.POST.items():
-                if key.startswith("map_") and map_to and map_to.strip():
-                    raw_key = "raw_" + key[4:]
-                    raw_val = request.POST.get(raw_key)
-                    if raw_val:
-                        unit_overrides[raw_val.strip().upper()] = map_to.strip().upper()
+            unit_overrides = _unit_overrides_from_post(request.POST)
 
             original_name = (
                 request.session.pop("schedule_upload_original_name", "") or ""
