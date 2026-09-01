@@ -1,18 +1,23 @@
 """Schedule import view."""
 
+import io
 import os
 from datetime import UTC, datetime
 
 from django.contrib import messages
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.html import format_html
+from openpyxl import Workbook
 from staffing_tool.db import session_scope
+from staffing_tool.manager_names import canonical_manager_name
 from staffing_tool.schedule_apply import apply_schedule_workbook
 from staffing_tool.schedule_import import (
     detect_schedule_week_starts,
     parse_schedule_workbook,
 )
+from staffing_tool.schedule_types import ShiftRecord
 from staffing_tool.unit_mappings import save_unit_mappings
 
 from .helpers import (
@@ -30,6 +35,77 @@ from .helpers import (
 
 # Reject oversized uploads early (schedule workbooks are well under this).
 _MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def _manager_preview_rows(
+    records: list[ShiftRecord], roster_upper: frozenset[str]
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+    """Manager line shifts + AOC days for this parsed week, grouped like the
+    Manager shifts report so counts match once the import is applied."""
+    line_rows: list[dict[str, object]] = []
+    aoc_rows: list[dict[str, object]] = []
+    line_totals: dict[str, int] = {}
+    aoc_totals: dict[str, int] = {}
+    for r in records:
+        if not r.is_manager_row:
+            continue
+        raw_name = (r.person_display or "").strip() or "(unknown)"
+        canon = canonical_manager_name(raw_name, roster_upper)
+        raw_for_display = raw_name if raw_name != canon else ""
+        if r.manager_event_type == "aoc":
+            aoc_totals[canon] = aoc_totals.get(canon, 0) + 1
+            aoc_rows.append(
+                {
+                    "shift_date": r.date.isoformat(),
+                    "person_display": canon,
+                    "raw_person_display": raw_for_display,
+                    "role": r.role,
+                    "raw_value": r.raw_value,
+                    "source_tab": r.source_tab,
+                    "source_cell": r.source_cell,
+                }
+            )
+            continue
+        if not (
+            r.filled and r.role in {"RN", "MEDIC", "EMT"} and (r.base or "").strip()
+        ):
+            continue
+        line_totals[canon] = line_totals.get(canon, 0) + 1
+        line_rows.append(
+            {
+                "shift_date": r.date.isoformat(),
+                "person_display": canon,
+                "raw_person_display": raw_for_display,
+                "role": r.role,
+                "base_name": r.base,
+                "service_type": r.service_type,
+                "day_night": r.day_night,
+                "unit_code": r.unit_code,
+                "overtime": r.overtime,
+                "raw_value": r.raw_value,
+                "source_tab": r.source_tab,
+                "source_cell": r.source_cell,
+            }
+        )
+    line_rows.sort(
+        key=lambda row: (row["shift_date"], row["person_display"], row["role"])
+    )
+    aoc_rows.sort(key=lambda row: (row["shift_date"], row["person_display"]))
+    summary_rows = sorted(
+        (
+            {
+                "name": name,
+                "count": line_totals.get(name, 0),
+                "aoc_count": aoc_totals.get(name, 0),
+            }
+            for name in set(line_totals) | set(aoc_totals)
+        ),
+        key=lambda row: (
+            -(row["count"] + row["aoc_count"]),
+            str(row["name"]).lower(),
+        ),
+    )
+    return line_rows, aoc_rows, summary_rows
 
 
 def _build_import_preview_context(
@@ -50,14 +126,10 @@ def _build_import_preview_context(
     filled_count = sum(1 for r in records if r.filled)
     ot_count = sum(1 for r in records if r.overtime and r.filled)
     leave_count = sum(1 for r in records if r.leave_type)
-    manager_line_count = sum(
-        1
-        for r in records
-        if r.filled
-        and r.is_manager_row
-        and r.role in {"RN", "MEDIC", "EMT"}
-        and (r.base or "").strip()
+    manager_shift_rows, manager_aoc_rows, manager_summary_rows = _manager_preview_rows(
+        records, mgr_names
     )
+    manager_line_count = len(manager_shift_rows)
     unknown_units = [i for i in issues if i.issue_type == "unknown_unit"]
     return {
         "week_start": ws_show,
@@ -68,9 +140,121 @@ def _build_import_preview_context(
         "ot_count": ot_count,
         "leave_count": leave_count,
         "manager_line_count": manager_line_count,
+        "manager_shift_rows": manager_shift_rows,
+        "manager_aoc_rows": manager_aoc_rows,
+        "manager_aoc_count": len(manager_aoc_rows),
+        "manager_summary_rows": manager_summary_rows,
         "issues": issues,
         "unknown_units": unknown_units,
     }
+
+
+def import_schedule_manager_export_xlsx(request):
+    """Export this previewed (not-yet-applied) week's manager line shifts + AOC days."""
+    upload_path = request.GET.get("upload_path", "")
+    week_start = (request.GET.get("week_start") or "").strip()
+    if not _is_uploaded_schedule_path(upload_path):
+        raise Http404("Uploaded file not found on server; please upload again.")
+    detected = detect_schedule_week_starts(upload_path)
+    if not detected:
+        raise Http404("Could not read week dates from this workbook.")
+    ws_show = week_start if week_start in detected else detected[0]
+    mgr_names = _manager_last_names_upper_for_parse()
+    records, _issues, _ = parse_schedule_workbook(
+        upload_path,
+        week_start=ws_show,
+        manager_last_names_upper=mgr_names,
+        extra_training_codes=_training_codes_upper_for_parse(),
+    )
+    line_rows, aoc_rows, summary_rows = _manager_preview_rows(records, mgr_names)
+
+    wb = Workbook()
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_summary.append(["Week start", ws_show])
+    ws_summary.append(["Note", "Preview only — not yet applied to the database"])
+    ws_summary.append([])
+    ws_summary.append(["Manager (last name)", "Line shifts", "AOC days"])
+    for row in summary_rows:
+        ws_summary.append([row["name"], row["count"], row["aoc_count"]])
+    ws_summary.append(
+        [
+            "Total",
+            sum(row["count"] for row in summary_rows),
+            sum(row["aoc_count"] for row in summary_rows),
+        ]
+    )
+
+    ws_detail = wb.create_sheet("Line shifts")
+    ws_detail.append(
+        [
+            "Shift date",
+            "Manager",
+            "Legacy label",
+            "Role",
+            "Base",
+            "RW/GR",
+            "D/N",
+            "Unit",
+            "OT",
+            "Source value",
+            "Source tab",
+            "Source cell",
+        ]
+    )
+    for row in line_rows:
+        ws_detail.append(
+            [
+                row["shift_date"],
+                row["person_display"],
+                row["raw_person_display"],
+                row["role"],
+                row["base_name"],
+                row["service_type"],
+                row["day_night"],
+                row["unit_code"],
+                "Yes" if row["overtime"] else "",
+                row["raw_value"],
+                row["source_tab"],
+                row["source_cell"],
+            ]
+        )
+
+    ws_aoc = wb.create_sheet("AOC detail")
+    ws_aoc.append(
+        [
+            "Date",
+            "Manager",
+            "Legacy label",
+            "Role",
+            "Source value",
+            "Source tab",
+            "Source cell",
+        ]
+    )
+    for row in aoc_rows:
+        ws_aoc.append(
+            [
+                row["shift_date"],
+                row["person_display"],
+                row["raw_person_display"],
+                row["role"],
+                row["raw_value"],
+                row["source_tab"],
+                row["source_cell"],
+            ]
+        )
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    filename = f"manager_shifts_preview_{ws_show}.xlsx"
+    response = HttpResponse(
+        out.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def import_schedule(request):

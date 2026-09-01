@@ -48,6 +48,123 @@
     <div class="col"><div class="bmf-stat h-100"><div class="bmf-stat-value">{{ manager_line_count }}</div><div class="bmf-stat-label">Manager line shifts</div></div></div>
   </div>
 
+  {% if manager_shift_rows or manager_aoc_rows %}
+  <div class="card bmf-card shadow-sm mb-4">
+    <div class="card-header bmf-card-header">
+      Manager shifts this week &middot; verify before applying
+    </div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        Manager-row cells parsed from this workbook for week {{ week_start }}. Check that each
+        manager's line shifts and AOC days below match what you expect before clicking <strong>Apply</strong> &mdash;
+        once applied, this same data (plus roster-wide totals) also appears on the
+        <a href="{% url 'manager_shifts' %}" target="_blank" rel="noopener">Manager shifts</a> report.
+      </p>
+      <a
+        class="btn btn-outline-secondary btn-sm mb-3"
+        href="{% url 'import_schedule_manager_export_xlsx' %}?upload_path={{ upload_path|urlencode }}&amp;week_start={{ week_start|urlencode }}"
+      >
+        Export manager shifts (Excel)
+      </a>
+
+      {% if manager_summary_rows %}
+      <div class="table-responsive mb-3">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Manager (last name)</th>
+              <th scope="col" class="text-end">Line shifts</th>
+              <th scope="col" class="text-end">AOC days</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in manager_summary_rows %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td class="text-end">{% if row.count %}{{ row.count }}{% else %}&mdash;{% endif %}</td>
+              <td class="text-end">{% if row.aoc_count %}{{ row.aoc_count }}{% else %}&mdash;{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if manager_shift_rows %}
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered bg-white align-middle mb-0">
+          <caption class="small text-muted px-2">Line shifts ({{ manager_shift_rows|length }})</caption>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Manager</th>
+              <th>Role</th>
+              <th>Base</th>
+              <th>RW/GR</th>
+              <th>D/N</th>
+              <th>Unit</th>
+              <th>OT</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in manager_shift_rows %}
+            <tr>
+              <td>{{ s.shift_date }}</td>
+              <td>
+                {{ s.person_display }}
+                {% if s.raw_person_display %}
+                  <span class="text-muted small" title="Legacy label before roster normalization">({{ s.raw_person_display }})</span>
+                {% endif %}
+              </td>
+              <td>{% if s.role == "MEDIC" %}Medic{% else %}{{ s.role }}{% endif %}</td>
+              <td>{{ s.base_name }}</td>
+              <td>{{ s.service_type }}</td>
+              <td>{{ s.day_night }}</td>
+              <td><code>{{ s.unit_code }}</code></td>
+              <td>{% if s.overtime %}Yes{% else %}&mdash;{% endif %}</td>
+              <td class="small text-muted">{{ s.source_tab }} {{ s.source_cell }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if manager_aoc_rows %}
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered bg-white align-middle mb-0">
+          <caption class="small text-muted px-2">AOC days ({{ manager_aoc_rows|length }})</caption>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Manager</th>
+              <th>Role</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in manager_aoc_rows %}
+            <tr>
+              <td>{{ a.shift_date }}</td>
+              <td>
+                {{ a.person_display }}
+                {% if a.raw_person_display %}
+                  <span class="text-muted small" title="Legacy label before roster normalization">({{ a.raw_person_display }})</span>
+                {% endif %}
+              </td>
+              <td>{% if a.role == "MEDIC" %}Medic{% else %}{{ a.role }}{% endif %}</td>
+              <td class="small text-muted">{{ a.source_tab }} {{ a.source_cell }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if unknown_units %}
     <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
       <span aria-hidden="true">&#9888;</span>
