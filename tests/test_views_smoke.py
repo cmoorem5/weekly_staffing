@@ -38,6 +38,7 @@ from dashboard.views import (
     person_ops,
     reports,
     settings_views,
+    staff_exceptions,
     staffing_dashboard,
     weeks,
 )
@@ -53,6 +54,7 @@ _DB_PATH_MODULES = [
     staffing_dashboard,
     manager_shifts,
     person_ops,
+    staff_exceptions,
 ]
 
 _SMOKE_URL_NAMES = [
@@ -64,6 +66,7 @@ _SMOKE_URL_NAMES = [
     "staffing_dashboard",
     "manager_shifts",
     "person_ops_report",
+    "staff_exceptions_report",
 ]
 
 

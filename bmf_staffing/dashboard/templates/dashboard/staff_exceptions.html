@@ -1,0 +1,118 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Staff exception summary{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Staff exception summary</h1>
+<p class="bmf-page-subtitle">
+  Roster-wide totals for every active RN, Medic, and EMT, plus managers: staffed shifts, OT,
+  and leave/exceptions (AT, LT, sick, LOA, jury, bereavement) over the selected date range.
+  Data updates when you <strong>Apply</strong> a schedule import.
+</p>
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Staff exception filters">
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_role">Role</label>
+    <select name="role" id="id_role" class="form-select">
+      {% for value, label in role_choices %}
+      <option value="{{ value }}"{% if value == role_filter %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">End date</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Update</button>
+  </div>
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?role={{ role_filter|urlencode }}&amp;date_start={{ fy_start }}&amp;date_end={{ fy_end }}">Current FY</a>
+    </div>
+  </div>
+  <div class="col-12 mt-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'staff_exceptions_export_csv' %}?role={{ role_filter|urlencode }}&amp;date_start={{ date_start }}&amp;date_end={{ date_end }}">Export CSV</a>
+  </div>
+</form>
+
+<p class="small text-muted mt-2 mb-0">
+  Default window: last {{ default_weeks_back }} weeks. Manager rows are shift/OT/AOC totals only —
+  managers' schedule rows don't carry a leave-type breakdown, so they're shown separately below.
+</p>
+
+<h2 class="bmf-section-title mt-4">Clinical staff ({{ clinical_rows|length }})</h2>
+{% if clinical_rows %}
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Person</th>
+        <th>Role</th>
+        <th>Staffed shifts</th>
+        <th>OT</th>
+        {% for col in leave_columns %}
+        <th>{{ col }}</th>
+        {% endfor %}
+        <th>Admin/Other</th>
+        <th>Total exceptions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in clinical_rows %}
+      <tr>
+        <td>
+          <a href="{% url 'person_ops_report' %}?person={{ row.person_display|urlencode }}&amp;role={{ row.role|urlencode }}&amp;date_start={{ date_start }}&amp;date_end={{ date_end }}">{{ row.person_display }}</a>
+        </td>
+        <td>{{ row.role }}</td>
+        <td>{{ row.staffed_count }}</td>
+        <td>{{ row.ot_count }}</td>
+        {% for val in row.leave_values %}
+        <td>{{ val }}</td>
+        {% endfor %}
+        <td>{{ row.admin_other_count }}</td>
+        <td class="fw-semibold">{{ row.total_exceptions }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">
+  No active staff on the roster{% if role_filter %} for this role{% endif %}.
+  <a href="{% url 'staff_roster_settings' %}">Add people to the staff roster</a>, then
+  <a href="{% url 'import_schedule' %}">import schedules</a>.
+</p>
+{% endif %}
+
+{% if manager_rows %}
+<h2 class="bmf-section-title mt-4">Managers ({{ manager_rows|length }})</h2>
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Person</th>
+        <th>Line shifts</th>
+        <th>OT</th>
+        <th>AOC days</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in manager_rows %}
+      <tr>
+        <td>
+          <a href="{% url 'manager_shifts' %}">{{ row.person_display }}</a>
+        </td>
+        <td>{{ row.staffed_count }}</td>
+        <td>{{ row.ot_count }}</td>
+        <td>{{ row.admin_other_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
