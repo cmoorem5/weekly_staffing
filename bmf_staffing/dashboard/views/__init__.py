@@ -21,6 +21,7 @@ from .settings_views import (
     staff_roster_settings,
     training_codes_settings,
 )
+from .staff_exceptions import staff_exceptions_export_csv, staff_exceptions_report
 from .staffing_dashboard import (
     staffing_dashboard,
     staffing_dashboard_export_csv,
@@ -66,6 +67,8 @@ __all__ = [
     "weekly_staffing_report",
     "restore_db",
     "settings_index",
+    "staff_exceptions_export_csv",
+    "staff_exceptions_report",
     "training_codes_settings",
     "staffing_dashboard",
     "staffing_dashboard_export_csv",

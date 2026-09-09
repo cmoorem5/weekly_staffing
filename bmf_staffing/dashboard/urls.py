@@ -29,6 +29,8 @@ from .views import (
     reports_index,
     restore_db,
     settings_index,
+    staff_exceptions_export_csv,
+    staff_exceptions_report,
     staff_roster_settings,
     staffing_dashboard,
     staffing_dashboard_export_csv,
@@ -141,5 +143,11 @@ urlpatterns = [
         "ops/person/export.csv",
         person_ops_export_csv,
         name="person_ops_export_csv",
+    ),
+    path("ops/exceptions/", staff_exceptions_report, name="staff_exceptions_report"),
+    path(
+        "ops/exceptions/export.csv",
+        staff_exceptions_export_csv,
+        name="staff_exceptions_export_csv",
     ),
 ]
