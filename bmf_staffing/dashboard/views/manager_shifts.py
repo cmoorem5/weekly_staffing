@@ -180,13 +180,17 @@ def _credit_pay_periods_by_manager(
     date_end: date,
     fy_start: date,
     event_type: str,
-) -> dict[str, int]:
+) -> dict[str, set[tuple[date, date]]]:
     """
-    Count of distinct pay periods per manager containing at least one record
-    of ``event_type`` ("leave" or "aoc") within the selected range -- backs
-    out MANAGER_MIN_PER_PAY_PERIOD (2) shifts per such pay period from their
-    target. Same rule for both: a pay period they were on leave, or on AOC
-    duty, for isn't one they could have hit the line-shift minimum in.
+    Distinct pay periods per manager containing at least one record of
+    ``event_type`` ("leave" or "aoc") within the selected range -- each backs
+    out MANAGER_MIN_PER_PAY_PERIOD (2) shifts from their target. Same rule for
+    both: a pay period they were on leave, or on AOC duty, for isn't one they
+    could have hit the line-shift minimum in.
+
+    Returns the pay periods themselves, not a count, so the caller can take the
+    union across event types: a pay period holding *both* leave and AOC is
+    still one pay period and must only be credited once.
     """
     periods = pay_periods_for_fy(fy_start)
     dates_by_manager: dict[str, set[date]] = defaultdict(set)
@@ -205,15 +209,14 @@ def _credit_pay_periods_by_manager(
         )
         dates_by_manager[canon].add(date.fromisoformat(str(shift_date)))
 
-    result: dict[str, int] = {}
+    in_range = [p for p in periods if p.start <= date_end and p.end >= date_start]
+    result: dict[str, set[tuple[date, date]]] = {}
     for name, event_dates in dates_by_manager.items():
-        count = 0
-        for p in periods:
-            if p.start > date_end or p.end < date_start:
-                continue
-            if any(p.start <= d <= p.end for d in event_dates):
-                count += 1
-        result[name] = count
+        result[name] = {
+            (p.start, p.end)
+            for p in in_range
+            if any(p.start <= d <= p.end for d in event_dates)
+        }
     return result
 
 
@@ -369,9 +372,14 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         prorated_min, _fs, _fe, _od, _ftd = _prorated_manager_minimum(
             range_start_d, range_end_d, annual_min=annual_requirement
         )
-        leave_pp_count = leave_pay_periods.get(name, 0)
+        leave_pps = leave_pay_periods.get(name, frozenset())
+        # A pay period with both leave and AOC is credited once, under leave.
+        # Netting it out of the AOC column keeps the two displayed credits
+        # additive and stops one pay period backing out 4 shifts instead of 2.
+        aoc_pps = aoc_pay_periods.get(name, frozenset()) - leave_pps
+        leave_pp_count = len(leave_pps)
         leave_credit = leave_pp_count * MANAGER_MIN_PER_PAY_PERIOD
-        aoc_pp_count = aoc_pay_periods.get(name, 0)
+        aoc_pp_count = len(aoc_pps)
         aoc_credit = aoc_pp_count * MANAGER_MIN_PER_PAY_PERIOD
         adjusted_min = max(0.0, prorated_min - leave_credit - aoc_credit)
         status_label, met, delta, target_disp = _status_for_count(n, adjusted_min)

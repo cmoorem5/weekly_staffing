@@ -165,6 +165,38 @@ class ManagerRequirementTests(TempDbTestCase):
         expected_target = 26 - row["leave_pay_periods"] * 2 - row["aoc_pay_periods"] * 2
         self.assertEqual(row["target"], round(float(expected_target), 1))
 
+    def test_leave_and_aoc_in_same_pay_period_credit_once(self):
+        """A pay period holding both leave and AOC backs out 2 shifts, not 4."""
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyManagerShift(
+                    week_start=_week_starts_covering(self.fy_start, self.fy_end)[
+                        0
+                    ].isoformat(),
+                    person_display="Bowman",
+                    role="RN",
+                    # Same pay period as the leave day added in setUp.
+                    shift_date=self.leave_period.end.isoformat(),
+                    event_type="aoc",
+                    base_name="",
+                    service_type="",
+                    day_night="",
+                    unit_code="",
+                    raw_value="AOC",
+                )
+            )
+        row = self._bowman_row(
+            fy=str(manager_shifts.fy_label_year(self.fy_start)),
+            granularity="quarter",
+            date_start=self.fy_start.isoformat(),
+            date_end=self.fy_end.isoformat(),
+        )
+        # The overlapping pay period is credited under leave only.
+        self.assertEqual(row["leave_pay_periods"], 1)
+        self.assertEqual(row["aoc_pay_periods"], 0)
+        self.assertEqual(row["leave_credit"] + row["aoc_credit"], 2)
+        self.assertEqual(row["target"], round(float(26 - 2), 1))
+
     def test_default_requirement_when_no_override(self):
         with session_scope(self.db_path) as session:
             session.add(
