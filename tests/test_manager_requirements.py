@@ -135,6 +135,36 @@ class ManagerRequirementTests(TempDbTestCase):
         expected_target = 26 - row["leave_pay_periods"] * 2
         self.assertEqual(row["target"], round(float(expected_target), 1))
 
+    def test_aoc_credit_applied_same_as_leave(self):
+        periods = pay_periods_for_fy(self.fy_start)
+        aoc_period = periods[2]
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyManagerShift(
+                    week_start=_week_starts_covering(self.fy_start, self.fy_end)[
+                        0
+                    ].isoformat(),
+                    person_display="Bowman",
+                    role="RN",
+                    shift_date=aoc_period.start.isoformat(),
+                    event_type="aoc",
+                    base_name="",
+                    service_type="",
+                    day_night="",
+                    unit_code="",
+                    raw_value="AOC",
+                )
+            )
+        row = self._bowman_row(
+            fy=str(manager_shifts.fy_label_year(self.fy_start)),
+            granularity="quarter",
+            date_start=self.fy_start.isoformat(),
+            date_end=self.fy_end.isoformat(),
+        )
+        self.assertGreaterEqual(row["aoc_pay_periods"], 1)
+        expected_target = 26 - row["leave_pay_periods"] * 2 - row["aoc_pay_periods"] * 2
+        self.assertEqual(row["target"], round(float(expected_target), 1))
+
     def test_default_requirement_when_no_override(self):
         with session_scope(self.db_path) as session:
             session.add(
@@ -168,6 +198,7 @@ class ManagerRequirementTests(TempDbTestCase):
             manager_shifts.MANAGER_MIN_SHIFTS_PER_FY,
         )
         self.assertEqual(rows["NoOverride"]["leave_pay_periods"], 0)
+        self.assertEqual(rows["NoOverride"]["aoc_pay_periods"], 0)
 
 
 class ManagerRequirementSaveViewTests(TempDbTestCase):

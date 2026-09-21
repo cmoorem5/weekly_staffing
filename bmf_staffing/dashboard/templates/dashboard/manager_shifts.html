@@ -15,7 +15,9 @@
 </p>
 <p class="small text-muted mb-0">
   <strong>Annual req.</strong> defaults to 52 shifts/year — edit and Save per manager to set a custom target.
-  <strong>Leave credit</strong> backs out 2 shifts for every pay period containing any AT/LT/SICK/LOA/JURY/BREV on that manager's schedule row, before computing the prorated minimum they're expected to have hit.
+  <strong>Leave credit</strong> backs out 2 shifts for every pay period containing any AT/LT/SICK/LOA/JURY/BREV on that manager's schedule row.
+  <strong>AOC credit</strong> backs out 2 shifts for every pay period containing an AOC day the same way — a manager covering AOC for the week isn't expected to also hit the line-shift minimum that period.
+  Both are applied before computing the prorated minimum they're expected to have hit.
 </p>
 
 <form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Manager shift filters">
@@ -140,6 +142,7 @@
           <th scope="col" class="text-end">AOC days</th>
           <th scope="col" class="text-end">Annual req.</th>
           <th scope="col" class="text-end">Leave credit</th>
+          <th scope="col" class="text-end">AOC credit</th>
           <th scope="col" class="text-end">Min (prorated)</th>
           <th scope="col" class="text-end">Δ</th>
           <th scope="col">Status</th>
@@ -169,6 +172,13 @@
               —
             {% endif %}
           </td>
+          <td class="text-end">
+            {% if row.aoc_pay_periods %}
+              {{ row.aoc_pay_periods }} PP (&minus;{{ row.aoc_credit }})
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td class="text-end">{% if row.count %}{{ row.target }}{% else %}—{% endif %}</td>
           <td class="text-end">{% if row.count %}{% if row.delta > 0 %}+{% endif %}{{ row.delta }}{% else %}—{% endif %}</td>
           <td>{% if row.count %}{{ row.status_label }}{% else %}—{% endif %}</td>
@@ -182,6 +192,7 @@
           <td>Total (all managers)</td>
           <td class="text-end">{{ grand_total }}</td>
           <td class="text-end">{{ aoc_grand_total }}</td>
+          <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td class="text-end">—</td>
