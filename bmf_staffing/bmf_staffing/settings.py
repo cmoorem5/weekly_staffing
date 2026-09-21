@@ -217,6 +217,12 @@ CREW_HUB_WEATHER_STATIONS = [
 # station list explicitly when they exercise the weather path).
 if "test" in sys.argv:
     CREW_HUB_WEATHER_STATIONS = []
+    # The crew_hub suite creates ~170 users across its setUps, and PBKDF2 at
+    # Django's default iteration count costs ~0.7s per password -- that alone
+    # was ~200s of every run (doubled in CI, which runs Linux + Windows).
+    # MD5 is unsafe for real passwords and is only ever reached here, under
+    # `manage.py test`; production keeps the PASSWORD_HASHERS default.
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 # --- Logging ------------------------------------------------------------
 # Errors go to a rotating file in output/ (crew_hub_app.log — distinct from
