@@ -14,10 +14,11 @@
   <strong>OT note:</strong> Overtime flags on manager line shifts are informational only. Board <strong>OT %</strong> (backfill rate) counts RN/Medic/EMT OT on filled crew shifts from the weekly staffing import — not manager line assignments.
 </p>
 <p class="small text-muted mb-0">
-  <strong>Annual req.</strong> defaults to 52 shifts/year — edit and Save per manager to set a custom target.
-  <strong>Leave credit</strong> backs out 2 shifts for every pay period containing any AT/LT/SICK/LOA/JURY/BREV on that manager's schedule row.
-  <strong>AOC credit</strong> backs out 2 shifts for every pay period containing an AOC day the same way — a manager covering AOC for the week isn't expected to also hit the line-shift minimum that period.
-  Both are applied before computing the prorated minimum they're expected to have hit.
+  <strong>Annual req.</strong> defaults to {{ manager_min_fy }} shifts/year ({{ manager_min_per_pp }} per pay period) — edit and Save per manager to set a custom target.
+  <strong>LT credit</strong> is a manual annual number you enter per manager, because each manager carries a different LT entitlement and the schedule workbook does not reflect
+  manager leave accurately. It is netted off the annual requirement before proration, so it scales correctly whether you are viewing a quarter or the full year.
+  LT/AT/SICK/LOA/JURY/BREV cells on a manager's schedule row are shown under <strong>LT days</strong> for reference only and never move the target on their own.
+  <strong>AOC credit</strong> backs out {{ manager_aoc_credit_per_week }} shift for each week a manager covered AOC — a full pay period on AOC waives that period's {{ manager_min_per_pp }}-shift minimum, one AOC week waives half of it.
 </p>
 
 <form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Manager shift filters">
@@ -141,7 +142,8 @@
           <th scope="col" class="text-end">Shifts</th>
           <th scope="col" class="text-end">AOC days</th>
           <th scope="col" class="text-end">Annual req.</th>
-          <th scope="col" class="text-end">Leave credit</th>
+          <th scope="col" class="text-end">LT credit (annual)</th>
+          <th scope="col" class="text-end">LT days</th>
           <th scope="col" class="text-end">AOC credit</th>
           <th scope="col" class="text-end">Min (prorated)</th>
           <th scope="col" class="text-end">Δ</th>
@@ -157,24 +159,35 @@
           <td class="text-end">{% if row.count %}{{ row.count }}{% else %}—{% endif %}</td>
           <td class="text-end">{% if row.aoc_count %}{{ row.aoc_count }}{% else %}—{% endif %}</td>
           <td class="text-end">
-            <form method="post" action="{% url 'manager_requirement_save' %}" class="d-flex align-items-center justify-content-end gap-1 no-print">
+            <form method="post" action="{% url 'manager_requirement_save' %}" class="d-flex align-items-center justify-content-end gap-1 no-print" id="mgrReq{{ forloop.counter }}">
               {% csrf_token %}
               <input type="hidden" name="person_display" value="{{ row.name }}">
               <input type="hidden" name="filters_qs" value="{{ filters_qs }}">
               <input type="number" min="0" step="1" name="annual_shift_requirement" value="{{ row.annual_requirement }}" class="form-control form-control-sm" style="width: 4.5rem;" aria-label="Annual shift requirement for {{ row.name }}">
-              <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
             </form>
+            <span class="print-only">{{ row.annual_requirement }}</span>
           </td>
           <td class="text-end">
-            {% if row.leave_pay_periods %}
-              {{ row.leave_pay_periods }} PP (&minus;{{ row.leave_credit }})
+            <div class="d-flex align-items-center justify-content-end gap-1 no-print">
+              <input type="number" min="0" step="1" form="mgrReq{{ forloop.counter }}" name="annual_leave_credit_shifts" value="{{ row.annual_leave_credit }}" class="form-control form-control-sm" style="width: 4.5rem;" aria-label="Annual LT credit shifts for {{ row.name }}">
+              <input type="text" form="mgrReq{{ forloop.counter }}" name="leave_credit_note" value="{{ row.leave_note }}" maxlength="256" placeholder="Note" class="form-control form-control-sm" style="width: 8rem;" aria-label="LT credit note for {{ row.name }}">
+              <button type="submit" form="mgrReq{{ forloop.counter }}" class="btn btn-outline-secondary btn-sm">Save</button>
+            </div>
+            <span class="print-only">{% if row.annual_leave_credit %}&minus;{{ row.annual_leave_credit }}{% else %}—{% endif %}</span>
+            {% if row.leave_credit %}
+              <div class="small text-muted">&minus;{{ row.leave_credit }} applied to this window</div>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if row.leave_days %}
+              <span title="{{ row.leave_codes }} on the schedule — reference only, does not change the target">{{ row.leave_days }}</span>
             {% else %}
               —
             {% endif %}
           </td>
           <td class="text-end">
-            {% if row.aoc_pay_periods %}
-              {{ row.aoc_pay_periods }} PP (&minus;{{ row.aoc_credit }})
+            {% if row.aoc_weeks %}
+              {{ row.aoc_weeks }} wk (&minus;{{ row.aoc_credit }})
             {% else %}
               —
             {% endif %}
@@ -192,6 +205,7 @@
           <td>Total (all managers)</td>
           <td class="text-end">{{ grand_total }}</td>
           <td class="text-end">{{ aoc_grand_total }}</td>
+          <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td class="text-end">—</td>

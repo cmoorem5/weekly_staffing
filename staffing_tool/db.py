@@ -175,6 +175,34 @@ def migrate_manager_shift_leave_type(engine: Engine) -> None:
         conn.commit()
 
 
+def migrate_manager_requirement_leave_credit(engine: Engine) -> None:
+    """Add the manual leave-credit columns to manager_requirements."""
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='manager_requirements'"
+            )
+        )
+        if r.fetchone() is None:
+            return
+        columns = _pragma_column_names(conn, "manager_requirements")
+        if "annual_leave_credit_shifts" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE manager_requirements ADD COLUMN "
+                    "annual_leave_credit_shifts INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+        if "leave_credit_note" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE manager_requirements ADD COLUMN leave_credit_note TEXT"
+                )
+            )
+        conn.commit()
+
+
 def migrate_schedule_persistence_tables(engine: Engine) -> None:
     """Add columns on weekly_person_shifts for full import detail."""
     optional_int = (
@@ -416,6 +444,7 @@ def init_db(db_path: str | None = None) -> None:
     migrate_schedule_persistence_tables(engine)
     migrate_manager_shift_event_type(engine)
     migrate_manager_shift_leave_type(engine)
+    migrate_manager_requirement_leave_credit(engine)
     SessionLocal = _sessionmaker_for_path(_resolve_db_path(db_path))
     with SessionLocal() as session:
         seed_base_config(session)
