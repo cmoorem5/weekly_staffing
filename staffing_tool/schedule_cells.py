@@ -56,6 +56,7 @@ LEGACY_UNIT_ALIASES: dict[str, str] = {
 # legacy consolidation above.
 UNIT_CODE_TYPO_ALIASES: dict[str, str] = {
     "SM/N9LP": "N9L",  # confirmed typo for the Lawrence night RW unit
+    "CLNICAL/LG": "LG",  # confirmed typo for a real Lawrence ground shift
 }
 
 # Retired units: skip staffed parse; excluded from CEO aggregates.
@@ -97,6 +98,9 @@ AT_ALIASES: set[str] = {
     "EDU:STABLE",
     "EDU:MICRO SIM",
     "AT/AIRWAY SIM",
+    "AT/STABLE",
+    "EDU:FCCS",
+    "EDU:AIRWAY DECISION SIM",
 }
 
 # "AT" cells with a trailing hour count (AT8, AT10, AT12, AT12/SHIFT, ...)
@@ -107,7 +111,7 @@ _AT_HOURS_RE = re.compile(r"^AT\d+(/.*)?$")
 LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)", "PER"}
 
 # Raw values that count as SICK for leave/exception totals.
-SICK_ALIASES: set[str] = {"SICK SIM"}
+SICK_ALIASES: set[str] = {"SICK SIM", "SL"}
 
 # Raw values that count as BREV (Bereavement) for leave/exception totals.
 BREV_ALIASES: set[str] = {"BRV", "BERV"}
@@ -133,6 +137,10 @@ IGNORE_UNIT_CODES: set[str] = {
     "CLINICAL/RAL FW",
     "EMT/FW",
     "ZZ",
+    "RTW CLINICAL/ADMIN",
+    "RTW D9L",
+    "RTW PG",
+    "LTM/AOC",
 }
 
 
