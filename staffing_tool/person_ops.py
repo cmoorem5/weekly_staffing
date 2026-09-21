@@ -32,6 +32,7 @@ class PersonOpsSummary:
     ot_count: int = 0
     leave_counts: dict[str, int] = field(default_factory=dict)
     leave_total: int = 0
+    training_count: int = 0
 
 
 @dataclass
@@ -264,6 +265,8 @@ def load_person_ops_summary(
             lt = (row.leave_type or row.raw_value or "Other").strip() or "Other"
             leave_counts[lt] += 1
             summary.leave_total += 1
+        elif row.event_type == "training":
+            summary.training_count += 1
         elif row.event_type == "ot":
             summary.ot_count += 1
             summary.staffed_count += 1

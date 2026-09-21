@@ -215,6 +215,7 @@ def person_ops_export_csv(request):
         writer.writerow(["GR staffed", summary.gr_count])
         writer.writerow(["RW %", summary.rw_pct if summary.rw_pct is not None else "—"])
         writer.writerow(["OT shifts", summary.ot_count])
+        writer.writerow(["Training events", summary.training_count])
         writer.writerow(["Leave / exception total", summary.leave_total])
         for lt, n in (summary.leave_counts or {}).items():
             writer.writerow([f"  {lt}", n])
