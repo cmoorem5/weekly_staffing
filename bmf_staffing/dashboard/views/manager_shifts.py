@@ -10,6 +10,7 @@ from typing import cast
 from django.contrib import messages
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from openpyxl import Workbook
 from sqlalchemy import func
 from staffing_tool.db import session_scope
@@ -22,7 +23,7 @@ from staffing_tool.fiscal_year import (
     pay_periods_for_fy,
 )
 from staffing_tool.manager_names import canonical_manager_name
-from staffing_tool.models import WeeklyManagerShift
+from staffing_tool.models import ManagerRequirement, WeeklyManagerShift
 from staffing_tool.time_buckets import (
     bucket_label,
     bucket_label_short,
@@ -54,7 +55,7 @@ MANAGER_AOC_DETAIL_PAGE_SIZE = 50
 def _manager_row_event_type(row: WeeklyManagerShift) -> str:
     """Normalize stored event_type (legacy rows default to line_shift)."""
     et = (getattr(row, "event_type", None) or "").strip().lower()
-    return et if et in {"line_shift", "aoc"} else "line_shift"
+    return et if et in {"line_shift", "aoc", "leave"} else "line_shift"
 
 
 def write_manager_line_shift_sheet(
@@ -144,11 +145,13 @@ MANAGER_CHART_COLORS = (
 
 
 def _prorated_manager_minimum(
-    range_start: date, range_end: date
+    range_start: date, range_end: date, annual_min: int = MANAGER_MIN_SHIFTS_PER_FY
 ) -> tuple[float, date, date, int, int]:
     """
     Minimum expected manager line-shifts per person for ``range_start``..``range_end``,
-    prorated from 52 per fiscal year over the overlap with the FY that contains ``range_end``.
+    prorated from ``annual_min`` per fiscal year over the overlap with the FY that
+    contains ``range_end``. ``annual_min`` defaults to the policy minimum (52) but
+    can be a manager's own override (see ``ManagerRequirement``).
 
     Returns (target_float, fy_start, fy_end, overlap_days, fy_total_days).
     """
@@ -160,8 +163,57 @@ def _prorated_manager_minimum(
     if overlap_s > overlap_e:
         return 0.0, fy_start, fy_end, 0, fy_total_days
     overlap_days = (overlap_e - overlap_s).days + 1
-    target = MANAGER_MIN_SHIFTS_PER_FY * overlap_days / fy_total_days
+    target = annual_min * overlap_days / fy_total_days
     return target, fy_start, fy_end, overlap_days, fy_total_days
+
+
+def _manager_requirements(session) -> dict[str, int]:
+    """Per-manager annual requirement overrides (person_display -> shifts/year)."""
+    rows = session.query(ManagerRequirement).all()
+    return {r.person_display: int(r.annual_shift_requirement) for r in rows}
+
+
+def _leave_pay_periods_by_manager(
+    session,
+    roster_upper: frozenset[str],
+    date_start: date,
+    date_end: date,
+    fy_start: date,
+) -> dict[str, int]:
+    """
+    Count of distinct pay periods per manager containing at least one leave
+    record (AT/LT/SICK/LOA/JURY/BREV) within the selected range -- backs out
+    MANAGER_MIN_PER_PAY_PERIOD (2) shifts per such pay period from their
+    target, on the theory that a pay period they were on leave for isn't one
+    they could have hit the line-shift minimum in.
+    """
+    periods = pay_periods_for_fy(fy_start)
+    leave_dates_by_manager: dict[str, set[date]] = defaultdict(set)
+    rows = (
+        session.query(WeeklyManagerShift.person_display, WeeklyManagerShift.shift_date)
+        .filter(
+            WeeklyManagerShift.event_type == "leave",
+            WeeklyManagerShift.shift_date >= date_start.isoformat(),
+            WeeklyManagerShift.shift_date <= date_end.isoformat(),
+        )
+        .all()
+    )
+    for raw_name, shift_date in rows:
+        canon = canonical_manager_name(
+            (raw_name or "").strip() or "(unknown)", roster_upper
+        )
+        leave_dates_by_manager[canon].add(date.fromisoformat(str(shift_date)))
+
+    result: dict[str, int] = {}
+    for name, leave_dates in leave_dates_by_manager.items():
+        count = 0
+        for p in periods:
+            if p.start > date_end or p.end < date_start:
+                continue
+            if any(p.start <= d <= p.end for d in leave_dates):
+                count += 1
+        result[name] = count
+    return result
 
 
 def _status_for_count(n: int, prorated_min: float) -> tuple[str, bool, float, float]:
@@ -239,6 +291,10 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
             raw_name = (m.person_display or "").strip() or "(unknown)"
             canon = canonical_manager_name(raw_name, roster_upper)
             event_type = _manager_row_event_type(m)
+            if event_type == "leave":
+                # Counted separately via _leave_pay_periods_by_manager below,
+                # not part of line-shift or AOC totals.
+                continue
             if event_type == "aoc":
                 aoc_totals[canon] += 1
                 aoc_rows.append(
@@ -272,14 +328,25 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                     "source_cell": m.source_cell,
                 }
             )
+        requirements = _manager_requirements(session)
+        leave_pay_periods = _leave_pay_periods_by_manager(
+            session, roster_upper, date_start, date_end, fy_start
+        )
 
     grand_total = len(shift_rows)
     aoc_grand_total = len(aoc_rows)
     range_start_d = date_start
     range_end_d = date_end
-    prorated_min, fy_anchor_start, fy_anchor_end, overlap_days, fy_total_days = (
-        _prorated_manager_minimum(range_start_d, range_end_d)
-    )
+    # Default (policy, no per-manager override or leave credit) prorated
+    # target -- shown as reference context; per-manager rows below compute
+    # their own adjusted target.
+    (
+        default_prorated_min,
+        fy_anchor_start,
+        fy_anchor_end,
+        overlap_days,
+        fy_total_days,
+    ) = _prorated_manager_minimum(range_start_d, range_end_d)
 
     cumulative_rows: list[dict[str, object]] = []
     running = 0
@@ -294,7 +361,14 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         if n:
             running += n
         pct = round(100.0 * n / grand_total, 1) if grand_total else 0.0
-        status_label, met, delta, target_disp = _status_for_count(n, prorated_min)
+        annual_requirement = requirements.get(name, MANAGER_MIN_SHIFTS_PER_FY)
+        prorated_min, _fs, _fe, _od, _ftd = _prorated_manager_minimum(
+            range_start_d, range_end_d, annual_min=annual_requirement
+        )
+        leave_pp_count = leave_pay_periods.get(name, 0)
+        leave_credit = leave_pp_count * MANAGER_MIN_PER_PAY_PERIOD
+        adjusted_min = max(0.0, prorated_min - leave_credit)
+        status_label, met, delta, target_disp = _status_for_count(n, adjusted_min)
         cumulative_rows.append(
             {
                 "name": name,
@@ -302,6 +376,9 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                 "aoc_count": aoc_n,
                 "pct": pct,
                 "running": running if n else None,
+                "annual_requirement": annual_requirement,
+                "leave_pay_periods": leave_pp_count,
+                "leave_credit": leave_credit,
                 "target": target_disp,
                 "delta": delta,
                 "met": met,
@@ -486,7 +563,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         "manager_min_fy": MANAGER_MIN_SHIFTS_PER_FY,
         "manager_min_per_pp": MANAGER_MIN_PER_PAY_PERIOD,
         "manager_pp_per_fy": pp_count,
-        "prorated_manager_min": round(prorated_min, 1),
+        "prorated_manager_min": round(default_prorated_min, 1),
         "fy_target_start": fy_anchor_start.isoformat(),
         "fy_target_end": fy_anchor_end.isoformat(),
         "fy_overlap_days": overlap_days,
@@ -520,6 +597,39 @@ def manager_shifts(request):
         messages.error(request, str(exc))
         return redirect("home")
     return render(request, "dashboard/manager_shifts.html", ctx)
+
+
+def manager_requirement_save(request):
+    """Save one manager's annual line-shift requirement override (52 if unset)."""
+    _ensure_db()
+    if request.method != "POST" or not DB_PATH:
+        return redirect("manager_shifts")
+
+    person_display = (request.POST.get("person_display") or "").strip()
+    raw_value = (request.POST.get("annual_shift_requirement") or "").strip()
+    filters_qs = request.POST.get("filters_qs") or ""
+
+    if person_display and raw_value:
+        try:
+            annual_value = max(0, int(raw_value))
+        except ValueError:
+            messages.error(request, "Annual requirement must be a whole number.")
+        else:
+            with session_scope(DB_PATH) as session:
+                row = session.get(ManagerRequirement, person_display)
+                if row is None:
+                    row = ManagerRequirement(person_display=person_display)
+                    session.add(row)
+                row.annual_shift_requirement = annual_value
+            messages.success(
+                request,
+                f"{person_display}: annual requirement set to {annual_value} shifts.",
+            )
+
+    url = reverse("manager_shifts")
+    if filters_qs:
+        url = f"{url}?{filters_qs}"
+    return redirect(url)
 
 
 def manager_shifts_export_csv(request):

@@ -291,7 +291,7 @@ class WeeklyManagerShift(Base):
     person_display = Column(String(256), nullable=False, default="")
     role = Column(String(16), nullable=False)
     shift_date = Column(String(10), nullable=False)
-    # line_shift | aoc
+    # line_shift | aoc | leave
     event_type = Column(String(16), nullable=False, default="line_shift")
     base_name = Column(String(64), nullable=False)
     service_type = Column(String(8), nullable=False)
@@ -301,6 +301,27 @@ class WeeklyManagerShift(Base):
     raw_value = Column(String(64), nullable=False, default="")
     source_tab = Column(String(128), nullable=False, default="")
     source_cell = Column(String(16), nullable=False, default="")
+    # Set only when event_type == "leave" (AT/LT/SICK/LOA/JURY/BREV).
+    leave_type = Column(String(32), nullable=True)
+
+
+class ManagerRequirement(Base):
+    """Per-manager override of the annual line-shift requirement.
+
+    Absent a row here, a manager's requirement defaults to
+    ``manager_shifts.MANAGER_MIN_SHIFTS_PER_FY`` (52).
+    """
+
+    __tablename__ = "manager_requirements"
+
+    person_display = Column(String(256), primary_key=True)
+    annual_shift_requirement = Column(Integer, nullable=False, default=52)
+
+    def __repr__(self) -> str:
+        return (
+            f"ManagerRequirement(person_display={self.person_display!r}, "
+            f"annual_shift_requirement={self.annual_shift_requirement!r})"
+        )
 
 
 class WeeklyStaffing(Base):

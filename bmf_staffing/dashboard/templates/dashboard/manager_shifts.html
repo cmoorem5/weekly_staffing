@@ -13,6 +13,10 @@
   <strong>AOC</strong> cells on manager rows in the schedule Excel are tracked here only — they are excluded from CEO clinical totals.
   <strong>OT note:</strong> Overtime flags on manager line shifts are informational only. Board <strong>OT %</strong> (backfill rate) counts RN/Medic/EMT OT on filled crew shifts from the weekly staffing import — not manager line assignments.
 </p>
+<p class="small text-muted mb-0">
+  <strong>Annual req.</strong> defaults to 52 shifts/year — edit and Save per manager to set a custom target.
+  <strong>Leave credit</strong> backs out 2 shifts for every pay period containing any AT/LT/SICK/LOA/JURY/BREV on that manager's schedule row, before computing the prorated minimum they're expected to have hit.
+</p>
 
 <form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Manager shift filters">
   <div class="col-auto" style="min-width: 22rem;">
@@ -134,6 +138,8 @@
           <th scope="col">Manager (last name)</th>
           <th scope="col" class="text-end">Shifts</th>
           <th scope="col" class="text-end">AOC days</th>
+          <th scope="col" class="text-end">Annual req.</th>
+          <th scope="col" class="text-end">Leave credit</th>
           <th scope="col" class="text-end">Min (prorated)</th>
           <th scope="col" class="text-end">Δ</th>
           <th scope="col">Status</th>
@@ -147,6 +153,22 @@
           <td>{{ row.name }}</td>
           <td class="text-end">{% if row.count %}{{ row.count }}{% else %}—{% endif %}</td>
           <td class="text-end">{% if row.aoc_count %}{{ row.aoc_count }}{% else %}—{% endif %}</td>
+          <td class="text-end">
+            <form method="post" action="{% url 'manager_requirement_save' %}" class="d-flex align-items-center justify-content-end gap-1 no-print">
+              {% csrf_token %}
+              <input type="hidden" name="person_display" value="{{ row.name }}">
+              <input type="hidden" name="filters_qs" value="{{ filters_qs }}">
+              <input type="number" min="0" step="1" name="annual_shift_requirement" value="{{ row.annual_requirement }}" class="form-control form-control-sm" style="width: 4.5rem;" aria-label="Annual shift requirement for {{ row.name }}">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
+            </form>
+          </td>
+          <td class="text-end">
+            {% if row.leave_pay_periods %}
+              {{ row.leave_pay_periods }} PP (&minus;{{ row.leave_credit }})
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td class="text-end">{% if row.count %}{{ row.target }}{% else %}—{% endif %}</td>
           <td class="text-end">{% if row.count %}{% if row.delta > 0 %}+{% endif %}{{ row.delta }}{% else %}—{% endif %}</td>
           <td>{% if row.count %}{{ row.status_label }}{% else %}—{% endif %}</td>
@@ -160,6 +182,8 @@
           <td>Total (all managers)</td>
           <td class="text-end">{{ grand_total }}</td>
           <td class="text-end">{{ aoc_grand_total }}</td>
+          <td class="text-end">—</td>
+          <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td class="text-end">—</td>
           <td>—</td>
