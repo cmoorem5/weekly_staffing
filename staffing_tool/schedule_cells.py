@@ -6,6 +6,8 @@ rows and unit-code overrides are merged in at parse time by the callers.
 
 from __future__ import annotations
 
+import re
+
 from .schedule_types import DayNight, ServiceType, SkipReason
 
 # --- Unit mapping -------------------------------------------------------
@@ -50,6 +52,12 @@ LEGACY_UNIT_ALIASES: dict[str, str] = {
     "D11B": "D11H",
 }
 
+# One-off data-entry typos for real unit codes, unrelated to the Manchester
+# legacy consolidation above.
+UNIT_CODE_TYPO_ALIASES: dict[str, str] = {
+    "SM/N9LP": "N9L",  # confirmed typo for the Lawrence night RW unit
+}
+
 # Retired units: skip staffed parse; excluded from CEO aggregates.
 RETIRED_UNIT_CODES: frozenset[str] = frozenset({"FW"})
 
@@ -81,10 +89,20 @@ AT_ALIASES: set[str] = {
     "AT:TDAC",
     "AT:FCCS",
     "EDU:TDAC",
+    "AT/SM",
+    "AT/ART",
+    "AT:MICRO SIM",
+    "AT:STABLE",
+    "AT: SIM",
+    "EDU:STABLE",
 }
 
+# "AT" cells with a trailing hour count (AT8, AT10, AT12, AT12/SHIFT, ...)
+# all count as plain AT -- the hours don't change the leave type.
+_AT_HOURS_RE = re.compile(r"^AT\d+(/.*)?$")
+
 # Raw values that count as LT (Leave Time) for leave/exception totals.
-LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)"}
+LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)", "PER"}
 
 # Raw values that count as BREV (Bereavement) for leave/exception totals.
 BREV_ALIASES: set[str] = {"BRV", "BERV"}
@@ -98,6 +116,11 @@ IGNORE_UNIT_CODES: set[str] = {
     "RTW D7P",
     "GR-RAL",
     "HOL",
+    "PR",
+    "RTW GR",
+    "RTW D11B",
+    "RAL MG",
+    "RAL D7P",
 }
 
 
@@ -201,6 +224,7 @@ def _normalize_cell_value(raw: object) -> str:
         s = str(raw).strip().upper()
     for variant in _OT_C_VARIANTS:
         s = s.replace(variant, "C")
+    s = s.strip("*").strip()
     return s
 
 
@@ -225,6 +249,8 @@ def _canonical_unit_code(code: str) -> str | None:
     """Map legacy aliases to canonical UNIT_MAP keys; None if retired."""
     if code in RETIRED_UNIT_CODES:
         return None
+    if code in UNIT_CODE_TYPO_ALIASES:
+        return UNIT_CODE_TYPO_ALIASES[code]
     return LEGACY_UNIT_ALIASES.get(code, code)
 
 
