@@ -20,7 +20,14 @@ from staffing_tool.fiscal_year import (
     pay_periods_for_fy,
 )
 from staffing_tool.leave_grid import EXCEPTION_COL_BREAKDOWN_KEYS
-from staffing_tool.metrics import compute_period_rollups, compute_week_metrics
+from staffing_tool.metrics import (
+    BASE_DISPLAY_ORDER,
+    ROLE_CAPACITY_PER_WEEK,
+    ROLE_FILL_LABELS,
+    compute_period_rollups,
+    compute_role_fill,
+    compute_week_metrics,
+)
 from staffing_tool.models import (
     BaseConfig,
     WeeklyBaseCoverage,
@@ -101,7 +108,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
     fy_choices = fy_choice_rows(fy_label_year(fy_week1_sunday_containing(today)))
 
     granularity = (request.GET.get("granularity") or "pay_period").strip().lower()
-    if granularity not in {"quarter", "month", "pay_period"}:
+    if granularity not in {"quarter", "month", "pay_period", "week"}:
         granularity = "pay_period"
 
     # FY-to-date ends at last closed pay period within the selected FY when that FY is current.
@@ -137,6 +144,10 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
     }
     exc_table_rows: list[dict[str, object]] = []
 
+    # Vehicle / base coverage (RW %, GR %) and role fill (RN/Medic/EMT), by bucket.
+    base_coverage_table: list[dict[str, object]] = []
+    role_fill_table: list[dict[str, object]] = []
+
     # Data quality panel: expected week_start Sundays that fall in the selected date range.
     expected_week_starts: list[str] = []
     first_sun = date_start + timedelta(days=(6 - date_start.weekday()) % 7)
@@ -160,6 +171,17 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 {
                     "fy": str(fy_label),
                     "granularity": "pay_period",
+                    "date_start": fy_start.isoformat(),
+                    "date_end": end_anchor.isoformat(),
+                }
+            ),
+        },
+        "fy_ytd_weekly": {
+            "label": "FY YTD, one row per week",
+            "qs": serialize_filters_query_from_parts(
+                {
+                    "fy": str(fy_label),
+                    "granularity": "week",
                     "date_start": fy_start.isoformat(),
                     "date_end": end_anchor.isoformat(),
                 }
@@ -311,6 +333,10 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "exc_total_series_json": "[]",
                 "exc_breakdown_series_json": "{}",
                 "exc_table_rows": [],
+                "base_coverage_breakdown_order": BASE_DISPLAY_ORDER,
+                "base_coverage_table": [],
+                "role_fill_breakdown_order": list(ROLE_CAPACITY_PER_WEEK),
+                "role_fill_table": [],
                 "no_data": True,
                 "data_quality_rows": data_quality_rows,
                 "expected_week_starts_count": len(expected_week_starts),
@@ -318,6 +344,16 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             }
 
         week_starts = [w.week_start for w in weeks]
+
+        # Role fill (RN/Medic/EMT worked vs. seat capacity), per individual week so
+        # buckets can pool (sum worked / sum capacity) across whichever weeks they cover.
+        role_fill_by_week: dict[str, dict[str, tuple[int, int]]] = {}
+        for ws in week_starts:
+            role_fill_by_week[ws] = {
+                rf.role: (rf.worked, rf.capacity)
+                for rf in compute_role_fill(session, [ws])
+            }
+
         cov_rows = (
             session.query(WeeklyBaseCoverage)
             .filter(WeeklyBaseCoverage.week_start.in_(week_starts))
@@ -473,6 +509,60 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             }
         )
 
+        # Vehicle / base coverage per bucket: average each base's weekly RW %/GR %
+        # across the weeks in this bucket (same "avg" convention as staffing rate above).
+        base_coverage_row: dict[str, dict[str, float]] = {}
+        for base_name in BASE_DISPLAY_ORDER:
+            rw_sum = 0.0
+            gr_sum = 0.0
+            for _d0, bm in in_bucket:
+                entry = (bm.base_metrics or {}).get(base_name)
+                if entry:
+                    rw_sum += entry.get("rw_pct", 0.0)
+                    gr_sum += entry.get("gr_pct", 0.0)
+            base_coverage_row[base_name] = {
+                "rw_pct": round(100.0 * (rw_sum / n), 2) if n else 0.0,
+                "gr_pct": round(100.0 * (gr_sum / n), 2) if n else 0.0,
+            }
+        base_coverage_table.append(
+            {
+                "label": label,
+                "bucket_start": b_start.isoformat(),
+                "bucket_end": b_end.isoformat(),
+                "base_coverage": base_coverage_row,
+                "base_coverage_list": [
+                    base_coverage_row[b] for b in BASE_DISPLAY_ORDER
+                ],
+            }
+        )
+
+        # Role fill per bucket: pooled (sum worked / sum capacity) across the weeks
+        # in this bucket, same pooling convention as the other pooled rates above.
+        role_fill_row: dict[str, dict[str, float]] = {}
+        for role in ROLE_CAPACITY_PER_WEEK:
+            worked = 0
+            capacity = 0
+            for d0, _bm in in_bucket:
+                w, c = role_fill_by_week.get(d0.isoformat(), {}).get(role, (0, 0))
+                worked += w
+                capacity += c
+            role_fill_row[role] = {
+                "worked": worked,
+                "capacity": capacity,
+                "rate_pct": round(100.0 * worked / capacity, 2) if capacity else 0.0,
+            }
+        role_fill_table.append(
+            {
+                "label": label,
+                "bucket_start": b_start.isoformat(),
+                "bucket_end": b_end.isoformat(),
+                "role_fill": role_fill_row,
+                "role_fill_list": [
+                    role_fill_row[role] for role in ROLE_CAPACITY_PER_WEEK
+                ],
+            }
+        )
+
         # Manager line shifts per bucket: sum counts by day (shift_date)
         mgr_bucket_total = 0
         mgr_bucket_by_base: dict[str, int] = {
@@ -577,6 +667,10 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "exc_total_series_json": json.dumps(exc_total_series),
         "exc_breakdown_series_json": json.dumps(exc_breakdown_series),
         "exc_table_rows": exc_table_rows,
+        "base_coverage_breakdown_order": BASE_DISPLAY_ORDER,
+        "base_coverage_table": base_coverage_table,
+        "role_fill_breakdown_order": list(ROLE_CAPACITY_PER_WEEK),
+        "role_fill_table": role_fill_table,
         "filters_qs": serialize_filters_query(
             fy_label, granularity, date_start, date_end
         ),
@@ -714,6 +808,50 @@ def staffing_dashboard_export_csv(request):
                 r.get("exceptions_other"),
             ]
         )
+
+    # Vehicle / base coverage section
+    base_cov_rows = cast(list[dict[str, object]], ctx.get("base_coverage_table") or [])
+    base_order = cast(list[str], ctx.get("base_coverage_breakdown_order") or [])
+    writer.writerow([])
+    writer.writerow(["Vehicle / base coverage (RW % / GR %, avg across weeks)"])
+    header = ["Period", "Period start", "Period end"]
+    for b in base_order:
+        header += [f"{b} RW (%)", f"{b} GR (%)"]
+    writer.writerow(header)
+    for r in base_cov_rows:
+        bc = cast(dict[str, dict[str, float]], r.get("base_coverage") or {})
+        row = [r.get("label"), r.get("bucket_start"), r.get("bucket_end")]
+        for b in base_order:
+            entry = bc.get(b, {})
+            row += [entry.get("rw_pct", 0.0), entry.get("gr_pct", 0.0)]
+        writer.writerow(row)
+
+    # Role fill section (worked vs. seat capacity, pooled)
+    role_rows = cast(list[dict[str, object]], ctx.get("role_fill_table") or [])
+    role_order = cast(list[str], ctx.get("role_fill_breakdown_order") or [])
+    writer.writerow([])
+    writer.writerow(["Role fill — worked vs. seat capacity (pooled)"])
+    header = ["Period", "Period start", "Period end"]
+    for role in role_order:
+        label_r = ROLE_FILL_LABELS.get(role, role)
+        header += [
+            f"{label_r} worked",
+            f"{label_r} capacity",
+            f"{label_r} fill (%)",
+        ]
+    writer.writerow(header)
+    for r in role_rows:
+        rf = cast(dict[str, dict[str, float]], r.get("role_fill") or {})
+        row = [r.get("label"), r.get("bucket_start"), r.get("bucket_end")]
+        for role in role_order:
+            entry = rf.get(role, {})
+            row += [
+                entry.get("worked", 0),
+                entry.get("capacity", 0),
+                entry.get("rate_pct", 0.0),
+            ]
+        writer.writerow(row)
+
     csv_bytes = output.getvalue().encode("utf-8-sig")
     filename = f"staffing_dashboard_{ctx.get('granularity')}_{ctx.get('date_start')}_to_{ctx.get('date_end')}.csv"
     response = HttpResponse(csv_bytes, content_type="text/csv; charset=utf-8")
@@ -728,6 +866,10 @@ def staffing_dashboard_export_xlsx(request):
     mgr_rows = cast(list[dict[str, object]], ctx.get("manager_line_shifts_table") or [])
     mgr_order = cast(list[str], ctx.get("manager_line_shifts_breakdown_order") or [])
     exc_rows = cast(list[dict[str, object]], ctx.get("exc_table_rows") or [])
+    base_cov_rows = cast(list[dict[str, object]], ctx.get("base_coverage_table") or [])
+    base_order = cast(list[str], ctx.get("base_coverage_breakdown_order") or [])
+    role_rows = cast(list[dict[str, object]], ctx.get("role_fill_table") or [])
+    role_order = cast(list[str], ctx.get("role_fill_breakdown_order") or [])
 
     wb = Workbook()
     ws_meta = wb.active
@@ -841,6 +983,37 @@ def staffing_dashboard_export_xlsx(request):
                 r.get("exceptions_other"),
             ]
         )
+
+    ws_base = wb.create_sheet("Vehicle-Base coverage")
+    header = ["Period", "Period start", "Period end"]
+    for b in base_order:
+        header += [f"{b} RW (%)", f"{b} GR (%)"]
+    ws_base.append(header)
+    for r in base_cov_rows:
+        bc = cast(dict[str, dict[str, float]], r.get("base_coverage") or {})
+        row = [r.get("label"), r.get("bucket_start"), r.get("bucket_end")]
+        for b in base_order:
+            entry = bc.get(b, {})
+            row += [entry.get("rw_pct", 0.0), entry.get("gr_pct", 0.0)]
+        ws_base.append(row)
+
+    ws_role = wb.create_sheet("Role fill")
+    header = ["Period", "Period start", "Period end"]
+    for role in role_order:
+        label_r = ROLE_FILL_LABELS.get(role, role)
+        header += [f"{label_r} worked", f"{label_r} capacity", f"{label_r} fill (%)"]
+    ws_role.append(header)
+    for r in role_rows:
+        rf = cast(dict[str, dict[str, float]], r.get("role_fill") or {})
+        row = [r.get("label"), r.get("bucket_start"), r.get("bucket_end")]
+        for role in role_order:
+            entry = rf.get(role, {})
+            row += [
+                entry.get("worked", 0),
+                entry.get("capacity", 0),
+                entry.get("rate_pct", 0.0),
+            ]
+        ws_role.append(row)
 
     out = io.BytesIO()
     wb.save(out)

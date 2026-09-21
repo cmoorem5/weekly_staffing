@@ -59,7 +59,9 @@ def reports_index(request):
             "title": "Staffing dashboard",
             "description": (
                 "FY trends for staffing rate, OT dependency, shift exceptions, "
-                "RW/GR coverage, and manager line-shift counts by pay period, month, or quarter."
+                "RW/GR coverage (system and per-base), role fill, and manager line-shift "
+                "counts by week, pay period, month, or quarter — CSV/Excel export for "
+                "research and analysis."
             ),
             "open_url_name": "staffing_dashboard",
             "open_qs": _report_card_qs(**fy_ytd_parts),
