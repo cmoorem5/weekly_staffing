@@ -10,6 +10,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from .manager_roster import default_manager_last_names_upper
 from .person_names import person_displays_for_role
 from .schedule_cells import (
+    _AT_HOURS_RE,
     AT_ALIASES,
     BREV_ALIASES,
     IGNORE_UNIT_CODES,
@@ -478,7 +479,7 @@ def _parse_grid(
                     continue
 
             # Leave/absence codes (LT-D, LT-N kept; SM/AT counts as AT.)
-            if text in AT_ALIASES:
+            if text in AT_ALIASES or _AT_HOURS_RE.match(text):
                 leave_code = "AT"
                 leave_display = "AT"
             elif text in LT_ALIASES:
