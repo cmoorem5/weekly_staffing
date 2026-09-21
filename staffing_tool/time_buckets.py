@@ -25,6 +25,8 @@ def bucket_label(
         return fiscal_quarter_label(bucket_start)
     if granularity == "month":
         return bucket_start.strftime("%Y-%m")
+    if granularity == "week":
+        return bucket_start.isoformat()
     if granularity == "pay_period" and fy_week1 is not None:
         idx = pay_period_index_overlapping(fy_week1, bucket_start, bucket_end)
         if idx is not None:
@@ -46,6 +48,8 @@ def bucket_label_short(
         return fiscal_quarter_label(bucket_start)
     if granularity == "month":
         return bucket_start.strftime("%b %Y")
+    if granularity == "week":
+        return bucket_start.strftime("%m/%d")
     if granularity == "pay_period" and fy_week1 is not None:
         idx = pay_period_index_overlapping(fy_week1, bucket_start, bucket_end)
         if idx is not None:
@@ -82,6 +86,17 @@ def buckets_for_range(
             end = next_month - timedelta(days=1)
             buckets.append((max(cur, range_start), min(end, range_end)))
             cur = next_month
+        return buckets
+
+    if granularity == "week":
+        # Align to Sunday week_start boundaries (matches WeeklyStaffing.week_start)
+        # so each bucket holds exactly one imported week.
+        days_since_sunday = (range_start.weekday() + 1) % 7
+        cur = range_start - timedelta(days=days_since_sunday)
+        while cur <= range_end:
+            end = cur + timedelta(days=6)
+            buckets.append((max(cur, range_start), min(end, range_end)))
+            cur += timedelta(days=7)
         return buckets
 
     end_fy = fy_week1_sunday_containing(range_end)

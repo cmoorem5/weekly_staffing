@@ -221,6 +221,21 @@ class ManagerRequirementTests(TempDbTestCase):
         row = self._full_fy_row()
         self.assertEqual(row["aoc_credit"], manager_shifts.MANAGER_MIN_PER_PAY_PERIOD)
 
+    def test_leave_and_aoc_in_the_same_week_credit_once(self):
+        """Successor to the leave/AOC double-credit guard from #27.
+
+        Leave no longer credits at all, so the pay period that once backed out
+        4 shifts instead of 2 now backs out exactly the 1 shift its AOC week
+        earns — the leave day beside it adds nothing.
+        """
+        self._add(self._shift(self.leave_period.end, event_type="aoc"))
+        row = self._full_fy_row()
+        self.assertEqual(row["leave_days"], 1)
+        self.assertEqual(row["leave_credit"], 0)
+        self.assertEqual(row["aoc_weeks"], 1)
+        self.assertEqual(row["aoc_credit"], 1)
+        self.assertEqual(row["target"], 25.0)
+
     def test_aoc_and_manual_leave_credit_stack(self):
         with session_scope(self.db_path) as session:
             session.get(ManagerRequirement, "Bowman").annual_leave_credit_shifts = 4

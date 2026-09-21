@@ -49,6 +49,7 @@
   <div class="col-auto">
     <label class="form-label mb-0" for="id_granularity">Period type</label>
     <select name="granularity" id="id_granularity" class="form-select">
+      <option value="week"{% if granularity == "week" %} selected{% endif %}>Week</option>
       <option value="pay_period"{% if granularity == "pay_period" %} selected{% endif %}>Pay period window (biweekly)</option>
       <option value="month"{% if granularity == "month" %} selected{% endif %}>Month</option>
       <option value="quarter"{% if granularity == "quarter" %} selected{% endif %}>Quarter</option>
@@ -70,6 +71,7 @@
     <div class="small text-muted mb-1">Presets</div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.fy_ytd.qs }}">{{ preset_links.fy_ytd.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.fy_ytd_weekly.qs }}">{{ preset_links.fy_ytd_weekly.label }}</a>
       <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.last_6_pp.qs }}">{{ preset_links.last_6_pp.label }}</a>
       <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.last_12_weeks.qs }}">{{ preset_links.last_12_weeks.label }}</a>
       <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.full_fy.qs }}">{{ preset_links.full_fy.label }}</a>
@@ -387,6 +389,94 @@
             <td class="text-end">{{ r.exceptions_jury }}</td>
             <td class="text-end">{{ r.exceptions_brev }}</td>
             <td class="text-end">{{ r.exceptions_other }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card bmf-card shadow-sm mt-3">
+    <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Vehicle / base coverage — RW % / GR % (avg across weeks)</span>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#baseCoverageDetailsCollapse"
+        aria-expanded="false"
+        aria-controls="baseCoverageDetailsCollapse"
+        aria-label="Toggle vehicle / base coverage details"
+      >
+        Details
+      </button>
+    </div>
+    <div id="baseCoverageDetailsCollapse" class="collapse">
+      <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}</th>
+            {% for b in base_coverage_breakdown_order %}
+              <th scope="col" class="text-end">{{ b }} RW %</th>
+              <th scope="col" class="text-end">{{ b }} GR %</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in base_coverage_table %}
+          <tr>
+            <td>{{ r.label }}</td>
+            {% for entry in r.base_coverage_list %}
+              <td class="text-end">{{ entry.rw_pct }}</td>
+              <td class="text-end">{{ entry.gr_pct }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card bmf-card shadow-sm mt-3">
+    <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Role fill — RN / Medic / EMT (worked vs. seat capacity, pooled)</span>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#roleFillDetailsCollapse"
+        aria-expanded="false"
+        aria-controls="roleFillDetailsCollapse"
+        aria-label="Toggle role fill details"
+      >
+        Details
+      </button>
+    </div>
+    <div id="roleFillDetailsCollapse" class="collapse">
+      <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}</th>
+            {% for role in role_fill_breakdown_order %}
+              <th scope="col" class="text-end">{{ role }} worked</th>
+              <th scope="col" class="text-end">{{ role }} capacity</th>
+              <th scope="col" class="text-end">{{ role }} fill %</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in role_fill_table %}
+          <tr>
+            <td>{{ r.label }}</td>
+            {% for entry in r.role_fill_list %}
+              <td class="text-end">{{ entry.worked }}</td>
+              <td class="text-end">{{ entry.capacity }}</td>
+              <td class="text-end">{{ entry.rate_pct }}</td>
+            {% endfor %}
           </tr>
           {% endfor %}
         </tbody>

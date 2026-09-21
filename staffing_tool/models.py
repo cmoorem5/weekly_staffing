@@ -290,9 +290,11 @@ class WeeklyManagerShift(Base):
     )
     person_display = Column(String(256), nullable=False, default="")
     role = Column(String(16), nullable=False)
-    shift_date = Column(String(10), nullable=False)
+    # Indexed: the manager shifts report filters every query on a shift_date
+    # range, and again on event_type for the leave/AOC pay-period credits.
+    shift_date = Column(String(10), nullable=False, index=True)
     # line_shift | aoc | leave
-    event_type = Column(String(16), nullable=False, default="line_shift")
+    event_type = Column(String(16), nullable=False, default="line_shift", index=True)
     base_name = Column(String(64), nullable=False)
     service_type = Column(String(8), nullable=False)
     day_night = Column(String(1), nullable=False)

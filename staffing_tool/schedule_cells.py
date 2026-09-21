@@ -144,36 +144,6 @@ IGNORE_UNIT_CODES: set[str] = {
 }
 
 
-SKIP_CELL_VALUES: set[str] = {
-    "AOC",
-    "SM",
-    "SIM",
-    "CLINICAL",
-    "FLOAT",
-    "AIRWAY SIM",
-    "LTM",
-    "MIL",
-    "SM (LIVE)",
-    "SM (VIRTUAL)",
-    "SM(LIVE)",  # Excel sometimes drops space before (
-    "SM(VIRTUAL)",
-    "EDU",
-    "CCT",
-    "CCTP",  # CCT preceptor day
-    "NEO SIM",
-    "CLINICAL/PER",
-    "CLINICAL/ PER",  # Excel sometimes has a space after the slash
-    "AUDIO",
-    "SM/EDU",
-    "SM / EDU",  # spaces around the slash
-    "SM(LIVE)/AUDIO",
-    "SM (LIVE)/AUDIO",
-    "SM(VIRTUAL)/AUDIO",
-    "SM (VIRTUAL)/AUDIO",
-    "SM(LIVE)/ADUIO",  # AUDIO typo seen in real workbooks
-    "SM(VIRTUAL)/ADUIO",
-}
-
 # Training/education markers: not staffing, not leave -- counted separately
 # in WeeklyStaffing.training_shifts (weekly total across all these codes).
 SKIP_TRAINING_VALUES: set[str] = {
@@ -208,6 +178,12 @@ SKIP_ADMIN_VALUES: set[str] = {
     "LTM",
     "MIL",
 }
+
+# Every cell value the grid walker skips. Derived, never hand-listed: these two
+# sets were duplicated into a third literal, so adding a training code meant
+# editing two places and forgetting one left the cell parsed as an unknown unit
+# instead of skipped.
+SKIP_CELL_VALUES: set[str] = SKIP_TRAINING_VALUES | SKIP_ADMIN_VALUES
 
 # Merge rules: apply to ALL unit codes (D7B, N7B, D9L, D11M, D7P, N7P, etc.).
 # - OT: trailing "C" or " C" on any known unit → overtime.
@@ -260,8 +236,8 @@ def _classify_skip_reason(
         return "open"
     if text in training_values:
         return "training"
-    if text in SKIP_ADMIN_VALUES or text in IGNORE_UNIT_CODES:
-        return "admin"
+    # SKIP_ADMIN_VALUES and IGNORE_UNIT_CODES land here, as does anything else
+    # the caller decided to skip -- all of it is "admin" for persistence.
     return "admin"
 
 

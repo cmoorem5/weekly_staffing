@@ -203,6 +203,33 @@ def migrate_manager_requirement_leave_credit(engine: Engine) -> None:
         conn.commit()
 
 
+def migrate_manager_shift_indexes(engine: Engine) -> None:
+    """Index weekly_manager_shifts on shift_date / event_type.
+
+    ``create_all`` only builds indexes when it creates the table, so databases
+    that predate these declarations need them added explicitly. The names match
+    SQLAlchemy's ``index=True`` convention (``ix_<table>_<column>``) so a fresh
+    database and a migrated one end up with the same schema.
+    """
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='weekly_manager_shifts'"
+            )
+        )
+        if r.fetchone() is None:
+            return
+        for column in ("shift_date", "event_type"):
+            conn.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS ix_weekly_manager_shifts_{column} "
+                    f"ON weekly_manager_shifts ({column})"
+                )
+            )
+        conn.commit()
+
+
 def migrate_schedule_persistence_tables(engine: Engine) -> None:
     """Add columns on weekly_person_shifts for full import detail."""
     optional_int = (
@@ -444,6 +471,7 @@ def init_db(db_path: str | None = None) -> None:
     migrate_schedule_persistence_tables(engine)
     migrate_manager_shift_event_type(engine)
     migrate_manager_shift_leave_type(engine)
+    migrate_manager_shift_indexes(engine)
     migrate_manager_requirement_leave_credit(engine)
     SessionLocal = _sessionmaker_for_path(_resolve_db_path(db_path))
     with SessionLocal() as session:
