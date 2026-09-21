@@ -11,8 +11,10 @@ from .manager_roster import default_manager_last_names_upper
 from .person_names import person_displays_for_role
 from .schedule_cells import (
     AT_ALIASES,
+    BREV_ALIASES,
     IGNORE_UNIT_CODES,
     LEAVE_CODES,
+    LT_ALIASES,
     RETIRED_UNIT_CODES,
     SKIP_CELL_VALUES,
     SKIP_TRAINING_VALUES,
@@ -479,6 +481,12 @@ def _parse_grid(
             if text in AT_ALIASES:
                 leave_code = "AT"
                 leave_display = "AT"
+            elif text in LT_ALIASES:
+                leave_code = "LT"
+                leave_display = "LT"
+            elif text in BREV_ALIASES:
+                leave_code = "BREV"
+                leave_display = "BREV"
             elif text.startswith("LT-"):
                 leave_code = "LT"
                 leave_display = text  # LT-D or LT-N

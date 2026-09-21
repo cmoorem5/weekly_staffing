@@ -38,6 +38,8 @@ UNIT_MAP: dict[str, tuple[str, ServiceType, DayNight]] = {
     # EMT GR shorthand (Bedford ground, aligns with D7B EMT staffing)
     "GR2": ("Bedford", "GR", "D"),
     "NG2": ("Bedford", "GR", "N"),
+    # Opportunistic Bedford ground day shift added after FW decommission
+    "G9B": ("Bedford", "GR", "D"),
 }
 
 # Historical Manchester codes → canonical D11H (same base, RW day as today).
@@ -72,7 +74,20 @@ MAX_GR_UNIT_DAYS_PER_WEEK: dict[str, int] = {
 LEAVE_CODES = {"AT", "LT", "SICK", "LOA", "PFML", "JURY", "BREV"}
 
 # Raw values that count as AT for leave/exception totals.
-AT_ALIASES: set[str] = {"SM/AT", "AT/SIM"}
+AT_ALIASES: set[str] = {
+    "SM/AT",
+    "AT/SIM",
+    "AT:SIM",
+    "AT:TDAC",
+    "AT:FCCS",
+    "EDU:TDAC",
+}
+
+# Raw values that count as LT (Leave Time) for leave/exception totals.
+LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)"}
+
+# Raw values that count as BREV (Bereavement) for leave/exception totals.
+BREV_ALIASES: set[str] = {"BRV", "BERV"}
 
 # Unit-like codes to skip when parsing: no shift record, no unknown-unit issue.
 IGNORE_UNIT_CODES: set[str] = {
@@ -80,6 +95,9 @@ IGNORE_UNIT_CODES: set[str] = {
     "RAL D7B",
     "RTW ADMIN",
     "RTW D7B",
+    "RTW D7P",
+    "GR-RAL",
+    "HOL",
 }
 
 

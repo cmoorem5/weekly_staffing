@@ -34,7 +34,7 @@ BASE_DISPLAY_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymout
 # Opportunistic extra Bedford ambulance unit codes (staffed when available,
 # not counted toward minimum) — excluded from role-fill "worked" counts so
 # they don't inflate fill rate past the required-line capacity above.
-EXTRA_UNIT_CODES = {"GR2", "NG2"}
+EXTRA_UNIT_CODES = {"GR2", "NG2", "G9B"}
 
 # Max GR unit-days (D+N) staffable system-wide per week — denominator for
 # System GR % only.
