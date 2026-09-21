@@ -129,6 +129,54 @@ class WeeklyManagerShiftMappingsTests(unittest.TestCase):
         self.assertEqual(aoc_rows[0]["raw_value"], "AOC")
         self.assertEqual(len(line_rows), 1)
 
+    def test_maps_manager_leave_cells(self):
+        records = [
+            ShiftRecord(
+                date=date(2025, 12, 8),
+                base="",
+                service_type="",
+                day_night="",
+                role="RN",
+                filled=False,
+                overtime=False,
+                leave_type="LT",
+                source_tab="RN & Medic (RN)",
+                source_cell="D5",
+                raw_value="LT",
+                person_display="Bowman",
+                is_manager_row=True,
+                included_in_aggregates=False,
+            ),
+            ShiftRecord(
+                date=date(2025, 12, 9),
+                base="",
+                service_type="",
+                day_night="",
+                role="RN",
+                filled=False,
+                overtime=False,
+                leave_type="AT",
+                source_tab="RN & Medic (RN)",
+                source_cell="E6",
+                raw_value="AT",
+                person_display="Guest",
+                is_manager_row=False,
+                included_in_aggregates=False,
+            ),
+            _manager_shift_record(
+                person_display="Bowman", shift_date=date(2025, 12, 7)
+            ),
+        ]
+        rows = weekly_manager_shift_mappings("2025-12-07", records)
+        self.assertEqual(len(rows), 2)
+        leave_rows = [r for r in rows if r["event_type"] == "leave"]
+        line_rows = [r for r in rows if r["event_type"] == "line_shift"]
+        self.assertEqual(len(leave_rows), 1)
+        self.assertEqual(leave_rows[0]["person_display"], "Bowman")
+        self.assertEqual(leave_rows[0]["shift_date"], "2025-12-08")
+        self.assertEqual(leave_rows[0]["leave_type"], "LT")
+        self.assertEqual(len(line_rows), 1)
+
     def test_legacy_display_name_preserved_until_backfill(self):
         records = [_manager_shift_record(person_display="m, Ender")]
         rows = weekly_manager_shift_mappings("2025-12-07", records)

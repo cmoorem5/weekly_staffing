@@ -6,6 +6,7 @@ from .home import home
 from .import_review import import_review
 from .import_schedule import import_schedule, import_schedule_manager_export_xlsx
 from .manager_shifts import (
+    manager_requirement_save,
     manager_shifts,
     manager_shifts_export_csv,
     manager_shifts_export_xlsx,
@@ -55,6 +56,7 @@ __all__ = [
     "kpi_thresholds_settings",
     "manager_roster_settings",
     "staff_roster_settings",
+    "manager_requirement_save",
     "manager_shifts",
     "manager_shifts_export_csv",
     "manager_shifts_export_xlsx",

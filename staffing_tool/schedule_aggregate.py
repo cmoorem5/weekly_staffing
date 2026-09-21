@@ -107,8 +107,9 @@ def weekly_manager_shift_mappings(
     records: Iterable[ShiftRecord],
 ) -> list[dict[str, object]]:
     """
-    Rows for ``WeeklyManagerShift`` bulk insert: staffed unit cells and AOC
-    admin days on manager roster rows (same last-name set as leave exclusion).
+    Rows for ``WeeklyManagerShift`` bulk insert: staffed unit cells, AOC
+    admin days, and leave (AT/LT/SICK/LOA/JURY/BREV) on manager roster rows
+    (same last-name set as staff-aggregate leave exclusion).
     """
     rows: list[dict[str, object]] = []
     for r in records:
@@ -124,6 +125,28 @@ def weekly_manager_shift_mappings(
                     "role": r.role,
                     "shift_date": r.date.isoformat(),
                     "event_type": "aoc",
+                    "base_name": "",
+                    "service_type": "",
+                    "day_night": "",
+                    "unit_code": "",
+                    "overtime": 0,
+                    "raw_value": (r.raw_value or "")[:64],
+                    "source_tab": (r.source_tab or "")[:128],
+                    "source_cell": (r.source_cell or "")[:16],
+                }
+            )
+            continue
+        if r.leave_type:
+            if r.role not in {"RN", "MEDIC", "EMT"}:
+                continue
+            rows.append(
+                {
+                    "week_start": week_start,
+                    "person_display": (r.person_display or "").strip() or "(unknown)",
+                    "role": r.role,
+                    "shift_date": r.date.isoformat(),
+                    "event_type": "leave",
+                    "leave_type": r.leave_type,
                     "base_name": "",
                     "service_type": "",
                     "day_night": "",

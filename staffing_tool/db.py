@@ -156,6 +156,25 @@ def migrate_manager_shift_event_type(engine: Engine) -> None:
         conn.commit()
 
 
+def migrate_manager_shift_leave_type(engine: Engine) -> None:
+    """Add leave_type to weekly_manager_shifts (set only when event_type == 'leave')."""
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='weekly_manager_shifts'"
+            )
+        )
+        if r.fetchone() is None:
+            return
+        columns = _pragma_column_names(conn, "weekly_manager_shifts")
+        if "leave_type" not in columns:
+            conn.execute(
+                text("ALTER TABLE weekly_manager_shifts ADD COLUMN leave_type TEXT")
+            )
+        conn.commit()
+
+
 def migrate_schedule_persistence_tables(engine: Engine) -> None:
     """Add columns on weekly_person_shifts for full import detail."""
     optional_int = (
@@ -396,6 +415,7 @@ def init_db(db_path: str | None = None) -> None:
     migrate_add_base_coverage_day_night(engine)
     migrate_schedule_persistence_tables(engine)
     migrate_manager_shift_event_type(engine)
+    migrate_manager_shift_leave_type(engine)
     SessionLocal = _sessionmaker_for_path(_resolve_db_path(db_path))
     with SessionLocal() as session:
         seed_base_config(session)

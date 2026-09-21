@@ -18,6 +18,7 @@ from .views import (
     import_schedule,
     import_schedule_manager_export_xlsx,
     kpi_thresholds_settings,
+    manager_requirement_save,
     manager_roster_settings,
     manager_shifts,
     manager_shifts_export_csv,
@@ -139,6 +140,11 @@ urlpatterns = [
         "manager-shifts/export.xlsx",
         manager_shifts_export_xlsx,
         name="manager_shifts_export_xlsx",
+    ),
+    path(
+        "manager-shifts/requirement/save/",
+        manager_requirement_save,
+        name="manager_requirement_save",
     ),
     path("ops/person/", person_ops_report, name="person_ops_report"),
     path(

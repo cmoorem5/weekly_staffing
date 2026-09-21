@@ -77,13 +77,15 @@ def _append_skipped_shift(
     person_display: str,
     is_manager_row: bool,
     skip_reason: SkipReason,
+    leave_type: str | None = None,
 ) -> None:
     cell_ref = f"{get_column_letter(col_idx)}{row_idx}"
     # Training is the one skip category that still counts toward a weekly
     # total (WeeklyStaffing.training_shifts) -- everything else here is
     # truly dropped. Manager-row cells are excluded, matching how manager
-    # leave/OT are tracked separately (weekly_manager_shifts) rather than
-    # folded into the staff weekly totals.
+    # line shifts/OT/AOC are tracked separately (weekly_manager_shifts)
+    # rather than folded into the staff weekly totals; manager leave cells
+    # go to weekly_manager_shifts too, via ``leave_type`` below.
     included_in_aggregates = skip_reason == "training" and not is_manager_row
     records.append(
         ShiftRecord(
@@ -94,7 +96,7 @@ def _append_skipped_shift(
             role=role,
             filled=False,
             overtime=False,
-            leave_type=None,
+            leave_type=leave_type,
             source_tab=sheet_label,
             source_cell=cell_ref,
             raw_value=text,
@@ -513,6 +515,7 @@ def _parse_grid(
                         person_display=person_display,
                         is_manager_row=True,
                         skip_reason="manager_row",
+                        leave_type=leave_display,
                     )
                     continue
                 records.append(
