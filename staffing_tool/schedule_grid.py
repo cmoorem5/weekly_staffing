@@ -17,6 +17,7 @@ from .schedule_cells import (
     LEAVE_CODES,
     LT_ALIASES,
     RETIRED_UNIT_CODES,
+    SICK_ALIASES,
     SKIP_CELL_VALUES,
     SKIP_TRAINING_VALUES,
     UNIT_LEAVE_MERGE,
@@ -488,6 +489,9 @@ def _parse_grid(
             elif text in BREV_ALIASES:
                 leave_code = "BREV"
                 leave_display = "BREV"
+            elif text in SICK_ALIASES:
+                leave_code = "SICK"
+                leave_display = "SICK"
             elif text.startswith("LT-"):
                 leave_code = "LT"
                 leave_display = text  # LT-D or LT-N

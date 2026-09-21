@@ -95,6 +95,8 @@ AT_ALIASES: set[str] = {
     "AT:STABLE",
     "AT: SIM",
     "EDU:STABLE",
+    "EDU:MICRO SIM",
+    "AT/AIRWAY SIM",
 }
 
 # "AT" cells with a trailing hour count (AT8, AT10, AT12, AT12/SHIFT, ...)
@@ -103,6 +105,9 @@ _AT_HOURS_RE = re.compile(r"^AT\d+(/.*)?$")
 
 # Raw values that count as LT (Leave Time) for leave/exception totals.
 LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)", "PER"}
+
+# Raw values that count as SICK for leave/exception totals.
+SICK_ALIASES: set[str] = {"SICK SIM"}
 
 # Raw values that count as BREV (Bereavement) for leave/exception totals.
 BREV_ALIASES: set[str] = {"BRV", "BERV"}
@@ -121,6 +126,13 @@ IGNORE_UNIT_CODES: set[str] = {
     "RTW D11B",
     "RAL MG",
     "RAL D7P",
+    "ADMIN",
+    "RAL D9L",
+    "RAL FW",
+    "SM/RAL LG",
+    "CLINICAL/RAL FW",
+    "EMT/FW",
+    "ZZ",
 }
 
 
