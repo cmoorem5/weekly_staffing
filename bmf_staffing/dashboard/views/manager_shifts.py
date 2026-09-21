@@ -4,7 +4,7 @@ import csv
 import io
 import json
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from typing import cast
 
 from django.contrib import messages
@@ -48,6 +48,17 @@ from .helpers import (
 # Manager line-shift minimums (policy): full FY and biweekly pay-period equivalent.
 MANAGER_MIN_SHIFTS_PER_FY = 52
 MANAGER_MIN_PER_PAY_PERIOD = 2
+# A manager covering AOC for a week is credited this many line shifts against
+# the 2-per-pay-period minimum, so a full pay period on AOC waives that period
+# outright and a single AOC week waives half of it.
+MANAGER_AOC_CREDIT_PER_WEEK = 1
+# Manager leave is entered by hand per manager (annual shifts) because schedule
+# workbooks do not carry manager LT reliably and each manager's entitlement
+# differs. Imported leave rows are shown for reference only.
+MANAGER_LEAVE_CREDIT_NOTE = (
+    "Manual annual figure per manager (Settings on the manager row); "
+    "LT on the schedule workbook is reference only and does not adjust targets."
+)
 MANAGER_DETAIL_PAGE_SIZE = 50
 MANAGER_AOC_DETAIL_PAGE_SIZE = 50
 
@@ -167,37 +178,52 @@ def _prorated_manager_minimum(
     return target, fy_start, fy_end, overlap_days, fy_total_days
 
 
-def _manager_requirements(session) -> dict[str, int]:
-    """Per-manager annual requirement overrides (person_display -> shifts/year)."""
+def _manager_requirements(session) -> dict[str, dict[str, object]]:
+    """Per-manager annual requirement and manual leave-credit overrides.
+
+    Maps ``person_display`` to ``{"annual", "leave_credit", "note"}``. Managers
+    without a row fall back to the policy minimum and no leave credit.
+    """
     rows = session.query(ManagerRequirement).all()
-    return {r.person_display: int(r.annual_shift_requirement) for r in rows}
+    return {
+        r.person_display: {
+            "annual": int(r.annual_shift_requirement),
+            "leave_credit": int(getattr(r, "annual_leave_credit_shifts", 0) or 0),
+            "note": (getattr(r, "leave_credit_note", "") or "").strip(),
+        }
+        for r in rows
+    }
 
 
-def _credit_pay_periods_by_manager(
+def _week_sunday(d: date) -> date:
+    """Sunday on or before ``d`` — schedule weeks start Sunday."""
+    return d - timedelta(days=(d.weekday() + 1) % 7)
+
+
+def _aoc_weeks_by_manager(
     session,
     roster_upper: frozenset[str],
     date_start: date,
     date_end: date,
-    fy_start: date,
-    event_type: str,
-) -> dict[str, set[tuple[date, date]]]:
+) -> dict[str, int]:
     """
-    Distinct pay periods per manager containing at least one record of
-    ``event_type`` ("leave" or "aoc") within the selected range -- each backs
-    out MANAGER_MIN_PER_PAY_PERIOD (2) shifts from their target. Same rule for
-    both: a pay period they were on leave, or on AOC duty, for isn't one they
-    could have hit the line-shift minimum in.
+    Count of distinct schedule weeks per manager holding at least one AOC day
+    inside the selected range.
 
-    Returns the pay periods themselves, not a count, so the caller can take the
-    union across event types: a pay period holding *both* leave and AOC is
-    still one pay period and must only be credited once.
+    Each such week backs MANAGER_AOC_CREDIT_PER_WEEK (1) shift out of that
+    manager's target: covering AOC for a week is the work they did instead of a
+    line shift, so a manager on AOC for both weeks of a pay period owes none of
+    that period's 2-shift minimum, and one AOC week leaves them owing one.
+
+    Weeks are keyed on the Sunday derived from ``shift_date`` rather than the
+    stored ``week_start`` so a row written against the wrong week can't
+    double-credit.
     """
-    periods = pay_periods_for_fy(fy_start)
-    dates_by_manager: dict[str, set[date]] = defaultdict(set)
+    weeks_by_manager: dict[str, set[date]] = defaultdict(set)
     rows = (
         session.query(WeeklyManagerShift.person_display, WeeklyManagerShift.shift_date)
         .filter(
-            WeeklyManagerShift.event_type == event_type,
+            WeeklyManagerShift.event_type == "aoc",
             WeeklyManagerShift.shift_date >= date_start.isoformat(),
             WeeklyManagerShift.shift_date <= date_end.isoformat(),
         )
@@ -207,17 +233,8 @@ def _credit_pay_periods_by_manager(
         canon = canonical_manager_name(
             (raw_name or "").strip() or "(unknown)", roster_upper
         )
-        dates_by_manager[canon].add(date.fromisoformat(str(shift_date)))
-
-    in_range = [p for p in periods if p.start <= date_end and p.end >= date_start]
-    result: dict[str, set[tuple[date, date]]] = {}
-    for name, event_dates in dates_by_manager.items():
-        result[name] = {
-            (p.start, p.end)
-            for p in in_range
-            if any(p.start <= d <= p.end for d in event_dates)
-        }
-    return result
+        weeks_by_manager[canon].add(_week_sunday(date.fromisoformat(str(shift_date))))
+    return {name: len(weeks) for name, weeks in weeks_by_manager.items()}
 
 
 def _status_for_count(n: int, prorated_min: float) -> tuple[str, bool, float, float]:
@@ -270,6 +287,8 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
 
     totals: dict[str, int] = defaultdict(int)
     aoc_totals: dict[str, int] = defaultdict(int)
+    leave_day_totals: dict[str, int] = defaultdict(int)
+    leave_codes: dict[str, set[str]] = defaultdict(set)
     shift_rows: list[dict[str, object]] = []
     aoc_rows: list[dict[str, object]] = []
     with session_scope(DB_PATH) as session:
@@ -296,8 +315,14 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
             canon = canonical_manager_name(raw_name, roster_upper)
             event_type = _manager_row_event_type(m)
             if event_type == "leave":
-                # Counted separately via _credit_pay_periods_by_manager below,
-                # not part of line-shift or AOC totals.
+                # Informational only. Manager leave on the schedule workbook is
+                # incomplete and each manager's annual LT entitlement differs,
+                # so the target is reduced by the manual annual leave credit on
+                # ManagerRequirement, never by these rows.
+                leave_day_totals[canon] += 1
+                leave_code = (m.leave_type or "").strip().upper()
+                if leave_code:
+                    leave_codes[canon].add(leave_code)
                 continue
             if event_type == "aoc":
                 aoc_totals[canon] += 1
@@ -333,11 +358,8 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                 }
             )
         requirements = _manager_requirements(session)
-        leave_pay_periods = _credit_pay_periods_by_manager(
-            session, roster_upper, date_start, date_end, fy_start, "leave"
-        )
-        aoc_pay_periods = _credit_pay_periods_by_manager(
-            session, roster_upper, date_start, date_end, fy_start, "aoc"
+        aoc_weeks_by_manager = _aoc_weeks_by_manager(
+            session, roster_upper, date_start, date_end
         )
 
     grand_total = len(shift_rows)
@@ -358,7 +380,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
     cumulative_rows: list[dict[str, object]] = []
     running = 0
     all_manager_names = sorted(
-        set(totals) | set(aoc_totals),
+        set(totals) | set(aoc_totals) | set(leave_day_totals),
         key=lambda n: (-(totals.get(n, 0) + aoc_totals.get(n, 0)), n.lower()),
     )
     totals_by_person = sorted(totals.items(), key=lambda x: (-x[1], x[0].lower()))
@@ -368,20 +390,26 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         if n:
             running += n
         pct = round(100.0 * n / grand_total, 1) if grand_total else 0.0
-        annual_requirement = requirements.get(name, MANAGER_MIN_SHIFTS_PER_FY)
+        override = requirements.get(name) or {}
+        annual_requirement = int(override.get("annual", MANAGER_MIN_SHIFTS_PER_FY) or 0)
+        annual_leave_credit = int(override.get("leave_credit", 0) or 0)
+        leave_note = str(override.get("note", "") or "")
+        # The manual leave credit is an annual figure, so it is prorated with
+        # the annual requirement rather than subtracted whole from a partial
+        # window: net the two first, then scale to the selected dates.
+        net_annual = max(0, annual_requirement - annual_leave_credit)
         prorated_min, _fs, _fe, _od, _ftd = _prorated_manager_minimum(
+            range_start_d, range_end_d, annual_min=net_annual
+        )
+        prorated_before_leave, _fs2, _fe2, _od2, _ftd2 = _prorated_manager_minimum(
             range_start_d, range_end_d, annual_min=annual_requirement
         )
-        leave_pps = leave_pay_periods.get(name, frozenset())
-        # A pay period with both leave and AOC is credited once, under leave.
-        # Netting it out of the AOC column keeps the two displayed credits
-        # additive and stops one pay period backing out 4 shifts instead of 2.
-        aoc_pps = aoc_pay_periods.get(name, frozenset()) - leave_pps
-        leave_pp_count = len(leave_pps)
-        leave_credit = leave_pp_count * MANAGER_MIN_PER_PAY_PERIOD
-        aoc_pp_count = len(aoc_pps)
-        aoc_credit = aoc_pp_count * MANAGER_MIN_PER_PAY_PERIOD
-        adjusted_min = max(0.0, prorated_min - leave_credit - aoc_credit)
+        leave_credit = round(prorated_before_leave - prorated_min, 1)
+        # AOC weeks are observed inside the selected range, so their credit is
+        # subtracted as counted, not prorated.
+        aoc_weeks = aoc_weeks_by_manager.get(name, 0)
+        aoc_credit = aoc_weeks * MANAGER_AOC_CREDIT_PER_WEEK
+        adjusted_min = max(0.0, prorated_min - aoc_credit)
         status_label, met, delta, target_disp = _status_for_count(n, adjusted_min)
         cumulative_rows.append(
             {
@@ -391,9 +419,12 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                 "pct": pct,
                 "running": running if n else None,
                 "annual_requirement": annual_requirement,
-                "leave_pay_periods": leave_pp_count,
+                "annual_leave_credit": annual_leave_credit,
                 "leave_credit": leave_credit,
-                "aoc_pay_periods": aoc_pp_count,
+                "leave_note": leave_note,
+                "leave_days": leave_day_totals.get(name, 0),
+                "leave_codes": ", ".join(sorted(leave_codes.get(name, set()))),
+                "aoc_weeks": aoc_weeks,
                 "aoc_credit": aoc_credit,
                 "target": target_disp,
                 "delta": delta,
@@ -578,6 +609,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         "db_date_max": db_max,
         "manager_min_fy": MANAGER_MIN_SHIFTS_PER_FY,
         "manager_min_per_pp": MANAGER_MIN_PER_PAY_PERIOD,
+        "manager_aoc_credit_per_week": MANAGER_AOC_CREDIT_PER_WEEK,
         "manager_pp_per_fy": pp_count,
         "prorated_manager_min": round(default_prorated_min, 1),
         "fy_target_start": fy_anchor_start.isoformat(),
@@ -616,31 +648,65 @@ def manager_shifts(request):
 
 
 def manager_requirement_save(request):
-    """Save one manager's annual line-shift requirement override (52 if unset)."""
+    """Save one manager's annual requirement and manual leave credit.
+
+    Both fields are optional in the POST: the form on the manager report posts
+    only the one that was edited, so a blank field leaves the stored value
+    alone rather than resetting it to zero.
+    """
     _ensure_db()
     if request.method != "POST" or not DB_PATH:
         return redirect("manager_shifts")
 
     person_display = (request.POST.get("person_display") or "").strip()
-    raw_value = (request.POST.get("annual_shift_requirement") or "").strip()
+    raw_requirement = (request.POST.get("annual_shift_requirement") or "").strip()
+    raw_leave_credit = (request.POST.get("annual_leave_credit_shifts") or "").strip()
+    leave_note = (request.POST.get("leave_credit_note") or "").strip()[:256]
+    note_submitted = "leave_credit_note" in request.POST
     filters_qs = request.POST.get("filters_qs") or ""
 
-    if person_display and raw_value:
+    def _whole_number(raw: str, label: str) -> int | None:
         try:
-            annual_value = max(0, int(raw_value))
+            return max(0, int(raw))
         except ValueError:
-            messages.error(request, "Annual requirement must be a whole number.")
-        else:
-            with session_scope(DB_PATH) as session:
-                row = session.get(ManagerRequirement, person_display)
-                if row is None:
-                    row = ManagerRequirement(person_display=person_display)
-                    session.add(row)
+            messages.error(request, f"{label} must be a whole number.")
+            return None
+
+    annual_value = (
+        _whole_number(raw_requirement, "Annual requirement")
+        if raw_requirement
+        else None
+    )
+    leave_value = (
+        _whole_number(raw_leave_credit, "Leave credit") if raw_leave_credit else None
+    )
+    bad_input = (raw_requirement and annual_value is None) or (
+        raw_leave_credit and leave_value is None
+    )
+
+    if person_display and not bad_input:
+        with session_scope(DB_PATH) as session:
+            row = session.get(ManagerRequirement, person_display)
+            if row is None:
+                row = ManagerRequirement(person_display=person_display)
+                session.add(row)
+            if annual_value is not None:
                 row.annual_shift_requirement = annual_value
-            messages.success(
-                request,
-                f"{person_display}: annual requirement set to {annual_value} shifts.",
-            )
+            if leave_value is not None:
+                row.annual_leave_credit_shifts = leave_value
+            if note_submitted:
+                row.leave_credit_note = leave_note or None
+            # Flush so a newly created row picks up its column defaults before
+            # the confirmation message reads them back.
+            session.flush()
+            saved_requirement = int(row.annual_shift_requirement or 0)
+            saved_leave = int(row.annual_leave_credit_shifts or 0)
+        messages.success(
+            request,
+            f"{person_display}: annual requirement {saved_requirement} shifts, "
+            f"leave credit {saved_leave} shifts "
+            f"(net {max(0, saved_requirement - saved_leave)}).",
+        )
 
     url = reverse("manager_shifts")
     if filters_qs:
@@ -671,6 +737,10 @@ def manager_shifts_export_csv(request):
     writer.writerow(
         ["Minimum shifts per pay period (policy)", ctx.get("manager_min_per_pp")]
     )
+    writer.writerow(
+        ["AOC credit (shifts per AOC week)", ctx.get("manager_aoc_credit_per_week")]
+    )
+    writer.writerow(["LT credit source", MANAGER_LEAVE_CREDIT_NOTE])
     writer.writerow(["Granularity", ctx.get("granularity")])
     writer.writerow(["Date start", ctx.get("date_start")])
     writer.writerow(["Date end", ctx.get("date_end")])
@@ -687,9 +757,12 @@ def manager_shifts_export_csv(request):
             "Manager (last name)",
             "Shifts",
             "AOC days",
-            "Leave credit PPs",
-            "Leave credit shifts",
-            "AOC credit PPs",
+            "Annual req.",
+            "LT credit (annual, manual)",
+            "LT credit note",
+            "LT credit applied",
+            "LT days on schedule",
+            "AOC weeks",
             "AOC credit shifts",
             "Min (prorated)",
             "Delta",
@@ -704,9 +777,12 @@ def manager_shifts_export_csv(request):
                 row.get("name"),
                 row.get("count"),
                 row.get("aoc_count"),
-                row.get("leave_pay_periods"),
+                row.get("annual_requirement"),
+                row.get("annual_leave_credit"),
+                row.get("leave_note"),
                 row.get("leave_credit"),
-                row.get("aoc_pay_periods"),
+                row.get("leave_days"),
+                row.get("aoc_weeks"),
                 row.get("aoc_credit"),
                 row.get("target"),
                 row.get("delta"),
@@ -720,13 +796,7 @@ def manager_shifts_export_csv(request):
             "Total (all managers)",
             ctx.get("grand_total"),
             ctx.get("aoc_grand_total"),
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            *[""] * 10,
             100 if ctx.get("grand_total") else "",
             ctx.get("grand_total"),
         ]
@@ -850,6 +920,10 @@ def manager_shifts_export_xlsx(request):
     ws_meta.append(
         ["Minimum shifts per pay period (policy)", ctx.get("manager_min_per_pp")]
     )
+    ws_meta.append(
+        ["AOC credit (shifts per AOC week)", ctx.get("manager_aoc_credit_per_week")]
+    )
+    ws_meta.append(["LT credit source", MANAGER_LEAVE_CREDIT_NOTE])
     ws_meta.append(["Granularity", ctx.get("granularity")])
     ws_meta.append(["Date start", ctx.get("date_start")])
     ws_meta.append(["Date end", ctx.get("date_end")])
@@ -866,9 +940,12 @@ def manager_shifts_export_xlsx(request):
             "Manager (last name)",
             "Shifts",
             "AOC days",
-            "Leave credit PPs",
-            "Leave credit shifts",
-            "AOC credit PPs",
+            "Annual req.",
+            "LT credit (annual, manual)",
+            "LT credit note",
+            "LT credit applied",
+            "LT days on schedule",
+            "AOC weeks",
             "AOC credit shifts",
             "Min (prorated)",
             "Delta",
@@ -883,9 +960,12 @@ def manager_shifts_export_xlsx(request):
                 row.get("name"),
                 row.get("count"),
                 row.get("aoc_count"),
-                row.get("leave_pay_periods"),
+                row.get("annual_requirement"),
+                row.get("annual_leave_credit"),
+                row.get("leave_note"),
                 row.get("leave_credit"),
-                row.get("aoc_pay_periods"),
+                row.get("leave_days"),
+                row.get("aoc_weeks"),
                 row.get("aoc_credit"),
                 row.get("target"),
                 row.get("delta"),
@@ -899,13 +979,7 @@ def manager_shifts_export_xlsx(request):
             "Total (all managers)",
             ctx.get("grand_total"),
             ctx.get("aoc_grand_total"),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            *[None] * 10,
             100 if ctx.get("grand_total") else None,
             ctx.get("grand_total"),
         ]

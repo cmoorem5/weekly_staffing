@@ -311,18 +311,27 @@ class ManagerRequirement(Base):
     """Per-manager override of the annual line-shift requirement.
 
     Absent a row here, a manager's requirement defaults to
-    ``manager_shifts.MANAGER_MIN_SHIFTS_PER_FY`` (52).
+    ``manager_shifts.MANAGER_MIN_SHIFTS_PER_FY`` (52) with no leave credit.
+
+    ``annual_leave_credit_shifts`` is the manually entered reduction for that
+    manager's leave/LT entitlement. It is manual on purpose: schedule workbooks
+    do not carry manager leave reliably, and each manager's annual LT differs,
+    so the imported ``event_type == "leave"`` rows are informational only and
+    never adjust the target on their own.
     """
 
     __tablename__ = "manager_requirements"
 
     person_display = Column(String(256), primary_key=True)
     annual_shift_requirement = Column(Integer, nullable=False, default=52)
+    annual_leave_credit_shifts = Column(Integer, nullable=False, default=0)
+    leave_credit_note = Column(String(256), nullable=True)
 
     def __repr__(self) -> str:
         return (
             f"ManagerRequirement(person_display={self.person_display!r}, "
-            f"annual_shift_requirement={self.annual_shift_requirement!r})"
+            f"annual_shift_requirement={self.annual_shift_requirement!r}, "
+            f"annual_leave_credit_shifts={self.annual_leave_credit_shifts!r})"
         )
 
 
