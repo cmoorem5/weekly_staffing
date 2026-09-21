@@ -36,6 +36,8 @@ from .views import (
     staffing_dashboard_export_csv,
     staffing_dashboard_export_xlsx,
     training_codes_settings,
+    training_summary_export_csv,
+    training_summary_report,
     week_add,
     week_delete,
     week_edit,
@@ -149,5 +151,11 @@ urlpatterns = [
         "ops/exceptions/export.csv",
         staff_exceptions_export_csv,
         name="staff_exceptions_export_csv",
+    ),
+    path("ops/training/", training_summary_report, name="training_summary_report"),
+    path(
+        "ops/training/export.csv",
+        training_summary_export_csv,
+        name="training_summary_export_csv",
     ),
 ]

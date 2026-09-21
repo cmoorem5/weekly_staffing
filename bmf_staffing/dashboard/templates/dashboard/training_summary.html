@@ -1,0 +1,156 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Training summary{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Training summary</h1>
+<p class="bmf-page-subtitle">
+  Training event counts by role (RN / Medic / EMT), grouped by week, pay period, month, or
+  quarter. Counts come straight from imported schedule cells (EDU, SIM, CRM, and the rest of
+  Settings &rarr; Training codes) &mdash; not a percentage or target, just how many happened.
+</p>
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Training summary filters">
+  <div class="col-auto" style="min-width: 22rem;">
+    <label class="form-label mb-0" for="id_fy">Fiscal year</label>
+    <select name="fy" id="id_fy" class="form-select">
+      {% for row in fy_choices %}
+        <option value="{{ row.fy_label }}"{% if row.fy_label == fy_label %} selected{% endif %}>{{ row.option_label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_granularity">Period type</label>
+    <select name="granularity" id="id_granularity" class="form-select">
+      <option value="week"{% if granularity == "week" %} selected{% endif %}>Week</option>
+      <option value="pay_period"{% if granularity == "pay_period" %} selected{% endif %}>Pay period (biweekly)</option>
+      <option value="month"{% if granularity == "month" %} selected{% endif %}>Month</option>
+      <option value="quarter"{% if granularity == "quarter" %} selected{% endif %}>Quarter</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">Data through</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Update</button>
+  </div>
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.fy_ytd.qs }}">{{ preset_links.fy_ytd.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.last_6_pp.qs }}">{{ preset_links.last_6_pp.label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?{{ preset_links.full_fy.qs }}">{{ preset_links.full_fy.label }}</a>
+    </div>
+  </div>
+  <div class="col-12 mt-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'training_summary_export_csv' %}?{{ filters_qs }}">Export CSV</a>
+  </div>
+</form>
+
+<div class="row g-3 mb-4 mt-1">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">RN</div>
+        <div class="fs-4 fw-semibold">{{ totals_by_role.RN }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Medic</div>
+        <div class="fs-4 fw-semibold">{{ totals_by_role.MEDIC }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">EMT</div>
+        <div class="fs-4 fw-semibold">{{ totals_by_role.EMT }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total</div>
+        <div class="fs-4 fw-semibold">{{ grand_total }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="bmf-section-title">By period ({{ table_rows|length }})</h2>
+{% if table_rows %}
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th>RN</th>
+        <th>Medic</th>
+        <th>EMT</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in table_rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td>{{ row.rn_count }}</td>
+        <td>{{ row.medic_count }}</td>
+        <td>{{ row.emt_count }}</td>
+        <td class="fw-semibold">{{ row.total_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="fw-semibold">
+        <td>Total</td>
+        <td>{{ totals_by_role.RN }}</td>
+        <td>{{ totals_by_role.MEDIC }}</td>
+        <td>{{ totals_by_role.EMT }}</td>
+        <td>{{ grand_total }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">No training events recorded in this date range.</p>
+{% endif %}
+
+<h2 class="bmf-section-title mt-4">By training code (whole selected range)</h2>
+{% if code_breakdown_rows %}
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>RN</th>
+        <th>Medic</th>
+        <th>EMT</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in code_breakdown_rows %}
+      <tr>
+        <td>{{ row.code }}</td>
+        <td>{{ row.rn_count }}</td>
+        <td>{{ row.medic_count }}</td>
+        <td>{{ row.emt_count }}</td>
+        <td class="fw-semibold">{{ row.total_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">No training events recorded in this date range.</p>
+{% endif %}
+{% endblock %}

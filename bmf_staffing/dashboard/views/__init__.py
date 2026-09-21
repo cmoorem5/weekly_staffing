@@ -27,6 +27,7 @@ from .staffing_dashboard import (
     staffing_dashboard_export_csv,
     staffing_dashboard_export_xlsx,
 )
+from .training_summary import training_summary_export_csv, training_summary_report
 from .weekly_staffing_report import (
     weekly_report_download_html,
     weekly_report_download_pdf,
@@ -73,6 +74,8 @@ __all__ = [
     "staffing_dashboard",
     "staffing_dashboard_export_csv",
     "staffing_dashboard_export_xlsx",
+    "training_summary_export_csv",
+    "training_summary_report",
     "week_add",
     "week_delete",
     "week_edit",
