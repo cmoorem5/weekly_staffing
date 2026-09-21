@@ -74,7 +74,14 @@ MAX_GR_UNIT_DAYS_PER_WEEK: dict[str, int] = {
 LEAVE_CODES = {"AT", "LT", "SICK", "LOA", "PFML", "JURY", "BREV"}
 
 # Raw values that count as AT for leave/exception totals.
-AT_ALIASES: set[str] = {"SM/AT", "AT/SIM"}
+AT_ALIASES: set[str] = {
+    "SM/AT",
+    "AT/SIM",
+    "AT:SIM",
+    "AT:TDAC",
+    "AT:FCCS",
+    "EDU:TDAC",
+}
 
 # Raw values that count as LT (Leave Time) for leave/exception totals.
 LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)"}
