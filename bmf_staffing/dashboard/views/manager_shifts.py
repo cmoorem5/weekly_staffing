@@ -173,26 +173,27 @@ def _manager_requirements(session) -> dict[str, int]:
     return {r.person_display: int(r.annual_shift_requirement) for r in rows}
 
 
-def _leave_pay_periods_by_manager(
+def _credit_pay_periods_by_manager(
     session,
     roster_upper: frozenset[str],
     date_start: date,
     date_end: date,
     fy_start: date,
+    event_type: str,
 ) -> dict[str, int]:
     """
-    Count of distinct pay periods per manager containing at least one leave
-    record (AT/LT/SICK/LOA/JURY/BREV) within the selected range -- backs out
-    MANAGER_MIN_PER_PAY_PERIOD (2) shifts per such pay period from their
-    target, on the theory that a pay period they were on leave for isn't one
-    they could have hit the line-shift minimum in.
+    Count of distinct pay periods per manager containing at least one record
+    of ``event_type`` ("leave" or "aoc") within the selected range -- backs
+    out MANAGER_MIN_PER_PAY_PERIOD (2) shifts per such pay period from their
+    target. Same rule for both: a pay period they were on leave, or on AOC
+    duty, for isn't one they could have hit the line-shift minimum in.
     """
     periods = pay_periods_for_fy(fy_start)
-    leave_dates_by_manager: dict[str, set[date]] = defaultdict(set)
+    dates_by_manager: dict[str, set[date]] = defaultdict(set)
     rows = (
         session.query(WeeklyManagerShift.person_display, WeeklyManagerShift.shift_date)
         .filter(
-            WeeklyManagerShift.event_type == "leave",
+            WeeklyManagerShift.event_type == event_type,
             WeeklyManagerShift.shift_date >= date_start.isoformat(),
             WeeklyManagerShift.shift_date <= date_end.isoformat(),
         )
@@ -202,15 +203,15 @@ def _leave_pay_periods_by_manager(
         canon = canonical_manager_name(
             (raw_name or "").strip() or "(unknown)", roster_upper
         )
-        leave_dates_by_manager[canon].add(date.fromisoformat(str(shift_date)))
+        dates_by_manager[canon].add(date.fromisoformat(str(shift_date)))
 
     result: dict[str, int] = {}
-    for name, leave_dates in leave_dates_by_manager.items():
+    for name, event_dates in dates_by_manager.items():
         count = 0
         for p in periods:
             if p.start > date_end or p.end < date_start:
                 continue
-            if any(p.start <= d <= p.end for d in leave_dates):
+            if any(p.start <= d <= p.end for d in event_dates):
                 count += 1
         result[name] = count
     return result
@@ -292,7 +293,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
             canon = canonical_manager_name(raw_name, roster_upper)
             event_type = _manager_row_event_type(m)
             if event_type == "leave":
-                # Counted separately via _leave_pay_periods_by_manager below,
+                # Counted separately via _credit_pay_periods_by_manager below,
                 # not part of line-shift or AOC totals.
                 continue
             if event_type == "aoc":
@@ -329,8 +330,11 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                 }
             )
         requirements = _manager_requirements(session)
-        leave_pay_periods = _leave_pay_periods_by_manager(
-            session, roster_upper, date_start, date_end, fy_start
+        leave_pay_periods = _credit_pay_periods_by_manager(
+            session, roster_upper, date_start, date_end, fy_start, "leave"
+        )
+        aoc_pay_periods = _credit_pay_periods_by_manager(
+            session, roster_upper, date_start, date_end, fy_start, "aoc"
         )
 
     grand_total = len(shift_rows)
@@ -367,7 +371,9 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         )
         leave_pp_count = leave_pay_periods.get(name, 0)
         leave_credit = leave_pp_count * MANAGER_MIN_PER_PAY_PERIOD
-        adjusted_min = max(0.0, prorated_min - leave_credit)
+        aoc_pp_count = aoc_pay_periods.get(name, 0)
+        aoc_credit = aoc_pp_count * MANAGER_MIN_PER_PAY_PERIOD
+        adjusted_min = max(0.0, prorated_min - leave_credit - aoc_credit)
         status_label, met, delta, target_disp = _status_for_count(n, adjusted_min)
         cumulative_rows.append(
             {
@@ -379,6 +385,8 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                 "annual_requirement": annual_requirement,
                 "leave_pay_periods": leave_pp_count,
                 "leave_credit": leave_credit,
+                "aoc_pay_periods": aoc_pp_count,
+                "aoc_credit": aoc_credit,
                 "target": target_disp,
                 "delta": delta,
                 "met": met,
@@ -671,6 +679,10 @@ def manager_shifts_export_csv(request):
             "Manager (last name)",
             "Shifts",
             "AOC days",
+            "Leave credit PPs",
+            "Leave credit shifts",
+            "AOC credit PPs",
+            "AOC credit shifts",
             "Min (prorated)",
             "Delta",
             "Status",
@@ -684,6 +696,10 @@ def manager_shifts_export_csv(request):
                 row.get("name"),
                 row.get("count"),
                 row.get("aoc_count"),
+                row.get("leave_pay_periods"),
+                row.get("leave_credit"),
+                row.get("aoc_pay_periods"),
+                row.get("aoc_credit"),
                 row.get("target"),
                 row.get("delta"),
                 row.get("status_label"),
@@ -696,6 +712,10 @@ def manager_shifts_export_csv(request):
             "Total (all managers)",
             ctx.get("grand_total"),
             ctx.get("aoc_grand_total"),
+            "",
+            "",
+            "",
+            "",
             "",
             "",
             "",
@@ -838,6 +858,10 @@ def manager_shifts_export_xlsx(request):
             "Manager (last name)",
             "Shifts",
             "AOC days",
+            "Leave credit PPs",
+            "Leave credit shifts",
+            "AOC credit PPs",
+            "AOC credit shifts",
             "Min (prorated)",
             "Delta",
             "Status",
@@ -851,6 +875,10 @@ def manager_shifts_export_xlsx(request):
                 row.get("name"),
                 row.get("count"),
                 row.get("aoc_count"),
+                row.get("leave_pay_periods"),
+                row.get("leave_credit"),
+                row.get("aoc_pay_periods"),
+                row.get("aoc_credit"),
                 row.get("target"),
                 row.get("delta"),
                 row.get("status_label"),
@@ -863,6 +891,10 @@ def manager_shifts_export_xlsx(request):
             "Total (all managers)",
             ctx.get("grand_total"),
             ctx.get("aoc_grand_total"),
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
