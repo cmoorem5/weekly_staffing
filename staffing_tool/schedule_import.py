@@ -41,9 +41,9 @@ from .schedule_aggregate import (  # noqa: F401
 )
 from .schedule_cells import (  # noqa: F401
     _OT_C_VARIANTS,
-    AT_ALIASES,
     IGNORE_UNIT_CODES,
     LEAVE_CODES,
+    LEAVE_SPELLING_ALIASES,
     LEGACY_UNIT_ALIASES,
     MAX_GR_UNIT_DAYS_PER_WEEK,
     MAX_RW_UNIT_DAYS_PER_WEEK,
@@ -60,12 +60,13 @@ from .schedule_cells import (  # noqa: F401
     _is_resolvable_unit,
     _normalize_cell_value,
     _split_unit_suffix,
+    classify_leave_value,
+    is_ignored_unit_value,
 )
 from .schedule_grid import (  # noqa: F401
     _SCHEDULE_COL_B,
     _SCHEDULE_COL_P,
     NON_PERSON_ROW_LABELS,
-    _append_skipped_shift,
     _find_non_person_skip_row,
     _grid_name_cells,
     _name_tokens_for_grid_row,

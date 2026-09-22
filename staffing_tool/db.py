@@ -108,26 +108,6 @@ def migrate_weekly_staffing_columns(engine: Engine) -> None:
         conn.commit()
 
 
-def migrate_add_ot_columns(engine: Engine) -> None:
-    """Backward-compatible alias: ensures OT and related weekly_staffing columns."""
-    migrate_weekly_staffing_columns(engine)
-
-
-def migrate_add_leave_jury(engine: Engine) -> None:
-    """Backward-compatible alias."""
-    migrate_weekly_staffing_columns(engine)
-
-
-def migrate_add_leave_brev(engine: Engine) -> None:
-    """Backward-compatible alias."""
-    migrate_weekly_staffing_columns(engine)
-
-
-def migrate_add_unpartnered_columns(engine: Engine) -> None:
-    """Backward-compatible alias."""
-    migrate_weekly_staffing_columns(engine)
-
-
 def migrate_manager_shift_event_type(engine: Engine) -> None:
     """Add event_type to weekly_manager_shifts (line_shift | aoc)."""
     with engine.connect() as conn:

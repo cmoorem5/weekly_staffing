@@ -139,41 +139,56 @@ def persist_schedule_import_detail(
             row["schedule_import_id"] = import_row.id
         session.bulk_insert_mappings(WeeklyPersonShift, person_maps)
 
-    for day in ops_days:
-        session.add(
-            WeeklyOpsViewDay(
-                week_start=week_start,
-                day_date=day.day_date.isoformat(),
-                base_name=day.base_name,
-                rw_count=day.rw_count,
-                gr_count=day.gr_count,
-            )
+    # Bulk-insert the rest of the week's detail the same way person shifts go
+    # in: an OPS View week is a few hundred assignment rows, and per-row
+    # session.add() makes the backfill pay ORM instance overhead for each one.
+    if ops_days:
+        session.bulk_insert_mappings(
+            WeeklyOpsViewDay,
+            [
+                {
+                    "week_start": week_start,
+                    "day_date": day.day_date.isoformat(),
+                    "base_name": day.base_name,
+                    "rw_count": day.rw_count,
+                    "gr_count": day.gr_count,
+                }
+                for day in ops_days
+            ],
         )
 
-    for assign in ops_assignments:
-        session.add(
-            WeeklyOpsViewAssignment(
-                week_start=week_start,
-                day_date=assign.day_date.isoformat(),
-                unit_code=assign.unit_code[:32],
-                role=assign.role[:16],
-                excel_row=assign.excel_row,
-                person_display=assign.person_display[:256],
-                raw_value=assign.raw_value[:128],
-                is_staffed=1 if assign.is_staffed else 0,
-            )
+    if ops_assignments:
+        session.bulk_insert_mappings(
+            WeeklyOpsViewAssignment,
+            [
+                {
+                    "week_start": week_start,
+                    "day_date": assign.day_date.isoformat(),
+                    "unit_code": assign.unit_code[:32],
+                    "role": assign.role[:16],
+                    "excel_row": assign.excel_row,
+                    "person_display": assign.person_display[:256],
+                    "raw_value": assign.raw_value[:128],
+                    "is_staffed": 1 if assign.is_staffed else 0,
+                }
+                for assign in ops_assignments
+            ],
         )
 
-    for issue in issues:
-        session.add(
-            ScheduleParseIssue(
-                week_start=week_start,
-                sheet=(issue.sheet or "")[:128],
-                cell=(issue.cell or "")[:32],
-                raw_value=(issue.raw_value or "")[:128],
-                issue_type=(issue.issue_type or "")[:32],
-                message=issue.message or "",
-            )
+    if issues:
+        session.bulk_insert_mappings(
+            ScheduleParseIssue,
+            [
+                {
+                    "week_start": week_start,
+                    "sheet": (issue.sheet or "")[:128],
+                    "cell": (issue.cell or "")[:32],
+                    "raw_value": (issue.raw_value or "")[:128],
+                    "issue_type": (issue.issue_type or "")[:32],
+                    "message": issue.message or "",
+                }
+                for issue in issues
+            ],
         )
 
     if raw_cells:

@@ -82,66 +82,84 @@ MAX_GR_UNIT_DAYS_PER_WEEK: dict[str, int] = {
 # Absence/exception cell values only — not roles (RN/Medic/EMT are row types, not leave codes).
 LEAVE_CODES = {"AT", "LT", "SICK", "LOA", "PFML", "JURY", "BREV"}
 
-# Raw values that count as AT for leave/exception totals.
-AT_ALIASES: set[str] = {
-    "SM/AT",
-    "AT/SIM",
-    "AT:SIM",
-    "AT:TDAC",
-    "AT:FCCS",
-    "EDU:TDAC",
-    "AT/SM",
-    "AT/ART",
-    "AT:MICRO SIM",
-    "AT:STABLE",
-    "AT: SIM",
-    "EDU:STABLE",
-    "EDU:MICRO SIM",
-    "AT/AIRWAY SIM",
-    "AT/STABLE",
-    "EDU:FCCS",
-    "EDU:AIRWAY DECISION SIM",
+# Absence cells are written as a family code plus an optional qualifier: an
+# hour count (AT8, AT12, LT8), or a separator and a class/detail name
+# (AT:FCCS, EDU:STABLE, AT/AIRWAY SIM, SICK SIM, "AT: SIM"). Matching the
+# family and ignoring the qualifier is what keeps the next class name off the
+# unknown-code review list -- enumerating every qualifier meant a code change
+# and a redeploy per variant, and the qualifier never changes the leave type.
+# EDU alone is training (SKIP_TRAINING_VALUES), so only a qualified EDU is AT.
+_LEAVE_FAMILY_RE = re.compile(
+    r"^(?P<family>AT|EDU|LT|SICK)(?P<hours>\d+)?(?P<qualifier>\s*[:/]\s*\S.*|\s+\S.*)?$"
+)
+_LEAVE_FAMILIES: dict[str, str] = {
+    "AT": "AT",
+    "EDU": "AT",
+    "LT": "LT",
+    "SICK": "SICK",
 }
 
-# "AT" cells with a trailing hour count (AT8, AT10, AT12, AT12/SHIFT, ...)
-# all count as plain AT -- the hours don't change the leave type.
-_AT_HOURS_RE = re.compile(r"^AT\d+(/.*)?$")
+# Spellings no family rule covers: military leave, per-diem, and two
+# bereavement typos seen in real workbooks.
+LEAVE_SPELLING_ALIASES: dict[str, str] = {
+    "SM/AT": "AT",
+    "M-LT": "LT",
+    "MIL (LT)": "LT",
+    "PER": "LT",
+    "SL": "SICK",
+    "BRV": "BREV",
+    "BERV": "BREV",
+}
 
-# Raw values that count as LT (Leave Time) for leave/exception totals.
-LT_ALIASES: set[str] = {"LT8", "M-LT", "MIL (LT)", "PER"}
 
-# Raw values that count as SICK for leave/exception totals.
-SICK_ALIASES: set[str] = {"SICK SIM", "SL"}
+def classify_leave_value(text: str) -> tuple[str, str]:
+    """Map a normalized absence cell to ``(leave_code, display)``.
 
-# Raw values that count as BREV (Bereavement) for leave/exception totals.
-BREV_ALIASES: set[str] = {"BRV", "BERV"}
+    ``leave_code`` is what the grid walker checks against LEAVE_CODES;
+    ``display`` is what the exception grid shows, so LT-D / LT-N keep their
+    day/night direction. An unrecognized value comes back unchanged and falls
+    through to unit parsing.
+    """
+    alias = LEAVE_SPELLING_ALIASES.get(text)
+    if alias is not None:
+        return alias, alias
+    match = _LEAVE_FAMILY_RE.match(text)
+    if match is not None:
+        family = match["family"]
+        if family != "EDU" or match["hours"] or match["qualifier"]:
+            code = _LEAVE_FAMILIES[family]
+            return code, code
+    if text.startswith("LT-"):
+        return "LT", text
+    return text, text
 
-# Unit-like codes to skip when parsing: no shift record, no unknown-unit issue.
+
+# Return-to-work and restricted-activity-light markers: "RTW <unit>",
+# "RAL <unit>", "RTW ADMIN", "RTW CLINICAL/ADMIN". The person is on the
+# schedule but holds no line, whatever follows the prefix, so match the
+# prefix rather than listing every unit each has been paired with -- that
+# list needed a code change every time a new pairing appeared.
+_IGNORED_VALUE_PREFIXES: tuple[str, ...] = ("RTW ", "RAL ")
+
+# Unit-like codes to skip when parsing: no shift record, no unknown-unit
+# issue. Spellings the prefix rule above does not cover.
 IGNORE_UNIT_CODES: set[str] = {
     "ULTRASOUND",
-    "RAL D7B",
-    "RTW ADMIN",
-    "RTW D7B",
-    "RTW D7P",
     "GR-RAL",
     "HOL",
     "PR",
-    "RTW GR",
-    "RTW D11B",
-    "RAL MG",
-    "RAL D7P",
     "ADMIN",
-    "RAL D9L",
-    "RAL FW",
     "SM/RAL LG",
     "CLINICAL/RAL FW",
     "EMT/FW",
     "ZZ",
-    "RTW CLINICAL/ADMIN",
-    "RTW D9L",
-    "RTW PG",
     "LTM/AOC",
 }
+
+
+def is_ignored_unit_value(text: str) -> bool:
+    """True when a cell is a marker to skip, not a unit code to resolve."""
+    return text in IGNORE_UNIT_CODES or text.startswith(_IGNORED_VALUE_PREFIXES)
 
 
 # Training/education markers: not staffing, not leave -- counted separately
