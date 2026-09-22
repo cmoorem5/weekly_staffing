@@ -448,7 +448,7 @@ def leave_top2(leave_breakdown: list[tuple[str, int]]) -> set[str]:
 # Shared opening commands for every data table: navy header band, Barlow
 # body text, zebra banding, grid, padding. Callers append their own
 # alignment/emphasis commands.
-def data_table_style(header_row_only=False) -> list:
+def data_table_style() -> list:
     return [
         ("BACKGROUND", (0, 0), (-1, 0), NAVY),
         ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
