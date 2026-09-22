@@ -40,6 +40,11 @@ python scripts/build_quarterly_report.py --fy 2026 --quarter 2
 # weeks that only have CEO aggregates)
 python scripts/backfill_schedules.py --dry-run
 
+# Read-only re-parse of already-imported weeks against the CURRENT parser (no DB writes);
+# use after touching the schedule-import pipeline to see which historical weeks would
+# now flag differently, without the writes --upgrade-detail makes
+python scripts/audit_schedule_imports.py --dir archive --dir uploads
+
 # Run the Django dashboard
 cd bmf_staffing && python manage.py runserver
 ```
