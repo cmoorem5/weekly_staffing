@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from openpyxl.utils import get_column_letter
@@ -10,14 +11,8 @@ from openpyxl.worksheet.worksheet import Worksheet
 from .manager_roster import default_manager_last_names_upper
 from .person_names import person_displays_for_role
 from .schedule_cells import (
-    _AT_HOURS_RE,
-    AT_ALIASES,
-    BREV_ALIASES,
-    IGNORE_UNIT_CODES,
     LEAVE_CODES,
-    LT_ALIASES,
     RETIRED_UNIT_CODES,
-    SICK_ALIASES,
     SKIP_CELL_VALUES,
     SKIP_TRAINING_VALUES,
     UNIT_LEAVE_MERGE,
@@ -27,8 +22,17 @@ from .schedule_cells import (
     _is_resolvable_unit,
     _normalize_cell_value,
     _split_unit_suffix,
+    classify_leave_value,
+    is_ignored_unit_value,
 )
-from .schedule_types import ParseIssue, Role, ShiftRecord, SkipReason
+from .schedule_types import (
+    DayNight,
+    ParseIssue,
+    Role,
+    ServiceType,
+    ShiftRecord,
+    SkipReason,
+)
 from .schedule_workbook import _best_header_row_in_ws, _header_cell_to_date
 
 # Training / admin / manager markers: skip cell entirely
@@ -43,6 +47,8 @@ from .schedule_workbook import _best_header_row_in_ws, _header_cell_to_date
 # EXTRA row's contents (unit-code lists, staff names) leak into the
 # "unknown unit codes" review as if they were shift codes.
 NON_PERSON_ROW_LABELS = frozenset({"OPEN", "EXTRA"})
+# Header repeats inside the grid (row 2 on some exports): not a shift code.
+_WEEKDAY_LABELS = frozenset({"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"})
 _SCHEDULE_COL_B = 2
 _SCHEDULE_COL_P = 16
 
@@ -63,52 +69,125 @@ def _find_non_person_skip_row(
     return None
 
 
-def _append_skipped_shift(
-    records: list[ShiftRecord],
-    *,
-    ws: Worksheet,
-    row_idx: int,
-    col_idx: int,
-    d: date,
-    role: Role,
-    sheet_label: str,
-    text: str,
-    person_displays: tuple[str, ...],
-    person_display: str,
-    is_manager_row: bool,
-    skip_reason: SkipReason,
-    leave_type: str | None = None,
-) -> None:
-    cell_ref = f"{get_column_letter(col_idx)}{row_idx}"
-    # Training is the one skip category that still counts toward a weekly
-    # total (WeeklyStaffing.training_shifts) -- everything else here is
-    # truly dropped. Manager-row cells are excluded, matching how manager
-    # line shifts/OT/AOC are tracked separately (weekly_manager_shifts)
-    # rather than folded into the staff weekly totals; manager leave cells
-    # go to weekly_manager_shifts too, via ``leave_type`` below.
-    included_in_aggregates = skip_reason == "training" and not is_manager_row
-    records.append(
-        ShiftRecord(
-            date=d,
-            base="",
-            service_type="",
-            day_night="D",
-            role=role,
-            filled=False,
-            overtime=False,
-            leave_type=leave_type,
-            source_tab=sheet_label,
-            source_cell=cell_ref,
-            raw_value=text,
-            person_display=person_display,
-            person_displays=person_displays,
-            is_manager_row=is_manager_row,
-            skip_reason=skip_reason,
-            included_in_aggregates=included_in_aggregates,
-            excel_row=row_idx,
-            excel_col=col_idx,
+@dataclass(slots=True)
+class _GridCell:
+    """One grid cell plus the row context every record built from it shares.
+
+    Each classification branch below used to build the same 20-field
+    ``ShiftRecord`` by hand, so a branch cost ~15 lines of argument plumbing
+    and adding a field meant editing every branch. Binding the shared fields
+    once per cell keeps each branch to a single call.
+    """
+
+    records: list[ShiftRecord]
+    sheet_label: str
+    row_idx: int
+    col_idx: int
+    cell_ref: str
+    day: date
+    role: Role
+    person_displays: tuple[str, ...]
+    person_display: str
+    is_manager_row: bool
+    text: str
+
+    def _emit(
+        self,
+        *,
+        base: str = "",
+        service_type: ServiceType = "",
+        day_night: DayNight = "D",
+        role: Role | None = None,
+        filled: bool = False,
+        overtime: bool = False,
+        leave_type: str | None = None,
+        unit_code: str = "",
+        skip_reason: SkipReason | None = None,
+        included_in_aggregates: bool = True,
+        manager_event_type: str | None = None,
+    ) -> None:
+        self.records.append(
+            ShiftRecord(
+                date=self.day,
+                base=base,
+                service_type=service_type,
+                day_night=day_night,
+                role=self.role if role is None else role,
+                filled=filled,
+                overtime=overtime,
+                leave_type=leave_type,
+                source_tab=self.sheet_label,
+                source_cell=self.cell_ref,
+                raw_value=self.text,
+                unit_code=unit_code,
+                person_display=self.person_display,
+                person_displays=self.person_displays,
+                is_manager_row=self.is_manager_row,
+                skip_reason=skip_reason,
+                included_in_aggregates=included_in_aggregates,
+                manager_event_type=manager_event_type,
+                excel_row=self.row_idx,
+                excel_col=self.col_idx,
+            )
         )
-    )
+
+    def skip(self, reason: SkipReason, *, leave_type: str | None = None) -> None:
+        """Persist the cell as skipped: no staffing credit.
+
+        Training is the one skip category that still counts toward a weekly
+        total (WeeklyStaffing.training_shifts) -- everything else here is
+        truly dropped. Manager-row cells are excluded, matching how manager
+        line shifts/OT/AOC are tracked separately (weekly_manager_shifts)
+        rather than folded into the staff weekly totals; manager leave cells
+        go to weekly_manager_shifts too, via ``leave_type``.
+        """
+        self._emit(
+            leave_type=leave_type,
+            skip_reason=reason,
+            included_in_aggregates=reason == "training" and not self.is_manager_row,
+        )
+
+    def leave(self, display: str, *, manager_leave_type: str | None = None) -> None:
+        """Record an absence; a manager row persists as skipped instead.
+
+        ``manager_leave_type`` is the label carried onto that manager row: set
+        for plain leave codes, which the Manager report lists for reference,
+        and left off for UNIT/LEAVE merges and the EMT PER rewrite, which were
+        never surfaced against a manager.
+        """
+        if self.is_manager_row:
+            self.skip("manager_row", leave_type=manager_leave_type)
+            return
+        self._emit(leave_type=display)
+
+    def staffed(
+        self,
+        *,
+        base: str,
+        service_type: ServiceType,
+        day_night: DayNight,
+        unit_code: str,
+        overtime: bool,
+        role: Role | None = None,
+    ) -> None:
+        """Record a filled unit-day. ``role`` overrides for RN dual-role cells."""
+        self._emit(
+            base=base,
+            service_type=service_type,
+            day_night=day_night,
+            role=role,
+            filled=True,
+            overtime=overtime,
+            unit_code=unit_code,
+        )
+
+    def manager_aoc(self) -> None:
+        """Manager AOC day: no staffing credit, tracked in weekly_manager_shifts."""
+        self._emit(
+            day_night="",
+            included_in_aggregates=False,
+            manager_event_type="aoc",
+        )
 
 
 def _name_tokens_for_grid_row(ws: Worksheet, row_idx: int) -> set[str]:
@@ -251,104 +330,58 @@ def _parse_grid(
         )
         person_display = person_displays[0] if person_displays else ""
         for col_idx, d in col_dates:
-            cell = ws.cell(row=row_idx, column=col_idx)
-            raw = cell.value
-            text = _normalize_cell_value(raw)
+            text = _normalize_cell_value(ws.cell(row=row_idx, column=col_idx).value)
             if not text:
                 continue
+            cell = _GridCell(
+                records=records,
+                sheet_label=sheet_label,
+                row_idx=row_idx,
+                col_idx=col_idx,
+                cell_ref=f"{get_column_letter(col_idx)}{row_idx}",
+                day=d,
+                role=role,
+                person_displays=person_displays,
+                person_display=person_display,
+                is_manager_row=is_manager_row,
+                text=text,
+            )
+
             if (
                 skip_from_row_idx is not None
                 and row_idx >= skip_from_row_idx
                 and _SCHEDULE_COL_B <= col_idx <= _SCHEDULE_COL_P
             ):
-                _append_skipped_shift(
-                    records,
-                    ws=ws,
-                    row_idx=row_idx,
-                    col_idx=col_idx,
-                    d=d,
-                    role=role,
-                    sheet_label=sheet_label,
-                    text=text,
-                    person_displays=person_displays,
-                    person_display=person_display,
-                    is_manager_row=is_manager_row,
-                    skip_reason="schedule_row",
-                )
+                cell.skip("schedule_row")
                 continue
+
             # Apply import mapping: unknown code -> treat as this value
             # (e.g. D7BCP -> D7BC)
             if text in overrides:
                 text = _normalize_cell_value(overrides[text])
                 if not text:
                     continue
-            cell_ref = f"{get_column_letter(col_idx)}{row_idx}"
+                cell.text = text
 
             # EMT: NL = Lawrence RW night (N9L) when EMT is operator on line.
             if role == "EMT" and text == "NL":
                 text = "N9L"
+                cell.text = text
 
             # Non-staffing / training / admin markers — persist as skipped.
             if text in skip_cell_values:
                 if is_manager_row and text == "AOC":
-                    records.append(
-                        ShiftRecord(
-                            date=d,
-                            base="",
-                            service_type="",
-                            day_night="",
-                            role=role,
-                            filled=False,
-                            overtime=False,
-                            leave_type=None,
-                            source_tab=sheet_label,
-                            source_cell=cell_ref,
-                            raw_value=text,
-                            person_display=person_display,
-                            person_displays=person_displays,
-                            is_manager_row=True,
-                            included_in_aggregates=False,
-                            manager_event_type="aoc",
-                            excel_row=row_idx,
-                            excel_col=col_idx,
-                        )
-                    )
-                    continue
-                _append_skipped_shift(
-                    records,
-                    ws=ws,
-                    row_idx=row_idx,
-                    col_idx=col_idx,
-                    d=d,
-                    role=role,
-                    sheet_label=sheet_label,
-                    text=text,
-                    person_displays=person_displays,
-                    person_display=person_display,
-                    is_manager_row=is_manager_row,
-                    skip_reason=_classify_skip_reason(text, training_values),
-                )
+                    cell.manager_aoc()
+                else:
+                    cell.skip(_classify_skip_reason(text, training_values))
                 continue
 
             if text == "OPEN":
-                _append_skipped_shift(
-                    records,
-                    ws=ws,
-                    row_idx=row_idx,
-                    col_idx=col_idx,
-                    d=d,
-                    role=role,
-                    sheet_label=sheet_label,
-                    text=text,
-                    person_displays=person_displays,
-                    person_display=person_display,
-                    is_manager_row=is_manager_row,
-                    skip_reason="open",
-                )
+                cell.skip("open")
                 continue
 
             # Weekday labels (e.g. row 2: SUN, MON, TUE, …) — ignore.
-            if text in {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"}:
+            if text in _WEEKDAY_LABELS:
                 continue
 
             # "<UNIT> EMT" (e.g. "MG EMT") on an RN/Medic row: the person is
@@ -363,199 +396,35 @@ def _parse_grid(
                 and text.endswith(" EMT")
                 and _is_resolvable_unit(text[:-4].strip())
             ):
-                _append_skipped_shift(
-                    records,
-                    ws=ws,
-                    row_idx=row_idx,
-                    col_idx=col_idx,
-                    d=d,
-                    role=role,
-                    sheet_label=sheet_label,
-                    text=text,
-                    person_displays=person_displays,
-                    person_display=person_display,
-                    is_manager_row=is_manager_row,
-                    skip_reason="admin",
-                )
+                cell.skip("admin")
                 continue
 
             # Ignored unit-like codes — persist as skipped admin.
-            if text in IGNORE_UNIT_CODES:
-                _append_skipped_shift(
-                    records,
-                    ws=ws,
-                    row_idx=row_idx,
-                    col_idx=col_idx,
-                    d=d,
-                    role=role,
-                    sheet_label=sheet_label,
-                    text=text,
-                    person_displays=person_displays,
-                    person_display=person_display,
-                    is_manager_row=is_manager_row,
-                    skip_reason="admin",
-                )
+            if is_ignored_unit_value(text):
+                cell.skip("admin")
                 continue
 
             # EMT: PER → LT (same bucket as leave time for exception grid).
             if role == "EMT" and text == "PER":
-                if is_manager_row:
-                    _append_skipped_shift(
-                        records,
-                        ws=ws,
-                        row_idx=row_idx,
-                        col_idx=col_idx,
-                        d=d,
-                        role=role,
-                        sheet_label=sheet_label,
-                        text=text,
-                        person_displays=person_displays,
-                        person_display=person_display,
-                        is_manager_row=True,
-                        skip_reason="manager_row",
-                    )
-                    continue
-                records.append(
-                    ShiftRecord(
-                        date=d,
-                        base="",
-                        service_type="",
-                        day_night="D",
-                        role=role,
-                        filled=False,
-                        overtime=False,
-                        leave_type="LT",
-                        source_tab=sheet_label,
-                        source_cell=cell_ref,
-                        raw_value=text,
-                        person_display=person_display,
-                        person_displays=person_displays,
-                        is_manager_row=is_manager_row,
-                        excel_row=row_idx,
-                        excel_col=col_idx,
-                    )
-                )
+                cell.leave("LT")
                 continue
 
             # Merge: UNIT/LEAVETYPE → leave (any unit + any leave type)
             if "/" in text:
-                parts = text.split("/", 1)
-                suffix = (parts[1] or "").strip()
-                leave_display = UNIT_LEAVE_MERGE.get(suffix)
+                leave_display = UNIT_LEAVE_MERGE.get(text.split("/", 1)[1].strip())
                 if leave_display is not None:
-                    if is_manager_row:
-                        _append_skipped_shift(
-                            records,
-                            ws=ws,
-                            row_idx=row_idx,
-                            col_idx=col_idx,
-                            d=d,
-                            role=role,
-                            sheet_label=sheet_label,
-                            text=text,
-                            person_displays=person_displays,
-                            person_display=person_display,
-                            is_manager_row=True,
-                            skip_reason="manager_row",
-                        )
-                        continue
-                    records.append(
-                        ShiftRecord(
-                            date=d,
-                            base="",
-                            service_type="",
-                            day_night="D",
-                            role=role,
-                            filled=False,
-                            overtime=False,
-                            leave_type=leave_display,
-                            source_tab=sheet_label,
-                            source_cell=cell_ref,
-                            raw_value=text,
-                            person_display=person_display,
-                            person_displays=person_displays,
-                            is_manager_row=is_manager_row,
-                            excel_row=row_idx,
-                            excel_col=col_idx,
-                        )
-                    )
+                    cell.leave(leave_display)
                     continue
 
             # Leave/absence codes (LT-D, LT-N kept; SM/AT counts as AT.)
-            if text in AT_ALIASES or _AT_HOURS_RE.match(text):
-                leave_code = "AT"
-                leave_display = "AT"
-            elif text in LT_ALIASES:
-                leave_code = "LT"
-                leave_display = "LT"
-            elif text in BREV_ALIASES:
-                leave_code = "BREV"
-                leave_display = "BREV"
-            elif text in SICK_ALIASES:
-                leave_code = "SICK"
-                leave_display = "SICK"
-            elif text.startswith("LT-"):
-                leave_code = "LT"
-                leave_display = text  # LT-D or LT-N
-            else:
-                leave_code = text
-                leave_display = text
+            leave_code, leave_display = classify_leave_value(text)
             if leave_code in LEAVE_CODES:
-                if is_manager_row:
-                    _append_skipped_shift(
-                        records,
-                        ws=ws,
-                        row_idx=row_idx,
-                        col_idx=col_idx,
-                        d=d,
-                        role=role,
-                        sheet_label=sheet_label,
-                        text=text,
-                        person_displays=person_displays,
-                        person_display=person_display,
-                        is_manager_row=True,
-                        skip_reason="manager_row",
-                        leave_type=leave_display,
-                    )
-                    continue
-                records.append(
-                    ShiftRecord(
-                        date=d,
-                        base="",
-                        service_type="",
-                        day_night="D",
-                        role=role,
-                        filled=False,
-                        overtime=False,
-                        leave_type=leave_display,
-                        source_tab=sheet_label,
-                        source_cell=cell_ref,
-                        raw_value=text,
-                        person_display=person_display,
-                        person_displays=person_displays,
-                        is_manager_row=is_manager_row,
-                        excel_row=row_idx,
-                        excel_col=col_idx,
-                    )
-                )
+                cell.leave(leave_display, manager_leave_type=leave_display)
                 continue
 
             base_code, is_ot, is_dual = _split_unit_suffix(text)
             if base_code in RETIRED_UNIT_CODES:
-                _append_skipped_shift(
-                    records,
-                    ws=ws,
-                    row_idx=row_idx,
-                    col_idx=col_idx,
-                    d=d,
-                    role=role,
-                    sheet_label=sheet_label,
-                    text=text,
-                    person_displays=person_displays,
-                    person_display=person_display,
-                    is_manager_row=is_manager_row,
-                    skip_reason="retired_unit",
-                )
+                cell.skip("retired_unit")
                 continue
 
             unit_info = _classify_unit(base_code)
@@ -563,7 +432,7 @@ def _parse_grid(
                 issues.append(
                     ParseIssue(
                         sheet=ws.title,
-                        cell=cell_ref,
+                        cell=cell.cell_ref,
                         raw_value=text,
                         issue_type="unknown_unit",
                         message=(
@@ -575,31 +444,13 @@ def _parse_grid(
                 continue
 
             base, service_type, dn = unit_info
-            canonical_unit = _canonical_unit_code(base_code) or base_code
-            effective_role: Role = role
-            if role == "RN" and is_dual:
-                effective_role = "MEDIC"
-
-            records.append(
-                ShiftRecord(
-                    date=d,
-                    base=base,
-                    service_type=service_type,
-                    day_night=dn,
-                    role=effective_role,
-                    filled=True,
-                    overtime=is_ot,
-                    leave_type=None,
-                    source_tab=sheet_label,
-                    source_cell=cell_ref,
-                    raw_value=text,
-                    unit_code=canonical_unit,
-                    person_display=person_display,
-                    person_displays=person_displays,
-                    is_manager_row=is_manager_row,
-                    excel_row=row_idx,
-                    excel_col=col_idx,
-                )
+            cell.staffed(
+                base=base,
+                service_type=service_type,
+                day_night=dn,
+                unit_code=_canonical_unit_code(base_code) or base_code,
+                overtime=is_ot,
+                role="MEDIC" if role == "RN" and is_dual else None,
             )
 
     return records, issues
