@@ -38,6 +38,7 @@ from staffing_tool.models import (
     KpiThreshold,
     WeeklyBaseCoverage,
     WeeklyLeaveDetail,
+    WeeklyManagerShift,
     WeeklyPersonShift,
     WeeklyStaffing,
 )
@@ -371,6 +372,56 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertEqual([r["week_start"] for r in flagged], [WEEK_1])
         self.assertIn("totals 5", flagged[0]["issue"])
         self.assertIn("total 2", flagged[0]["issue"])
+
+    def test_manager_shifts_bucket_by_week_start_like_kpis(self):
+        # Week of Sun 2026-06-28 runs into July. Its KPIs land in June (by
+        # week_start); its manager shifts must land there too, not split
+        # across June and July by shift_date.
+        june_week = "2026-06-28"
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyStaffing(
+                    week_start=june_week,
+                    day_target=8,
+                    night_min=4,
+                    filled_day=50,
+                    filled_night=28,
+                    entered_by="test",
+                    created_at=f"{june_week}T00:00:00Z",
+                    updated_at=f"{june_week}T00:00:00Z",
+                )
+            )
+            session.commit()
+            for shift_date in ("2026-06-29", "2026-07-02"):
+                session.add(
+                    WeeklyManagerShift(
+                        week_start=june_week,
+                        person_display="Manager A",
+                        role="RN",
+                        shift_date=shift_date,
+                        event_type="line_shift",
+                        base_name="Bedford",
+                        service_type="RW",
+                        day_night="D",
+                    )
+                )
+            session.commit()
+        request = RequestFactory().get(
+            "/",
+            {
+                "fy": "2026",
+                "granularity": "month",
+                "date_start": "2026-06-01",
+                "date_end": "2026-07-31",
+            },
+        )
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        by_start = {
+            r["bucket_start"]: r["manager_line_shifts_total"]
+            for r in ctx["manager_line_shifts_table"]
+        }
+        self.assertEqual(by_start["2026-06-01"], 2)
+        self.assertEqual(by_start["2026-07-01"], 0)
 
 
 if __name__ == "__main__":

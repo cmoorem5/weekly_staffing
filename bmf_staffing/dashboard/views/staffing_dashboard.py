@@ -478,36 +478,38 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             exc_by_week_by_group[ws_s][group] += n
             exc_total_by_week[ws_s] += n
 
-        # Manager line shifts: count per bucket from WeeklyManagerShift.shift_date.
-        # Default exec-friendly breakdown is by base_name.
-        mgr_total_by_shift_date: dict[str, int] = defaultdict(int)
-        mgr_by_shift_date_by_base: dict[str, dict[str, int]] = defaultdict(
+        # Manager line shifts: counted per bucket by the shift's week_start, the
+        # same rule the KPIs and exceptions use, so a week spanning a month or
+        # quarter boundary lands in one period on every panel (bucketing by
+        # shift_date split it across two). Breakdown is by base_name.
+        mgr_total_by_week: dict[str, int] = defaultdict(int)
+        mgr_by_week_by_base: dict[str, dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
         )
         mgr_rows = (
             session.query(
-                WeeklyManagerShift.shift_date,
+                WeeklyManagerShift.week_start,
                 WeeklyManagerShift.base_name,
                 func.count(WeeklyManagerShift.id),
             )
-            .filter(WeeklyManagerShift.shift_date >= date_start.isoformat())
-            .filter(WeeklyManagerShift.shift_date <= date_end.isoformat())
+            .filter(WeeklyManagerShift.week_start >= date_start.isoformat())
+            .filter(WeeklyManagerShift.week_start <= date_end.isoformat())
             .filter(
                 (WeeklyManagerShift.event_type == "line_shift")
                 | (WeeklyManagerShift.event_type.is_(None))
                 | (WeeklyManagerShift.event_type == "")
             )
-            .group_by(WeeklyManagerShift.shift_date, WeeklyManagerShift.base_name)
+            .group_by(WeeklyManagerShift.week_start, WeeklyManagerShift.base_name)
             .all()
         )
         base_names: set[str] = set()
-        for sd, base_name, n in mgr_rows:
-            sd_s = str(sd)
+        for mws, base_name, n in mgr_rows:
+            ws_s = str(mws)
             base_s = str(base_name or "").strip() or "(Unknown)"
             base_names.add(base_s)
             nn = int(n or 0)
-            mgr_total_by_shift_date[sd_s] += nn
-            mgr_by_shift_date_by_base[sd_s][base_s] += nn
+            mgr_total_by_week[ws_s] += nn
+            mgr_by_week_by_base[ws_s][base_s] += nn
 
         manager_line_shifts_breakdown_order = sorted(
             base_names, key=lambda s: s.lower()
@@ -689,19 +691,18 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             }
         )
 
-        # Manager line shifts per bucket: sum counts by day (shift_date)
+        # Manager line shifts per bucket: weeks whose week_start is in the bucket.
         mgr_bucket_total = 0
         mgr_bucket_by_base: dict[str, int] = {
             b: 0 for b in manager_line_shifts_breakdown_order
         }
-        cur = b_start
-        while cur <= b_end:
-            sd = cur.isoformat()
-            mgr_bucket_total += int(mgr_total_by_shift_date.get(sd, 0))
-            by_base = mgr_by_shift_date_by_base.get(sd, {})
+        for mws, n_mgr in mgr_total_by_week.items():
+            if not (b_start <= date.fromisoformat(mws) <= b_end):
+                continue
+            mgr_bucket_total += n_mgr
+            by_base = mgr_by_week_by_base.get(mws, {})
             for b in manager_line_shifts_breakdown_order:
                 mgr_bucket_by_base[b] += int(by_base.get(b, 0))
-            cur += timedelta(days=1)
         manager_line_shifts_total_series.append(mgr_bucket_total)
         for b in manager_line_shifts_breakdown_order:
             manager_line_shifts_breakdown_series[b].append(
