@@ -26,6 +26,7 @@ from staffing_tool.leave_grid import EXCEPTION_GRID_COLS
 from staffing_tool.metrics import (
     BASE_DISPLAY_ORDER,
     ROLE_CAPACITY_PER_WEEK,
+    ROLE_FILL_LABELS,
     TOTAL_PERSON_SHIFTS,
     compute_period_rollups,
     compute_week_metrics,
@@ -234,7 +235,7 @@ def load_quarter_report_data(
         total_cap = str(TOTAL_PERSON_SHIFTS * n)
         period_volumes = [
             (
-                "RN (Flight Nurse)",
+                ROLE_FILL_LABELS["RN"],
                 rn_cap,
                 EM,
                 rn_cap,
@@ -243,7 +244,7 @@ def load_quarter_report_data(
                 EM,
             ),
             (
-                "Paramedic (Flight Medic)",
+                ROLE_FILL_LABELS["MEDIC"],
                 EM,
                 medic_cap,
                 medic_cap,
@@ -252,7 +253,7 @@ def load_quarter_report_data(
                 str(ot_medic),
             ),
             (
-                "EMT (Ground)",
+                ROLE_FILL_LABELS["EMT"],
                 EM,
                 EM,
                 emt_cap,
