@@ -104,7 +104,7 @@ class ManagerRequirementTests(TempDbTestCase):
                 self.fy_end,
                 self.fy_end,
             ]:
-                session.add(self._shift(d, event_type="line_shift"))
+                session.add(self._shift(d, "line_shift"))
             session.add(
                 self._shift(
                     self.leave_period.start, event_type="leave", leave_type="LT"
@@ -118,7 +118,7 @@ class ManagerRequirementTests(TempDbTestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def _shift(self, shift_date, *, event_type, person="Bowman", **kwargs):
+    def _shift(self, shift_date, event_type, person="Bowman", **kwargs):
         staffed = event_type == "line_shift"
         return WeeklyManagerShift(
             week_start=self.weeks[0].isoformat(),
@@ -148,6 +148,11 @@ class ManagerRequirementTests(TempDbTestCase):
             date_start=self.fy_start.isoformat(),
             date_end=self.fy_end.isoformat(),
         )
+
+    def _aoc_week(self, start=None):
+        """Seven AOC days = one week of coverage = one shift of credit."""
+        first = start or self.aoc_period.start
+        return [self._shift(first + timedelta(days=i), "aoc") for i in range(7)]
 
     def _add(self, *rows):
         with session_scope(self.db_path) as session:
@@ -193,60 +198,74 @@ class ManagerRequirementTests(TempDbTestCase):
         self.assertAlmostEqual(row["target"], 6.5, delta=0.2)
         self.assertAlmostEqual(row["leave_credit"], 6.5, delta=0.2)
 
-    def test_aoc_credits_one_shift_per_week_not_per_pay_period(self):
-        """Two AOC days in one week credit one shift; a second week credits another."""
-        week_one = self.aoc_period.start
+    def test_aoc_credit_is_total_days_over_seven(self):
+        """Scattered AOC days convert on the total, not on how many weeks they touch."""
+        # 14 days spread one per week across 14 different weeks: 2 shifts, not 14.
         self._add(
-            self._shift(week_one, event_type="aoc"),
-            self._shift(week_one + timedelta(days=1), event_type="aoc"),
+            *[
+                self._shift(self.aoc_period.start + timedelta(days=7 * i), "aoc")
+                for i in range(14)
+            ]
         )
         row = self._full_fy_row()
-        self.assertEqual(row["aoc_count"], 2)
-        self.assertEqual(row["aoc_weeks"], 1)
-        self.assertEqual(row["aoc_credit"], 1)
-        self.assertEqual(row["target"], 25.0)
-
-        self._add(self._shift(week_one + timedelta(days=7), event_type="aoc"))
-        row = self._full_fy_row()
-        self.assertEqual(row["aoc_weeks"], 2)
+        self.assertEqual(row["aoc_count"], 14)
+        self.assertEqual(row["aoc_weeks"], 2.0)
         self.assertEqual(row["aoc_credit"], 2)
         self.assertEqual(row["target"], 24.0)
 
-    def test_full_pay_period_on_aoc_waives_that_periods_minimum(self):
-        """Both weeks of a pay period on AOC back out the full 2-shift minimum."""
+    def test_aoc_credit_rounds_to_the_nearest_shift(self):
+        """76 AOC days is 10.9 weeks and earns 11 shifts (the Holst case)."""
+        credit = manager_shifts._aoc_shift_credit
+        self.assertEqual(credit(76), 11)
+        self.assertEqual(manager_shifts._aoc_weeks_display(76), 10.9)
+        # Exact multiples, each side of the halfway point, and the empty case.
+        self.assertEqual(credit(0), 0)
+        self.assertEqual(credit(7), 1)
+        self.assertEqual(credit(14), 2)
+        self.assertEqual(credit(3), 0)
+        self.assertEqual(credit(4), 1)
+        # Half rounds up, where Python's round() would go to even.
+        self.assertEqual(credit(10 * 7 + 4), 11)  # 10.571 -> 11
+        self.assertEqual(credit(73), 10)  # 10.43 -> 10
+
+    def test_a_weeks_worth_of_consecutive_aoc_credits_one_shift(self):
+        """Seven straight AOC days is one week of coverage, so one shift."""
         self._add(
-            self._shift(self.aoc_period.start, event_type="aoc"),
-            self._shift(self.aoc_period.start + timedelta(days=7), event_type="aoc"),
+            *[
+                self._shift(self.aoc_period.start + timedelta(days=i), "aoc")
+                for i in range(7)
+            ]
         )
         row = self._full_fy_row()
-        self.assertEqual(row["aoc_credit"], manager_shifts.MANAGER_MIN_PER_PAY_PERIOD)
+        self.assertEqual(row["aoc_credit"], 1)
+        self.assertEqual(row["target"], 25.0)
 
-    def test_leave_and_aoc_in_the_same_week_credit_once(self):
+    def test_leave_beside_aoc_adds_nothing(self):
         """Successor to the leave/AOC double-credit guard from #27.
 
-        Leave no longer credits at all, so the pay period that once backed out
-        4 shifts instead of 2 now backs out exactly the 1 shift its AOC week
-        earns — the leave day beside it adds nothing.
+        Leave no longer credits at all, so a day of leave sitting beside AOC
+        days changes neither the credit nor the target.
         """
         self._add(self._shift(self.leave_period.end, event_type="aoc"))
         row = self._full_fy_row()
         self.assertEqual(row["leave_days"], 1)
         self.assertEqual(row["leave_credit"], 0)
-        self.assertEqual(row["aoc_weeks"], 1)
-        self.assertEqual(row["aoc_credit"], 1)
-        self.assertEqual(row["target"], 25.0)
+        self.assertEqual(row["aoc_count"], 1)
+        # One AOC day is 0.14 weeks, which rounds to no shift.
+        self.assertEqual(row["aoc_credit"], 0)
+        self.assertEqual(row["target"], 26.0)
 
     def test_aoc_and_manual_leave_credit_stack(self):
         with session_scope(self.db_path) as session:
             session.get(ManagerRequirement, "Bowman").annual_leave_credit_shifts = 4
-        self._add(self._shift(self.aoc_period.start, event_type="aoc"))
+        self._add(*self._aoc_week())
         row = self._full_fy_row()
         self.assertEqual(row["target"], 26.0 - 4 - 1)
 
     def test_target_never_goes_negative(self):
         with session_scope(self.db_path) as session:
             session.get(ManagerRequirement, "Bowman").annual_leave_credit_shifts = 99
-        self._add(self._shift(self.aoc_period.start, event_type="aoc"))
+        self._add(*self._aoc_week())
         row = self._full_fy_row()
         self.assertEqual(row["target"], 0.0)
 
@@ -255,7 +274,7 @@ class ManagerRequirementTests(TempDbTestCase):
             req = session.get(ManagerRequirement, "Bowman")
             req.annual_leave_credit_shifts = 6
             req.leave_credit_note = "4 wks LT"
-        self._add(self._shift(self.aoc_period.start, event_type="aoc"))
+        self._add(*self._aoc_week())
         resp = Client(HTTP_HOST="localhost").get(
             reverse("manager_shifts"),
             {
@@ -271,7 +290,7 @@ class ManagerRequirementTests(TempDbTestCase):
         self.assertIn(">LT days<", html)
         self.assertIn('name="annual_leave_credit_shifts"', html)
         self.assertIn("4 wks LT", html)
-        self.assertIn("1 wk (&minus;1)", html)
+        self.assertIn("1.0 wks (&minus;1)", html)
 
         parser = _FirstTableCells()
         parser.feed(html)
