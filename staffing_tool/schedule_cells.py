@@ -105,6 +105,7 @@ LEAVE_SPELLING_ALIASES: dict[str, str] = {
     "SM/AT": "AT",
     "M-LT": "LT",
     "MIL (LT)": "LT",
+    "LOA (MIL)": "LOA",
     "PER": "LT",
     "SL": "SICK",
     "BRV": "BREV",
@@ -192,9 +193,22 @@ SKIP_TRAINING_VALUES: set[str] = {
 SKIP_ADMIN_VALUES: set[str] = {
     "AOC",
     "CLINICAL",
+    "CINICAL",  # CLINICAL typo seen in real workbooks
     "FLOAT",
     "LTM",
     "MIL",
+}
+
+# "CLINICAL/<code>" is a real code that schedulers prefix with "CLINICAL/"
+# out of habit; unlike the leave-family qualifiers above, the part after the
+# slash IS the actual code (SIM = training, AOC = admin, ADMIN = AT leave),
+# not free text. Substitute before classification so every downstream check
+# (skip category, manager AOC credit, leave family) sees the same text as
+# the un-prefixed form, instead of re-teaching each one a second spelling.
+CLINICAL_PREFIX_ALIASES: dict[str, str] = {
+    "CLINICAL/SIM": "SIM",
+    "CLINICAL/AOC": "AOC",
+    "CLINICAL/ADMIN": "AT",
 }
 
 # Every cell value the grid walker skips. Derived, never hand-listed: these two
