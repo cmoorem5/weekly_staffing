@@ -11,7 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from .manager_roster import default_manager_last_names_upper
 from .person_names import person_displays_for_role
 from .schedule_cells import (
-    CLINICAL_PREFIX_ALIASES,
+    CELL_TEXT_ALIASES,
     LEAVE_CODES,
     RETIRED_UNIT_CODES,
     SKIP_CELL_VALUES,
@@ -363,8 +363,8 @@ def _parse_grid(
                 if not text:
                     continue
                 cell.text = text
-            elif text in CLINICAL_PREFIX_ALIASES:
-                text = CLINICAL_PREFIX_ALIASES[text]
+            elif text in CELL_TEXT_ALIASES:
+                text = CELL_TEXT_ALIASES[text]
                 cell.text = text
 
             # EMT: NL = Lawrence RW night (N9L) when EMT is operator on line.
