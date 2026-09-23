@@ -7,7 +7,7 @@ Visual style: staffing_tool/report_style.py + docs/BMF_Visual_Style_Spec.md
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, cast
 
@@ -30,6 +30,7 @@ from staffing_tool.metrics import (
     TOTAL_PERSON_SHIFTS,
     compute_period_rollups,
     compute_week_metrics,
+    role_ot_totals,
 )
 from staffing_tool.models import (
     BaseConfig,
@@ -37,6 +38,7 @@ from staffing_tool.models import (
     WeeklyLeaveDetail,
     WeeklyStaffing,
 )
+from staffing_tool.report_data import load_trend_targets
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -60,6 +62,8 @@ class QuarterlyReportContext:
     period_vol_total: tuple[str, str, str, str, str, str, str]
     base_coverage: list[tuple[str, str, str, str, str]]
     weekly_detail: list[tuple[str, str, str, str]]
+    # KPI metric name -> green-boundary target (fraction), for trend target lines
+    trend_targets: dict[str, float] = field(default_factory=dict)
 
 
 def _pct(v: float) -> str:
@@ -203,9 +207,10 @@ def load_quarter_report_data(
             leave_totals["JURY"] += int(ws_row.leave_jury or 0)
             leave_totals["BREV"] += int(ws_row.leave_brev or 0)
 
-            ot_rn += int(ws_row.ot_rn or 0)
-            ot_medic += int(ws_row.ot_medic or 0)
-            ot_emt += int(ws_row.ot_emt or 0)
+            role_ot = role_ot_totals(row)
+            ot_rn += role_ot["RN"]
+            ot_medic += role_ot["MEDIC"]
+            ot_emt += role_ot["EMT"]
 
             leave_details = (
                 session.query(WeeklyLeaveDetail)
@@ -314,6 +319,7 @@ def load_quarter_report_data(
             period_vol_total=period_vol_total,
             base_coverage=base_coverage,
             weekly_detail=weekly_detail,
+            trend_targets=load_trend_targets(session),
         )
 
 
@@ -416,11 +422,13 @@ def _weekly_detail_table(ctx: QuarterlyReportContext):
 def _build_trend_fig(ctx: QuarterlyReportContext):
     return style.trend_fig(
         ctx.weekly_trend,
-        height_in=2.6,
-        exception_label="Shift Exception % (left)",
+        height_in=3.6,
+        exception_label="Shift Exception %",
         xtick_fontsize=6,
         xtick_rotation=30,
         xtick_ha="right",
+        # Also called with MonthlyBoardData by the monthly PDF.
+        targets=getattr(ctx, "trend_targets", None),
     )
 
 

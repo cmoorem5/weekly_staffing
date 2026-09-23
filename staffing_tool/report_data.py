@@ -27,7 +27,7 @@ from .models import (
     WeeklyBaseCoverage,
     WeeklyStaffing,
 )
-from .rag import RAG, evaluate_rag
+from .rag import NO_DATA, NO_TARGET, RAG, evaluate_rag, green_boundary
 
 # §1.2 — which base/unit/shift cells exist (False → render "N/A")
 BASE_UNIT_CELL_CONFIGURED: dict[str, dict[str, bool]] = {
@@ -136,12 +136,33 @@ def _metrics_for_weeks(
     return result
 
 
+# KPIs the PDF trend charts draw a target line for.
+TREND_TARGET_METRICS = ("Staffing Rate", "Shift Exception %", "OT Dependency")
+
+
+def load_trend_targets(session: Session) -> dict[str, float]:
+    """Green-boundary target (fraction) per trend-chart KPI that has one."""
+    rows = (
+        session.query(KpiThreshold)
+        .filter(KpiThreshold.metric_name.in_(TREND_TARGET_METRICS))
+        .all()
+    )
+    out: dict[str, float] = {}
+    for t in rows:
+        bound = green_boundary(t)
+        if bound is not None:
+            out[str(t.metric_name)] = float(bound)
+    return out
+
+
 def _rag_for_metric(
-    metric_name: str, value: float, thresholds: dict[str, KpiThreshold]
+    metric_name: str, value: float | None, thresholds: dict[str, KpiThreshold]
 ) -> RAG:
+    if value is None:
+        return NO_DATA
     t = thresholds.get(metric_name)
     if not t:
-        return "Green"
+        return NO_TARGET
     return evaluate_rag(value, t)
 
 
@@ -151,6 +172,8 @@ def _status_display(rag: RAG) -> str:
         "Green": "On target",
         "Yellow": "Monitor",
         "Red": "Action needed",
+        NO_DATA: "No data",
+        NO_TARGET: "No target set",
     }[rag]
 
 

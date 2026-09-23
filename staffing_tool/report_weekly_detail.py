@@ -16,7 +16,7 @@ from .models import (
     KpiThreshold,
     WeeklyStaffing,
 )
-from .rag import evaluate_rag
+from .rag import NO_TARGET, evaluate_rag
 from .report_data import (
     BASE_UNIT_CELL_CONFIGURED,
     DETAIL_BASE_ORDER,
@@ -172,7 +172,7 @@ def _write_weekly_detail(
             row_data.leave_at or 0,
             row_data.leave_lt or 0,
             row_data.leave_sick or 0,
-            row_data.leave_loa or 0,
+            (row_data.leave_loa or 0) + (getattr(row_data, "leave_pfml", 0) or 0),
             getattr(row_data, "leave_jury", 0) or 0,
             getattr(row_data, "leave_brev", 0) or 0,
         ]
@@ -648,7 +648,7 @@ def _write_weekly_detail(
         _write_na_or_int(ws, row_num, 5, umap.get("gr_n", False), gr_n)
         if rw_total:
             rw_pct_val = rw_staffed / rw_total
-            rw_rag = evaluate_rag(rw_pct_val, t_rw) if t_rw else "Green"
+            rw_rag = evaluate_rag(rw_pct_val, t_rw) if t_rw else NO_TARGET
             c6 = ws.cell(row_num, 6, rw_pct_val)
             c6.number_format = "0.0%"
             c6.alignment = ALIGN_CENTER
@@ -668,7 +668,7 @@ def _write_weekly_detail(
             c6.border = THIN_BORDER
         if gr_total:
             gr_pct_val = gr_staffed / gr_total
-            gr_rag = evaluate_rag(gr_pct_val, t_gr) if t_gr else "Green"
+            gr_rag = evaluate_rag(gr_pct_val, t_gr) if t_gr else NO_TARGET
             c7 = ws.cell(row_num, 7, gr_pct_val)
             c7.number_format = "0.0%"
             c7.alignment = ALIGN_CENTER

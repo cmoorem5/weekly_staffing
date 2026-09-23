@@ -103,6 +103,58 @@ class WeekMetrics:
     night_staffing_rate: float = 0.0
 
 
+def role_ot_totals(row: WeeklyStaffing) -> dict[str, int]:
+    """Per-role OT shift counts for one week, keyed by ``ROLE_CAPACITY_PER_WEEK`` role.
+
+    Same fallback as ``compute_week_metrics``: the day/night split when any of
+    it is populated, else the legacy per-role aggregate columns (weeks
+    imported before the split store OT only there). A week with only
+    ``ot_shifts`` set can't be split by role and reports zeros here.
+    """
+    ws = cast(Any, row)
+    split = {
+        "RN": int(ws.ot_rn_day or 0) + int(ws.ot_rn_night or 0),
+        "MEDIC": int(ws.ot_medic_day or 0) + int(ws.ot_medic_night or 0),
+        "EMT": int(ws.ot_emt_day or 0) + int(ws.ot_emt_night or 0),
+    }
+    if any(split.values()):
+        return split
+    return {
+        "RN": int(ws.ot_rn or 0),
+        "MEDIC": int(ws.ot_medic or 0),
+        "EMT": int(ws.ot_emt or 0),
+    }
+
+
+def weekly_leave_total(row: WeeklyStaffing) -> int:
+    """Shift exceptions for one week (PFML counts as LOA; includes JURY and BREV)."""
+    ws = cast(Any, row)
+    return (
+        int(ws.leave_at or 0)
+        + int(ws.leave_lt or 0)
+        + int(ws.leave_sick or 0)
+        + int(ws.leave_loa or 0)
+        + int(ws.leave_pfml or 0)
+        + int(ws.leave_jury or 0)
+        + int(ws.leave_brev or 0)
+    )
+
+
+def coverages_by_week(
+    session, week_starts: list[str]
+) -> dict[str, list[WeeklyBaseCoverage]]:
+    """``WeeklyBaseCoverage`` rows for many weeks in one query, keyed by week_start."""
+    out: dict[str, list[WeeklyBaseCoverage]] = {ws: [] for ws in week_starts}
+    if week_starts:
+        for c in (
+            session.query(WeeklyBaseCoverage)
+            .filter(WeeklyBaseCoverage.week_start.in_(week_starts))
+            .all()
+        ):
+            out.setdefault(str(c.week_start), []).append(c)
+    return out
+
+
 def compute_week_metrics(
     row: WeeklyStaffing,
     base_coverages: list[WeeklyBaseCoverage],
@@ -145,16 +197,7 @@ def compute_week_metrics(
         total_ot = int(ws.ot_shifts or 0)
     ot_dependency = float(total_ot) / float(filled_total) if filled_total else 0.0
 
-    # PFML rolled into LOA for exposure; leave_total includes JURY and BREV.
-    leave_total = (
-        int(ws.leave_at)
-        + int(ws.leave_lt)
-        + int(ws.leave_sick)
-        + int(ws.leave_loa)
-        + int(ws.leave_pfml or 0)
-        + int(ws.leave_jury or 0)
-        + int(ws.leave_brev or 0)
-    )
+    leave_total = weekly_leave_total(row)
     leave_exposure = (
         float(leave_total) / float(TOTAL_PERSON_SHIFTS) if TOTAL_PERSON_SHIFTS else 0.0
     )
@@ -299,20 +342,35 @@ class RoleFill:
     rate: float
 
 
-def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
-    """Fill rate by role over the given weeks.
+def _role_fill_list(counts: dict[str, int], n_weeks: int) -> list[RoleFill]:
+    result = []
+    for role, per_week in ROLE_CAPACITY_PER_WEEK.items():
+        capacity = per_week * n_weeks
+        worked = counts.get(role, 0)
+        result.append(
+            RoleFill(
+                role=role,
+                label=ROLE_FILL_LABELS[role],
+                worked=worked,
+                capacity=capacity,
+                rate=float(worked) / float(capacity) if capacity else 0.0,
+            )
+        )
+    return result
 
-    Worked = staffed + OT seat-shifts from ``weekly_person_shifts``, counted
-    once per source grid cell — capacity below is seats (e.g. EMT 49 = 7
-    required lines × 7 days), and EMT partner rows list two people for one
-    cell, so ``weekly_person_shift_mappings`` writes two rows for a single
-    seat-day. Opportunistic extra units (``EXTRA_UNIT_CODES``) that aren't
-    part of the required-line capacity are excluded; capacity = per-role
-    weekly seat capacity × number of weeks.
+
+def compute_role_fill_by_week(
+    session, week_starts: list[str]
+) -> dict[str, list[RoleFill]]:
+    """``compute_role_fill`` for each week separately, in a single query.
+
+    Callers that bucket weeks (the staffing dashboard) pool these per-week
+    results; one query here replaces one ``compute_role_fill`` call per week.
     """
-    n = len(week_starts)
-    counts = dict.fromkeys(ROLE_CAPACITY_PER_WEEK, 0)
-    if n:
+    counts: dict[str, dict[str, int]] = {
+        ws: dict.fromkeys(ROLE_CAPACITY_PER_WEEK, 0) for ws in week_starts
+    }
+    if week_starts:
         rows = (
             session.query(
                 WeeklyPersonShift.id,
@@ -332,7 +390,8 @@ def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
         )
         seen: set[tuple] = set()
         for row_id, role, week_start, shift_date, source_tab, source_cell in rows:
-            if role not in counts:
+            week_counts = counts.get(week_start)
+            if week_counts is None or role not in week_counts:
                 continue
             # One worked shift per grid cell; rows without cell provenance
             # (manually backfilled detail) still count individually.
@@ -343,21 +402,27 @@ def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
             if key in seen:
                 continue
             seen.add(key)
-            counts[role] += 1
-    result = []
-    for role, per_week in ROLE_CAPACITY_PER_WEEK.items():
-        capacity = per_week * n
-        worked = counts[role]
-        result.append(
-            RoleFill(
-                role=role,
-                label=ROLE_FILL_LABELS[role],
-                worked=worked,
-                capacity=capacity,
-                rate=float(worked) / float(capacity) if capacity else 0.0,
-            )
-        )
-    return result
+            week_counts[role] += 1
+    return {ws: _role_fill_list(c, 1) for ws, c in counts.items()}
+
+
+def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
+    """Fill rate by role over the given weeks.
+
+    Worked = staffed + OT seat-shifts from ``weekly_person_shifts``, counted
+    once per source grid cell — capacity below is seats (e.g. EMT 49 = 7
+    required lines × 7 days), and EMT partner rows list two people for one
+    cell, so ``weekly_person_shift_mappings`` writes two rows for a single
+    seat-day. Opportunistic extra units (``EXTRA_UNIT_CODES``) that aren't
+    part of the required-line capacity are excluded; capacity = per-role
+    weekly seat capacity × number of weeks.
+    """
+    unique = list(dict.fromkeys(week_starts))
+    totals = dict.fromkeys(ROLE_CAPACITY_PER_WEEK, 0)
+    for fills in compute_role_fill_by_week(session, unique).values():
+        for rf in fills:
+            totals[rf.role] += rf.worked
+    return _role_fill_list(totals, len(week_starts))
 
 
 def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:

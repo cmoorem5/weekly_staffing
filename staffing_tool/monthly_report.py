@@ -25,6 +25,8 @@ from .metrics import (
     TOTAL_PERSON_SHIFTS,
     compute_period_rollups,
     compute_week_metrics,
+    role_ot_totals,
+    weekly_leave_total,
 )
 from .models import (
     BaseConfig,
@@ -339,18 +341,12 @@ def export_monthly_report(
     r += 1
 
     sum_filled = sum(w.filled_day + w.filled_night for w in weeks)
-    sum_ot_rn = sum((w.ot_rn_day or 0) + (w.ot_rn_night or 0) for w in weeks)
-    sum_ot_med = sum((w.ot_medic_day or 0) + (w.ot_medic_night or 0) for w in weeks)
-    sum_ot_emt = sum((w.ot_emt_day or 0) + (w.ot_emt_night or 0) for w in weeks)
-    sum_leave = sum(
-        (w.leave_at or 0)
-        + (w.leave_lt or 0)
-        + (w.leave_sick or 0)
-        + (w.leave_loa or 0)
-        + (getattr(w, "leave_jury", 0) or 0)
-        + (getattr(w, "leave_brev", 0) or 0)
-        for w in weeks
-    )
+    role_ot = [role_ot_totals(w) for w in weeks]
+    sum_ot_rn = sum(r["RN"] for r in role_ot)
+    sum_ot_med = sum(r["MEDIC"] for r in role_ot)
+    sum_ot_emt = sum(r["EMT"] for r in role_ot)
+    # Same total the Shift Exception % KPI divides (PFML counted as LOA).
+    sum_leave = sum(weekly_leave_total(w) for w in weeks)
 
     def period_vol_row(label: str, value: Any, rr: int) -> int:
         _bmf_cell_border(ws0, rr, 1, label, FONT_BMF_BODY_BOLD)

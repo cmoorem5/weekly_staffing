@@ -15,7 +15,7 @@ from staffing_tool.models import (
     WeeklyBaseCoverage,
     WeeklyStaffing,
 )
-from staffing_tool.rag import evaluate_rag
+from staffing_tool.rag import NO_TARGET, evaluate_rag
 
 from .helpers import DB_PATH, _ensure_db, _last_sunday, staffing_db_snapshot
 
@@ -103,7 +103,9 @@ def home(request):
         for row in week_rows:
             m = compute_week_metrics(row, coverages_by_week[row.week_start], bases)
             metrics_list.append(m)
-            rag = evaluate_rag(m.staffing_rate, th_staffing) if th_staffing else "—"
+            rag = (
+                evaluate_rag(m.staffing_rate, th_staffing) if th_staffing else NO_TARGET
+            )
             recent_weeks.append(
                 {
                     "week_start": row.week_start,
@@ -133,7 +135,7 @@ def home(request):
                 elif rag == "Yellow":
                     yellow_n += 1
             else:
-                rag = "—"
+                rag = NO_TARGET
             kpis.append(
                 {
                     "label": label,

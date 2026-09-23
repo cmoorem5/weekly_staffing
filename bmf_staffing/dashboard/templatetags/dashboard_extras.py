@@ -20,6 +20,9 @@ _RAG_MAP: dict[str, tuple[str, str]] = {
     "Green": ("On target", "bmf-rag--ontarget"),
     "Yellow": ("Monitor", "bmf-rag--monitor"),
     "Red": ("Action needed", "bmf-rag--action"),
+    # NO_DATA / NO_TARGET from staffing_tool.rag (title-cased by _resolve).
+    "Nodata": ("No data", "bmf-rag--none"),
+    "Notarget": ("No target set", "bmf-rag--none"),
 }
 _RAG_NONE = ("No data", "bmf-rag--none")
 

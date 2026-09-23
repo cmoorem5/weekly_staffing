@@ -17,7 +17,13 @@ from typing import Any, cast
 
 import matplotlib.pyplot as plt
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    KeepTogether,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from staffing_tool import report_html as rh
 from staffing_tool import report_style as style
@@ -43,6 +49,7 @@ from staffing_tool.models import (
     WeeklyLeaveDetail,
     WeeklyStaffing,
 )
+from staffing_tool.report_data import load_trend_targets
 from staffing_tool.schedule_import import (
     DailyDetailDay,
     aggregate_week_from_records,
@@ -83,6 +90,8 @@ class WeeklyReportContext:
     # Day/night staffing split and per-role fill (HTML export sections)
     day_night_fill: list[tuple[str, str, str]] = field(default_factory=list)
     role_fill: list[tuple[str, str, str, str]] = field(default_factory=list)
+    # KPI metric name -> green-boundary target (fraction), for trend target lines
+    trend_targets: dict[str, float] = field(default_factory=dict)
 
 
 def _pct(v: float) -> str:
@@ -369,6 +378,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
         exc_total = str(metrics.leave_total)
 
         return WeeklyReportContext(
+            trend_targets=load_trend_targets(session),
             week_start=week_start,
             week_of=week_of,
             week_dates=week_dates,
@@ -584,7 +594,10 @@ def _fig_to_png_base64(fig) -> str:
 
 def _build_trend_fig(ctx: WeeklyReportContext):
     return style.trend_fig(
-        ctx.trend_data, height_in=2.4, exception_label="Exception % (left)"
+        ctx.trend_data,
+        height_in=3.4,
+        exception_label="Exception %",
+        targets=ctx.trend_targets,
     )
 
 
@@ -629,29 +642,23 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
         style.section_bar("KEY PERFORMANCE INDICATORS"),
         style.kpi_row(ctx.kpi_data),
         Spacer(1, 10),
-        style.section_bar("8-WEEK STAFFING TREND"),
-        _trend_chart(ctx),
+        # Each heading stays on the page with its content; without this the
+        # SCHEDULE EXCEPTIONS / COVERAGE BY BASE headings were left alone at
+        # the bottom of a page with their tables on the next.
+        KeepTogether([style.section_bar("8-WEEK STAFFING TREND"), _trend_chart(ctx)]),
         Spacer(1, 10),
     ]
 
-    story.append(style.section_bar("EXCEPTION BREAKDOWN THIS WEEK"))
-    story.append(_exception_bar_chart(ctx))
-    story.append(Spacer(1, 8))
-    story.append(style.section_bar("SCHEDULE EXCEPTIONS"))
-    story.append(_exception_table(ctx))
-    story.append(Spacer(1, 10))
-    story.append(style.section_bar("OVERTIME BY ROLE"))
-    story.append(_ot_by_role_table(ctx))
-    story.append(Spacer(1, 10))
-    story.append(style.section_bar("SCHEDULE EXCEPTIONS BY ROLE"))
-    story.append(_exception_by_role_table(ctx))
-    story.append(Spacer(1, 10))
-    story.append(style.section_bar("DAILY DETAIL"))
-    story.append(_daily_table(ctx))
-    story.append(Spacer(1, 10))
-    story.append(style.section_bar("COVERAGE BY BASE"))
-    story.append(_base_coverage_table(ctx))
-    story.append(Spacer(1, 10))
+    for title, flowable, gap in (
+        ("EXCEPTION BREAKDOWN THIS WEEK", _exception_bar_chart(ctx), 8),
+        ("SCHEDULE EXCEPTIONS", _exception_table(ctx), 10),
+        ("OVERTIME BY ROLE", _ot_by_role_table(ctx), 10),
+        ("SCHEDULE EXCEPTIONS BY ROLE", _exception_by_role_table(ctx), 10),
+        ("DAILY DETAIL", _daily_table(ctx), 10),
+        ("COVERAGE BY BASE", _base_coverage_table(ctx), 10),
+    ):
+        story.append(KeepTogether([style.section_bar(title), flowable]))
+        story.append(Spacer(1, gap))
 
     doc.build(
         story,

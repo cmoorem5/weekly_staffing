@@ -12,6 +12,7 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from openpyxl import Workbook
 from sqlalchemy import func
+from staffing_tool.data_quality import leave_detail_mismatch
 from staffing_tool.db import session_scope
 from staffing_tool.fiscal_year import (
     fy_end_date,
@@ -25,16 +26,19 @@ from staffing_tool.metrics import (
     ROLE_CAPACITY_PER_WEEK,
     ROLE_FILL_LABELS,
     compute_period_rollups,
-    compute_role_fill,
+    compute_role_fill_by_week,
     compute_week_metrics,
+    role_ot_totals,
 )
 from staffing_tool.models import (
     BaseConfig,
+    KpiThreshold,
     WeeklyBaseCoverage,
     WeeklyLeaveDetail,
     WeeklyManagerShift,
     WeeklyStaffing,
 )
+from staffing_tool.rag import green_boundary
 from staffing_tool.time_buckets import bucket_label, buckets_for_range
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
@@ -93,6 +97,32 @@ _EXC_GROUP_BY_LEAVE_TYPE: dict[str, str] = {
 def _exc_group_for_leave_type(leave_type: str) -> str:
     lt = (leave_type or "").strip().upper()
     return _EXC_GROUP_BY_LEAVE_TYPE.get(lt, "Other")
+
+
+# Trend charts that get a dashed target line: chart key -> KpiThreshold metric_name.
+_CHART_TARGET_METRICS = {
+    "staffing_rate": "Staffing Rate",
+    "ot_dependency": "OT Dependency",
+    "shift_exception": "Shift Exception %",
+    "system_rw": "System RW Coverage %",
+    "system_gr": "System GR Coverage %",
+}
+
+
+def _chart_targets(session) -> dict[str, float]:
+    """Green-threshold boundary per trend chart, in percent.
+
+    Same boundary the board summary's Target column shows: ``green_min`` for
+    higher-is-better metrics, ``green_max`` for lower-is-better ones. Charts
+    with no configured threshold get no line.
+    """
+    thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
+    out: dict[str, float] = {}
+    for key, metric in _CHART_TARGET_METRICS.items():
+        bound = green_boundary(thresholds.get(metric))
+        if bound is not None:
+            out[key] = round(100.0 * float(bound), 2)
+    return out
 
 
 def _build_staffing_dashboard_context(request) -> dict[str, object]:
@@ -305,6 +335,35 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                         "issue": "No schedule import marker (manual week or incomplete import)",
                     }
                 )
+        # Leave detail (drives the exception chart) vs the weekly leave columns
+        # (drive Shift exception %): flag weeks where the two disagree.
+        if weeks:
+            details_by_week: dict[str, list[WeeklyLeaveDetail]] = defaultdict(list)
+            for d in (
+                session.query(WeeklyLeaveDetail)
+                .filter(WeeklyLeaveDetail.week_start.in_([w.week_start for w in weeks]))
+                .all()
+            ):
+                details_by_week[str(d.week_start)].append(d)
+            for w in weeks:
+                mismatch = leave_detail_mismatch(
+                    w, details_by_week.get(w.week_start, [])
+                )
+                if mismatch:
+                    data_quality_rows.append(
+                        {
+                            "week_start": w.week_start,
+                            "issue": (
+                                f"Exception detail totals {mismatch[0]} but the "
+                                f"week's leave columns total {mismatch[1]}; the "
+                                "exception chart and Shift exception % disagree "
+                                "for this week. Re-import the week, or check "
+                                "and save its exception grid on the week edit "
+                                "page (that saves both together)."
+                            ),
+                        }
+                    )
+            data_quality_rows.sort(key=lambda r: r["week_start"])
         if not weeks:
             return {
                 "fy_label": fy_label,
@@ -326,6 +385,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "shift_exception_series_json": "[]",
                 "system_rw_series_json": "[]",
                 "system_gr_series_json": "[]",
+                "weeks_per_bucket_json": "[]",
+                "chart_targets_json": "{}",
+                "base_color_order_json": "[]",
                 "table_rows": [],
                 "filters_qs": serialize_filters_query(
                     fy_label, granularity, date_start, date_end
@@ -353,12 +415,10 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
 
         # Role fill (RN/Medic/EMT worked vs. seat capacity), per individual week so
         # buckets can pool (sum worked / sum capacity) across whichever weeks they cover.
-        role_fill_by_week: dict[str, dict[str, tuple[int, int]]] = {}
-        for ws in week_starts:
-            role_fill_by_week[ws] = {
-                rf.role: (rf.worked, rf.capacity)
-                for rf in compute_role_fill(session, [ws])
-            }
+        role_fill_by_week: dict[str, dict[str, tuple[int, int]]] = {
+            ws: {rf.role: (rf.worked, rf.capacity) for rf in fills}
+            for ws, fills in compute_role_fill_by_week(session, week_starts).items()
+        }
 
         cov_rows = (
             session.query(WeeklyBaseCoverage)
@@ -370,6 +430,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             coverages_by_week[c.week_start].append(c)
 
         bases = list(session.query(BaseConfig).all())
+        chart_targets = _chart_targets(session)
 
         # Precompute weekly metrics objects.
         weekly_metrics: list[tuple[date, object]] = []
@@ -379,14 +440,16 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
 
         # Per-role OT (raw shift counts, day+night) and unpartnered counts: these
         # live only on the raw WeeklyStaffing row, not on WeekMetrics, so pull them
-        # here while the row is still session-attached (same day+night-sum
-        # convention as the monthly report -- no legacy-total fallback).
+        # here while the row is still session-attached. role_ot_totals falls back
+        # to the legacy per-role columns for weeks imported before the day/night
+        # split, the same chain compute_week_metrics uses for total OT.
         raw_extra_by_week: dict[str, dict[str, int]] = {}
         for w in weeks:
+            role_ot = role_ot_totals(w)
             raw_extra_by_week[w.week_start] = {
-                "ot_rn": int(w.ot_rn_day or 0) + int(w.ot_rn_night or 0),
-                "ot_medic": int(w.ot_medic_day or 0) + int(w.ot_medic_night or 0),
-                "ot_emt": int(w.ot_emt_day or 0) + int(w.ot_emt_night or 0),
+                "ot_rn": role_ot["RN"],
+                "ot_medic": role_ot["MEDIC"],
+                "ot_emt": role_ot["EMT"],
                 "medic_unpartnered": int(w.medic_unpartnered or 0),
                 "rn_unpartnered": int(w.rn_unpartnered_staff or 0),
             }
@@ -414,39 +477,45 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             exc_by_week_by_group[ws_s][group] += n
             exc_total_by_week[ws_s] += n
 
-        # Manager line shifts: count per bucket from WeeklyManagerShift.shift_date.
-        # Default exec-friendly breakdown is by base_name.
-        mgr_total_by_shift_date: dict[str, int] = defaultdict(int)
-        mgr_by_shift_date_by_base: dict[str, dict[str, int]] = defaultdict(
+        # Manager line shifts: counted per bucket by the shift's week_start, the
+        # same rule the KPIs and exceptions use, so a week spanning a month or
+        # quarter boundary lands in one period on every panel (bucketing by
+        # shift_date split it across two). Breakdown is by base_name.
+        mgr_total_by_week: dict[str, int] = defaultdict(int)
+        mgr_by_week_by_base: dict[str, dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
         )
         mgr_rows = (
             session.query(
-                WeeklyManagerShift.shift_date,
+                WeeklyManagerShift.week_start,
                 WeeklyManagerShift.base_name,
                 func.count(WeeklyManagerShift.id),
             )
-            .filter(WeeklyManagerShift.shift_date >= date_start.isoformat())
-            .filter(WeeklyManagerShift.shift_date <= date_end.isoformat())
+            .filter(WeeklyManagerShift.week_start >= date_start.isoformat())
+            .filter(WeeklyManagerShift.week_start <= date_end.isoformat())
             .filter(
                 (WeeklyManagerShift.event_type == "line_shift")
                 | (WeeklyManagerShift.event_type.is_(None))
                 | (WeeklyManagerShift.event_type == "")
             )
-            .group_by(WeeklyManagerShift.shift_date, WeeklyManagerShift.base_name)
+            .group_by(WeeklyManagerShift.week_start, WeeklyManagerShift.base_name)
             .all()
         )
         base_names: set[str] = set()
-        for sd, base_name, n in mgr_rows:
-            sd_s = str(sd)
+        for mws, base_name, n in mgr_rows:
+            ws_s = str(mws)
             base_s = str(base_name or "").strip() or "(Unknown)"
             base_names.add(base_s)
             nn = int(n or 0)
-            mgr_total_by_shift_date[sd_s] += nn
-            mgr_by_shift_date_by_base[sd_s][base_s] += nn
+            mgr_total_by_week[ws_s] += nn
+            mgr_by_week_by_base[ws_s][base_s] += nn
 
-        manager_line_shifts_breakdown_order = sorted(
-            base_names, key=lambda s: s.lower()
+        # Known bases in report order, then anything unexpected alphabetically.
+        manager_line_shifts_breakdown_order = [
+            b for b in BASE_DISPLAY_ORDER if b in base_names
+        ] + sorted(
+            (b for b in base_names if b not in BASE_DISPLAY_ORDER),
+            key=lambda s: s.lower(),
         )
         manager_line_shifts_breakdown_series = {
             b: [] for b in manager_line_shifts_breakdown_order
@@ -625,19 +694,18 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             }
         )
 
-        # Manager line shifts per bucket: sum counts by day (shift_date)
+        # Manager line shifts per bucket: weeks whose week_start is in the bucket.
         mgr_bucket_total = 0
         mgr_bucket_by_base: dict[str, int] = {
             b: 0 for b in manager_line_shifts_breakdown_order
         }
-        cur = b_start
-        while cur <= b_end:
-            sd = cur.isoformat()
-            mgr_bucket_total += int(mgr_total_by_shift_date.get(sd, 0))
-            by_base = mgr_by_shift_date_by_base.get(sd, {})
+        for mws, n_mgr in mgr_total_by_week.items():
+            if not (b_start <= date.fromisoformat(mws) <= b_end):
+                continue
+            mgr_bucket_total += n_mgr
+            by_base = mgr_by_week_by_base.get(mws, {})
             for b in manager_line_shifts_breakdown_order:
                 mgr_bucket_by_base[b] += int(by_base.get(b, 0))
-            cur += timedelta(days=1)
         manager_line_shifts_total_series.append(mgr_bucket_total)
         for b in manager_line_shifts_breakdown_order:
             manager_line_shifts_breakdown_series[b].append(
@@ -716,6 +784,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "shift_exception_series_json": json.dumps(shift_exception_series),
         "system_rw_series_json": json.dumps(system_rw_series),
         "system_gr_series_json": json.dumps(system_gr_series),
+        "weeks_per_bucket_json": json.dumps([r["weeks_included"] for r in table_rows]),
+        "chart_targets_json": json.dumps(chart_targets),
+        "base_color_order_json": json.dumps(BASE_DISPLAY_ORDER),
         "table_rows": table_rows,
         "manager_line_shifts_total_series_json": json.dumps(
             manager_line_shifts_total_series

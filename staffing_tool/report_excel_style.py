@@ -21,7 +21,7 @@ from .models import (
     KpiThreshold,
 )
 from .paths import resolve_logo_path
-from .rag import RAG
+from .rag import RAG, UNRATED
 
 # ----- Boston MedFlight brand (Clinical Operations guidelines) -----
 # Colors: Blue #2a4492, Navy #052c47, Gray #e6e6e6, Medium Gray #cbc7d1, White #ffffff, Black #000000, Red #c12126
@@ -46,6 +46,10 @@ FILL_GREEN_FULL = PatternFill(
 FILL_YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
 FILL_RED_SOFT = PatternFill(start_color="F4CCCC", end_color="F4CCCC", fill_type="solid")
 FILL_RED_FULL = PatternFill(start_color=BMF_RED, end_color=BMF_RED, fill_type="solid")
+# Unrated (No data / No target set): neutral gray, never read as good or bad.
+FILL_STATUS_NEUTRAL = PatternFill(
+    start_color="E6E6E6", end_color="E6E6E6", fill_type="solid"
+)
 # Back-compat aliases
 FILL_GREEN = FILL_GREEN_FULL
 FILL_RAG_RED = FILL_RED_FULL
@@ -144,6 +148,8 @@ def _fill_and_font_for_status(
     value: float,
     thr: KpiThreshold | None,
 ) -> tuple[PatternFill, Font]:
+    if rag in UNRATED:
+        return FILL_STATUS_NEUTRAL, FONT_BMF_RAG_VALUE
     if rag == "Green":
         fill = FILL_GREEN_FULL if notable else FILL_GREEN_SOFT
         return fill, FONT_BMF_RAG_VALUE

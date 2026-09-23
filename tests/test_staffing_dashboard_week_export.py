@@ -11,6 +11,7 @@ aggregation.
 import csv
 import importlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -28,12 +29,19 @@ import django
 
 django.setup()
 
-from django.test import Client
+from django.test import Client, RequestFactory
 from django.urls import reverse
 from openpyxl import load_workbook
 from staffing_tool.db import init_db, session_scope
 from staffing_tool.metrics import ROLE_FILL_LABELS
-from staffing_tool.models import WeeklyBaseCoverage, WeeklyPersonShift, WeeklyStaffing
+from staffing_tool.models import (
+    KpiThreshold,
+    WeeklyBaseCoverage,
+    WeeklyLeaveDetail,
+    WeeklyManagerShift,
+    WeeklyPersonShift,
+    WeeklyStaffing,
+)
 from staffing_tool.time_buckets import buckets_for_range
 from tests._temp_db import TempDbTestCase
 
@@ -284,6 +292,136 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertEqual(role_rows[WEEK_1][rn_worked_col].value, 3)
         self.assertEqual(role_rows[WEEK_1][rn_capacity_col].value, 84)
         self.assertEqual(role_rows[WEEK_2][rn_worked_col].value, 5)
+
+    def test_legacy_week_per_role_ot_uses_aggregate_columns(self):
+        # A week imported before the day/night OT split stores per-role OT only
+        # in ot_rn/ot_medic/ot_emt; the Additional KPIs table must still show it.
+        with session_scope(self.db_path) as session:
+            row = session.query(WeeklyStaffing).filter_by(week_start=WEEK_2).one()
+            for f in (
+                "ot_rn_day",
+                "ot_rn_night",
+                "ot_medic_day",
+                "ot_medic_night",
+                "ot_emt_day",
+                "ot_emt_night",
+            ):
+                setattr(row, f, 0)
+            row.ot_rn, row.ot_medic, row.ot_emt = 4, 2, 1
+            session.commit()
+        request = RequestFactory().get("/", self._qs())
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        extra = {r["bucket_start"]: r for r in ctx["extra_kpi_table"]}
+        self.assertEqual(
+            (
+                extra[WEEK_2]["ot_rn_total"],
+                extra[WEEK_2]["ot_medic_total"],
+                extra[WEEK_2]["ot_emt_total"],
+            ),
+            (4, 2, 1),
+        )
+
+    def test_chart_targets_follow_kpi_threshold_direction(self):
+        with session_scope(self.db_path) as session:
+            session.query(KpiThreshold).delete()
+            session.add(
+                KpiThreshold(
+                    metric_name="Staffing Rate", green_min=0.95, higher_is_better=1
+                )
+            )
+            session.add(
+                KpiThreshold(
+                    metric_name="OT Dependency", green_max=0.10, higher_is_better=0
+                )
+            )
+            session.commit()
+        request = RequestFactory().get("/", self._qs())
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        targets = json.loads(ctx["chart_targets_json"])
+        # green_min for higher-is-better, green_max for lower-is-better.
+        self.assertEqual(targets["staffing_rate"], 95.0)
+        self.assertEqual(targets["ot_dependency"], 10.0)
+        self.assertEqual(json.loads(ctx["weeks_per_bucket_json"]), [1, 1])
+
+    def test_leave_detail_mismatch_flagged_in_data_quality(self):
+        # WEEK_1: detail says 5 LT, leave columns say 2 -> flagged.
+        # WEEK_2: detail and columns agree (3 SICK) -> not flagged.
+        with session_scope(self.db_path) as session:
+            w1 = session.query(WeeklyStaffing).filter_by(week_start=WEEK_1).one()
+            w1.leave_lt = 2
+            w2 = session.query(WeeklyStaffing).filter_by(week_start=WEEK_2).one()
+            w2.leave_sick = 3
+            session.add(
+                WeeklyLeaveDetail(
+                    week_start=WEEK_1, role="RN", leave_type="LT", count=5
+                )
+            )
+            session.add(
+                WeeklyLeaveDetail(
+                    week_start=WEEK_2, role="Medic", leave_type="SICK", count=3
+                )
+            )
+            session.commit()
+        request = RequestFactory().get("/", self._qs())
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        flagged = [
+            r
+            for r in ctx["data_quality_rows"]
+            if r["issue"].startswith("Exception detail totals")
+        ]
+        self.assertEqual([r["week_start"] for r in flagged], [WEEK_1])
+        self.assertIn("totals 5", flagged[0]["issue"])
+        self.assertIn("total 2", flagged[0]["issue"])
+
+    def test_manager_shifts_bucket_by_week_start_like_kpis(self):
+        # Week of Sun 2026-06-28 runs into July. Its KPIs land in June (by
+        # week_start); its manager shifts must land there too, not split
+        # across June and July by shift_date.
+        june_week = "2026-06-28"
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyStaffing(
+                    week_start=june_week,
+                    day_target=8,
+                    night_min=4,
+                    filled_day=50,
+                    filled_night=28,
+                    entered_by="test",
+                    created_at=f"{june_week}T00:00:00Z",
+                    updated_at=f"{june_week}T00:00:00Z",
+                )
+            )
+            session.commit()
+            for shift_date in ("2026-06-29", "2026-07-02"):
+                session.add(
+                    WeeklyManagerShift(
+                        week_start=june_week,
+                        person_display="Manager A",
+                        role="RN",
+                        shift_date=shift_date,
+                        event_type="line_shift",
+                        base_name="Bedford",
+                        service_type="RW",
+                        day_night="D",
+                    )
+                )
+            session.commit()
+        request = RequestFactory().get(
+            "/",
+            {
+                "fy": "2026",
+                "granularity": "month",
+                "date_start": "2026-06-01",
+                "date_end": "2026-07-31",
+            },
+        )
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        by_start = {
+            r["bucket_start"]: r["manager_line_shifts_total"]
+            for r in ctx["manager_line_shifts_table"]
+        }
+        self.assertEqual(by_start["2026-06-01"], 2)
+        self.assertEqual(by_start["2026-07-01"], 0)
 
 
 if __name__ == "__main__":
