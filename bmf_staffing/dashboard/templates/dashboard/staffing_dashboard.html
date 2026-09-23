@@ -485,6 +485,59 @@
     </div>
   </div>
 
+  <div class="card bmf-card shadow-sm mt-3">
+    <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Additional KPIs — day/night split, overnights below coverage, pilot vacancies, per-role OT, unpartnered</span>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#extraKpiDetailsCollapse"
+        aria-expanded="false"
+        aria-controls="extraKpiDetailsCollapse"
+        aria-label="Toggle additional KPI details"
+      >
+        Details
+      </button>
+    </div>
+    <div id="extraKpiDetailsCollapse" class="collapse">
+      <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}</th>
+            <th scope="col" class="text-end">Day %</th>
+            <th scope="col" class="text-end">Night %</th>
+            <th scope="col" class="text-end">Overnights below (total)</th>
+            <th scope="col" class="text-end">Pilot vacancies (avg)</th>
+            <th scope="col" class="text-end">RN OT (total)</th>
+            <th scope="col" class="text-end">Medic OT (total)</th>
+            <th scope="col" class="text-end">EMT OT (total)</th>
+            <th scope="col" class="text-end">Medic unpartnered (total)</th>
+            <th scope="col" class="text-end">RN unpartnered (total)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in extra_kpi_table %}
+          <tr>
+            <td>{{ r.label }}</td>
+            <td class="text-end">{{ r.day_staffing_rate_pct }}</td>
+            <td class="text-end">{{ r.night_staffing_rate_pct }}</td>
+            <td class="text-end">{{ r.overnights_below_total }}</td>
+            <td class="text-end">{{ r.pilot_vacancies_avg }}</td>
+            <td class="text-end">{{ r.ot_rn_total }}</td>
+            <td class="text-end">{{ r.ot_medic_total }}</td>
+            <td class="text-end">{{ r.ot_emt_total }}</td>
+            <td class="text-end">{{ r.medic_unpartnered_total }}</td>
+            <td class="text-end">{{ r.rn_unpartnered_total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
   <script type="application/json" id="staffing-chart-labels">{{ labels_json|safe }}</script>
   <script type="application/json" id="staffing-chart-staffing-rate">{{ staffing_rate_series_json|safe }}</script>
   <script type="application/json" id="staffing-chart-ot-dependency">{{ ot_dependency_series_json|safe }}</script>

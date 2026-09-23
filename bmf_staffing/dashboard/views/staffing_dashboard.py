@@ -148,6 +148,11 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
     base_coverage_table: list[dict[str, object]] = []
     role_fill_table: list[dict[str, object]] = []
 
+    # Additional KPIs already computed per week but not otherwise surfaced in this
+    # export: day/night staffing rate split, overnights below coverage, pilot
+    # vacancies, per-role OT, and unpartnered counts.
+    extra_kpi_table: list[dict[str, object]] = []
+
     # Data quality panel: expected week_start Sundays that fall in the selected date range.
     expected_week_starts: list[str] = []
     first_sun = date_start + timedelta(days=(6 - date_start.weekday()) % 7)
@@ -337,6 +342,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "base_coverage_table": [],
                 "role_fill_breakdown_order": list(ROLE_CAPACITY_PER_WEEK),
                 "role_fill_table": [],
+                "extra_kpi_table": [],
                 "no_data": True,
                 "data_quality_rows": data_quality_rows,
                 "expected_week_starts_count": len(expected_week_starts),
@@ -370,6 +376,20 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         for w in weeks:
             m = compute_week_metrics(w, coverages_by_week[w.week_start], bases)
             weekly_metrics.append((date.fromisoformat(w.week_start), m))
+
+        # Per-role OT (raw shift counts, day+night) and unpartnered counts: these
+        # live only on the raw WeeklyStaffing row, not on WeekMetrics, so pull them
+        # here while the row is still session-attached (same day+night-sum
+        # convention as the monthly report -- no legacy-total fallback).
+        raw_extra_by_week: dict[str, dict[str, int]] = {}
+        for w in weeks:
+            raw_extra_by_week[w.week_start] = {
+                "ot_rn": int(w.ot_rn_day or 0) + int(w.ot_rn_night or 0),
+                "ot_medic": int(w.ot_medic_day or 0) + int(w.ot_medic_night or 0),
+                "ot_emt": int(w.ot_emt_day or 0) + int(w.ot_emt_night or 0),
+                "medic_unpartnered": int(w.medic_unpartnered or 0),
+                "rn_unpartnered": int(w.rn_unpartnered_staff or 0),
+            }
 
         # Exceptions: weekly totals from WeeklyLeaveDetail by leave_type, rolled up into groups.
         exc_by_week_by_group: dict[str, dict[str, int]] = defaultdict(
@@ -506,6 +526,48 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                     100.0 * rollups.pooled_system_gr_pct, 2
                 ),
                 "drill_qs": drill_qs,
+            }
+        )
+
+        # Additional KPIs per bucket: day/night staffing rate is averaged (same
+        # convention as the blended staffing rate above); overnights below coverage,
+        # per-role OT, and unpartnered counts are period totals (occurrences summed
+        # across the bucket's weeks); pilot vacancies is a snapshot-style count, so
+        # it's averaged rather than summed.
+        overnights_below_total = sum(bm.overnights_below for _d0, bm in in_bucket)
+        pilot_vacancies_avg = (
+            sum(bm.pilot_vacancies for _d0, bm in in_bucket) / n if n else 0.0
+        )
+        ot_rn_total = 0
+        ot_medic_total = 0
+        ot_emt_total = 0
+        medic_unpartnered_total = 0
+        rn_unpartnered_total = 0
+        for d0, _bm in in_bucket:
+            extra = raw_extra_by_week.get(d0.isoformat(), {})
+            ot_rn_total += extra.get("ot_rn", 0)
+            ot_medic_total += extra.get("ot_medic", 0)
+            ot_emt_total += extra.get("ot_emt", 0)
+            medic_unpartnered_total += extra.get("medic_unpartnered", 0)
+            rn_unpartnered_total += extra.get("rn_unpartnered", 0)
+        extra_kpi_table.append(
+            {
+                "label": label,
+                "bucket_start": b_start.isoformat(),
+                "bucket_end": b_end.isoformat(),
+                "day_staffing_rate_pct": round(
+                    100.0 * rollups.avg_day_staffing_rate, 2
+                ),
+                "night_staffing_rate_pct": round(
+                    100.0 * rollups.avg_night_staffing_rate, 2
+                ),
+                "overnights_below_total": overnights_below_total,
+                "pilot_vacancies_avg": round(pilot_vacancies_avg, 2),
+                "ot_rn_total": ot_rn_total,
+                "ot_medic_total": ot_medic_total,
+                "ot_emt_total": ot_emt_total,
+                "medic_unpartnered_total": medic_unpartnered_total,
+                "rn_unpartnered_total": rn_unpartnered_total,
             }
         )
 
@@ -671,6 +733,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "base_coverage_table": base_coverage_table,
         "role_fill_breakdown_order": list(ROLE_CAPACITY_PER_WEEK),
         "role_fill_table": role_fill_table,
+        "extra_kpi_table": extra_kpi_table,
         "filters_qs": serialize_filters_query(
             fy_label, granularity, date_start, date_end
         ),
@@ -700,6 +763,7 @@ def staffing_dashboard_export_csv(request):
     mgr_rows = cast(list[dict[str, object]], ctx.get("manager_line_shifts_table") or [])
     mgr_order = cast(list[str], ctx.get("manager_line_shifts_breakdown_order") or [])
     exc_rows = cast(list[dict[str, object]], ctx.get("exc_table_rows") or [])
+    extra_kpi_rows = cast(list[dict[str, object]], ctx.get("extra_kpi_table") or [])
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Metadata"])
@@ -809,6 +873,43 @@ def staffing_dashboard_export_csv(request):
             ]
         )
 
+    # Additional KPIs section
+    writer.writerow([])
+    writer.writerow(["Additional KPIs"])
+    writer.writerow(
+        [
+            "Period",
+            "Period start",
+            "Period end",
+            "Day staffing rate (%, avg)",
+            "Night staffing rate (%, avg)",
+            "Overnights below coverage (total)",
+            "Pilot vacancies (avg)",
+            "RN OT (shifts, total)",
+            "Medic OT (shifts, total)",
+            "EMT OT (shifts, total)",
+            "Medic unpartnered (total)",
+            "RN unpartnered (total)",
+        ]
+    )
+    for r in extra_kpi_rows:
+        writer.writerow(
+            [
+                r.get("label"),
+                r.get("bucket_start"),
+                r.get("bucket_end"),
+                r.get("day_staffing_rate_pct"),
+                r.get("night_staffing_rate_pct"),
+                r.get("overnights_below_total"),
+                r.get("pilot_vacancies_avg"),
+                r.get("ot_rn_total"),
+                r.get("ot_medic_total"),
+                r.get("ot_emt_total"),
+                r.get("medic_unpartnered_total"),
+                r.get("rn_unpartnered_total"),
+            ]
+        )
+
     # Vehicle / base coverage section
     base_cov_rows = cast(list[dict[str, object]], ctx.get("base_coverage_table") or [])
     base_order = cast(list[str], ctx.get("base_coverage_breakdown_order") or [])
@@ -866,6 +967,7 @@ def staffing_dashboard_export_xlsx(request):
     mgr_rows = cast(list[dict[str, object]], ctx.get("manager_line_shifts_table") or [])
     mgr_order = cast(list[str], ctx.get("manager_line_shifts_breakdown_order") or [])
     exc_rows = cast(list[dict[str, object]], ctx.get("exc_table_rows") or [])
+    extra_kpi_rows = cast(list[dict[str, object]], ctx.get("extra_kpi_table") or [])
     base_cov_rows = cast(list[dict[str, object]], ctx.get("base_coverage_table") or [])
     base_order = cast(list[str], ctx.get("base_coverage_breakdown_order") or [])
     role_rows = cast(list[dict[str, object]], ctx.get("role_fill_table") or [])
@@ -981,6 +1083,41 @@ def staffing_dashboard_export_xlsx(request):
                 r.get("exceptions_jury"),
                 r.get("exceptions_brev"),
                 r.get("exceptions_other"),
+            ]
+        )
+
+    ws_extra = wb.create_sheet("Additional KPIs")
+    ws_extra.append(
+        [
+            "Period",
+            "Period start",
+            "Period end",
+            "Day staffing rate (%, avg)",
+            "Night staffing rate (%, avg)",
+            "Overnights below coverage (total)",
+            "Pilot vacancies (avg)",
+            "RN OT (shifts, total)",
+            "Medic OT (shifts, total)",
+            "EMT OT (shifts, total)",
+            "Medic unpartnered (total)",
+            "RN unpartnered (total)",
+        ]
+    )
+    for r in extra_kpi_rows:
+        ws_extra.append(
+            [
+                r.get("label"),
+                r.get("bucket_start"),
+                r.get("bucket_end"),
+                r.get("day_staffing_rate_pct"),
+                r.get("night_staffing_rate_pct"),
+                r.get("overnights_below_total"),
+                r.get("pilot_vacancies_avg"),
+                r.get("ot_rn_total"),
+                r.get("ot_medic_total"),
+                r.get("ot_emt_total"),
+                r.get("medic_unpartnered_total"),
+                r.get("rn_unpartnered_total"),
             ]
         )
 

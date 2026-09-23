@@ -64,6 +64,34 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp.name) / "week_export.db")
         init_db(self.db_path)
+        # Per-week overrides for the "Additional KPIs" section (day/night split,
+        # overnights below coverage, pilot vacancies, per-role OT, unpartnered).
+        extra_by_week = {
+            WEEK_1: {
+                "ot_rn_day": 2,
+                "ot_rn_night": 1,
+                "ot_medic_day": 1,
+                "ot_medic_night": 0,
+                "ot_emt_day": 0,
+                "ot_emt_night": 0,
+                "overnights_below": 1,
+                "pilot_vacancies": 2,
+                "medic_unpartnered": 1,
+                "rn_unpartnered_staff": 0,
+            },
+            WEEK_2: {
+                "ot_rn_day": 1,
+                "ot_rn_night": 0,
+                "ot_medic_day": 0,
+                "ot_medic_night": 2,
+                "ot_emt_day": 1,
+                "ot_emt_night": 1,
+                "overnights_below": 0,
+                "pilot_vacancies": 0,
+                "medic_unpartnered": 0,
+                "rn_unpartnered_staff": 2,
+            },
+        }
         with session_scope(self.db_path) as session:
             for ws in (WEEK_1, WEEK_2):
                 session.add(
@@ -76,6 +104,7 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
                         entered_by="test",
                         created_at=f"{ws}T00:00:00Z",
                         updated_at=f"{ws}T00:00:00Z",
+                        **extra_by_week[ws],
                     )
                 )
             # Bedford RW: 7/14 (50%) week 1, 14/14 (100%) week 2. No coverage row
@@ -185,7 +214,7 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertEqual(base_rows[WEEK_1][5], "0.0")  # Lawrence RW % (no coverage row)
         self.assertEqual(base_rows[WEEK_2][3], "100.0")  # Bedford RW %
 
-        role_rows, _ = _section(
+        role_rows, next_idx = _section(
             next_idx, "Role fill — worked vs. seat capacity (pooled)"
         )
         # Columns after Period/start/end: RN worked, RN capacity, RN fill (%), then Medic, EMT.
@@ -193,12 +222,48 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertEqual(role_rows[WEEK_1][4], "84")  # RN capacity
         self.assertEqual(role_rows[WEEK_2][3], "5")  # RN worked
 
+    def test_csv_export_has_additional_kpi_section(self):
+        resp = self.client.get(reverse("staffing_dashboard_export_csv"), self._qs())
+        self.assertEqual(resp.status_code, 200)
+        text = resp.content.decode("utf-8-sig")
+        reader = list(csv.reader(io.StringIO(text)))
+        start = next(i for i, r in enumerate(reader) if r and r[0] == "Additional KPIs")
+        header = reader[start + 1]
+        rows = {}
+        i = start + 2
+        while i < len(reader) and reader[i]:
+            rows[reader[i][0]] = reader[i]
+            i += 1
+
+        def col(name):
+            return header.index(name)
+
+        # Day/night staffing rate: filled_day=52/required_day=56, filled_night=30/required_night=28.
+        self.assertEqual(rows[WEEK_1][col("Day staffing rate (%, avg)")], "92.86")
+        self.assertEqual(rows[WEEK_1][col("Night staffing rate (%, avg)")], "107.14")
+        self.assertEqual(rows[WEEK_1][col("Overnights below coverage (total)")], "1")
+        self.assertEqual(rows[WEEK_2][col("Overnights below coverage (total)")], "0")
+        self.assertEqual(rows[WEEK_1][col("Pilot vacancies (avg)")], "2.0")
+        self.assertEqual(rows[WEEK_2][col("Pilot vacancies (avg)")], "0.0")
+        self.assertEqual(rows[WEEK_1][col("RN OT (shifts, total)")], "3")  # 2 + 1
+        self.assertEqual(rows[WEEK_2][col("Medic OT (shifts, total)")], "2")  # 0 + 2
+        self.assertEqual(rows[WEEK_2][col("EMT OT (shifts, total)")], "2")  # 1 + 1
+        self.assertEqual(rows[WEEK_1][col("Medic unpartnered (total)")], "1")
+        self.assertEqual(rows[WEEK_2][col("RN unpartnered (total)")], "2")
+
     def test_xlsx_export_has_base_coverage_and_role_fill_sheets(self):
         resp = self.client.get(reverse("staffing_dashboard_export_xlsx"), self._qs())
         self.assertEqual(resp.status_code, 200)
         wb = load_workbook(io.BytesIO(resp.content))
         self.assertIn("Vehicle-Base coverage", wb.sheetnames)
         self.assertIn("Role fill", wb.sheetnames)
+        self.assertIn("Additional KPIs", wb.sheetnames)
+
+        ws_extra = wb["Additional KPIs"]
+        extra_header = [c.value for c in ws_extra[1]]
+        extra_rows = {row[0].value: row for row in ws_extra.iter_rows(min_row=2)}
+        rn_ot_col = extra_header.index("RN OT (shifts, total)")
+        self.assertEqual(extra_rows[WEEK_1][rn_ot_col].value, 3)
 
         ws_base = wb["Vehicle-Base coverage"]
         header = [c.value for c in ws_base[1]]
