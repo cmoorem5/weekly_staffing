@@ -12,6 +12,7 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from openpyxl import Workbook
 from sqlalchemy import func
+from staffing_tool.data_quality import leave_detail_mismatch
 from staffing_tool.db import session_scope
 from staffing_tool.fiscal_year import (
     fy_end_date,
@@ -336,6 +337,35 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                         "issue": "No schedule import marker (manual week or incomplete import)",
                     }
                 )
+        # Leave detail (drives the exception chart) vs the weekly leave columns
+        # (drive Shift exception %): flag weeks where the two disagree.
+        if weeks:
+            details_by_week: dict[str, list[WeeklyLeaveDetail]] = defaultdict(list)
+            for d in (
+                session.query(WeeklyLeaveDetail)
+                .filter(WeeklyLeaveDetail.week_start.in_([w.week_start for w in weeks]))
+                .all()
+            ):
+                details_by_week[str(d.week_start)].append(d)
+            for w in weeks:
+                mismatch = leave_detail_mismatch(
+                    w, details_by_week.get(w.week_start, [])
+                )
+                if mismatch:
+                    data_quality_rows.append(
+                        {
+                            "week_start": w.week_start,
+                            "issue": (
+                                f"Exception detail totals {mismatch[0]} but the "
+                                f"week's leave columns total {mismatch[1]}; the "
+                                "exception chart and Shift exception % disagree "
+                                "for this week. Re-import the week, or check "
+                                "and save its exception grid on the week edit "
+                                "page (that saves both together)."
+                            ),
+                        }
+                    )
+            data_quality_rows.sort(key=lambda r: r["week_start"])
         if not weeks:
             return {
                 "fy_label": fy_label,

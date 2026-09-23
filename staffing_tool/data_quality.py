@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
-from .metrics import compute_week_metrics
+from .metrics import compute_week_metrics, weekly_leave_total
 from .models import BaseConfig, WeeklyBaseCoverage, WeeklyLeaveDetail, WeeklyStaffing
 from .report import _leave_totals_from_breakdown
 
@@ -20,6 +20,28 @@ def _ot_day_night_total(row: WeeklyStaffing) -> int:
         + int(row.ot_emt_day or 0)
         + int(row.ot_emt_night or 0)
     )
+
+
+def leave_detail_mismatch(
+    row: WeeklyStaffing, details: list[WeeklyLeaveDetail]
+) -> tuple[int, int] | None:
+    """``(detail_total, weekly_total)`` when a week's leave detail disagrees.
+
+    The dashboard exception chart reads ``WeeklyLeaveDetail``; Shift
+    Exception % reads the ``WeeklyStaffing`` leave columns. Imports write
+    both, so a mismatch means one was edited without the other. Weeks with
+    no detail rows (manual or legacy) aren't comparable and return None.
+    """
+    if not details:
+        return None
+    breakdown: dict[tuple[str, str], int] = defaultdict(int)
+    for d in details:
+        breakdown[(d.role, d.leave_type)] += int(d.count or 0)
+    detail_total, _ = _leave_totals_from_breakdown(breakdown)
+    weekly_total = weekly_leave_total(row)
+    if detail_total == weekly_total:
+        return None
+    return detail_total, weekly_total
 
 
 def audit_kpi_data_quality(session: Session) -> dict[str, object]:
@@ -48,14 +70,9 @@ def audit_kpi_data_quality(session: Session) -> dict[str, object]:
         cov = cov_by_week.get(week, [])
         metrics = compute_week_metrics(ws, cov, configs)
 
-        details = leave_by_week.get(week, [])
-        if details:
-            bd = {(d.role, d.leave_type): d.count for d in details}
-            grid_total, _ = _leave_totals_from_breakdown(bd)
-            if grid_total != metrics.leave_total:
-                leave_mismatches.append(
-                    f"{week}: grid={grid_total} stored={metrics.leave_total}"
-                )
+        mismatch = leave_detail_mismatch(ws, leave_by_week.get(week, []))
+        if mismatch:
+            leave_mismatches.append(f"{week}: grid={mismatch[0]} stored={mismatch[1]}")
 
         ot_dn = _ot_day_night_total(ws)
         ot_legacy = int(ws.ot_rn or 0) + int(ws.ot_medic or 0) + int(ws.ot_emt or 0)

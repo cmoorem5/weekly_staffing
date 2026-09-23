@@ -37,6 +37,7 @@ from staffing_tool.metrics import ROLE_FILL_LABELS
 from staffing_tool.models import (
     KpiThreshold,
     WeeklyBaseCoverage,
+    WeeklyLeaveDetail,
     WeeklyPersonShift,
     WeeklyStaffing,
 )
@@ -340,6 +341,36 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertEqual(targets["staffing_rate"], 95.0)
         self.assertEqual(targets["ot_dependency"], 10.0)
         self.assertEqual(json.loads(ctx["weeks_per_bucket_json"]), [1, 1])
+
+    def test_leave_detail_mismatch_flagged_in_data_quality(self):
+        # WEEK_1: detail says 5 LT, leave columns say 2 -> flagged.
+        # WEEK_2: detail and columns agree (3 SICK) -> not flagged.
+        with session_scope(self.db_path) as session:
+            w1 = session.query(WeeklyStaffing).filter_by(week_start=WEEK_1).one()
+            w1.leave_lt = 2
+            w2 = session.query(WeeklyStaffing).filter_by(week_start=WEEK_2).one()
+            w2.leave_sick = 3
+            session.add(
+                WeeklyLeaveDetail(
+                    week_start=WEEK_1, role="RN", leave_type="LT", count=5
+                )
+            )
+            session.add(
+                WeeklyLeaveDetail(
+                    week_start=WEEK_2, role="Medic", leave_type="SICK", count=3
+                )
+            )
+            session.commit()
+        request = RequestFactory().get("/", self._qs())
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        flagged = [
+            r
+            for r in ctx["data_quality_rows"]
+            if r["issue"].startswith("Exception detail totals")
+        ]
+        self.assertEqual([r["week_start"] for r in flagged], [WEEK_1])
+        self.assertIn("totals 5", flagged[0]["issue"])
+        self.assertIn("total 2", flagged[0]["issue"])
 
 
 if __name__ == "__main__":
