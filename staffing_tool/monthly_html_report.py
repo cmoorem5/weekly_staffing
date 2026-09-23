@@ -27,8 +27,10 @@ from staffing_tool.metrics import (
     compute_period_rollups,
     compute_role_fill,
     compute_week_metrics,
+    coverages_by_week,
+    role_ot_totals,
 )
-from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
+from staffing_tool.models import BaseConfig, WeeklyStaffing
 
 EM = rh.EM
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -71,14 +73,11 @@ def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
     if not weeks:
         return None
     base_configs = session.query(BaseConfig).all()
-    metrics = []
-    for row in weeks:
-        coverages = (
-            session.query(WeeklyBaseCoverage)
-            .filter(WeeklyBaseCoverage.week_start == row.week_start)
-            .all()
-        )
-        metrics.append(compute_week_metrics(row, coverages, base_configs))
+    cov = coverages_by_week(session, [str(w.week_start) for w in weeks])
+    metrics = [
+        compute_week_metrics(row, cov[str(row.week_start)], base_configs)
+        for row in weeks
+    ]
     return compute_period_rollups(metrics)
 
 
@@ -113,14 +112,10 @@ def load_monthly_board_data(
         base_rw: dict[str, int] = {b: 0 for b in BASE_ORDER}
         base_gr: dict[str, int] = {b: 0 for b in BASE_ORDER}
         metrics_list = []
+        cov = coverages_by_week(session, [str(r.week_start) for r in week_rows])
 
         for row in week_rows:
-            coverages = (
-                session.query(WeeklyBaseCoverage)
-                .filter(WeeklyBaseCoverage.week_start == row.week_start)
-                .all()
-            )
-            wm = compute_week_metrics(row, coverages, base_configs)
+            wm = compute_week_metrics(row, cov[str(row.week_start)], base_configs)
             metrics_list.append(wm)
             label = _short_label(str(row.week_start))
             weekly_trend.append(
@@ -149,9 +144,10 @@ def load_monthly_board_data(
             )
             leave_totals["JURY"] += int(ws_row.leave_jury or 0)
             leave_totals["BREV"] += int(ws_row.leave_brev or 0)
-            ot_rn += int(ws_row.ot_rn or 0)
-            ot_medic += int(ws_row.ot_medic or 0)
-            ot_emt += int(ws_row.ot_emt or 0)
+            role_ot = role_ot_totals(row)
+            ot_rn += role_ot["RN"]
+            ot_medic += role_ot["MEDIC"]
+            ot_emt += role_ot["EMT"]
             bm = wm.base_metrics or {}
             for base in BASE_ORDER:
                 m = bm.get(base, {})

@@ -11,6 +11,7 @@ aggregation.
 import csv
 import importlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -28,12 +29,17 @@ import django
 
 django.setup()
 
-from django.test import Client
+from django.test import Client, RequestFactory
 from django.urls import reverse
 from openpyxl import load_workbook
 from staffing_tool.db import init_db, session_scope
 from staffing_tool.metrics import ROLE_FILL_LABELS
-from staffing_tool.models import WeeklyBaseCoverage, WeeklyPersonShift, WeeklyStaffing
+from staffing_tool.models import (
+    KpiThreshold,
+    WeeklyBaseCoverage,
+    WeeklyPersonShift,
+    WeeklyStaffing,
+)
 from staffing_tool.time_buckets import buckets_for_range
 from tests._temp_db import TempDbTestCase
 
@@ -284,6 +290,56 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertEqual(role_rows[WEEK_1][rn_worked_col].value, 3)
         self.assertEqual(role_rows[WEEK_1][rn_capacity_col].value, 84)
         self.assertEqual(role_rows[WEEK_2][rn_worked_col].value, 5)
+
+    def test_legacy_week_per_role_ot_uses_aggregate_columns(self):
+        # A week imported before the day/night OT split stores per-role OT only
+        # in ot_rn/ot_medic/ot_emt; the Additional KPIs table must still show it.
+        with session_scope(self.db_path) as session:
+            row = session.query(WeeklyStaffing).filter_by(week_start=WEEK_2).one()
+            for f in (
+                "ot_rn_day",
+                "ot_rn_night",
+                "ot_medic_day",
+                "ot_medic_night",
+                "ot_emt_day",
+                "ot_emt_night",
+            ):
+                setattr(row, f, 0)
+            row.ot_rn, row.ot_medic, row.ot_emt = 4, 2, 1
+            session.commit()
+        request = RequestFactory().get("/", self._qs())
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        extra = {r["bucket_start"]: r for r in ctx["extra_kpi_table"]}
+        self.assertEqual(
+            (
+                extra[WEEK_2]["ot_rn_total"],
+                extra[WEEK_2]["ot_medic_total"],
+                extra[WEEK_2]["ot_emt_total"],
+            ),
+            (4, 2, 1),
+        )
+
+    def test_chart_targets_follow_kpi_threshold_direction(self):
+        with session_scope(self.db_path) as session:
+            session.query(KpiThreshold).delete()
+            session.add(
+                KpiThreshold(
+                    metric_name="Staffing Rate", green_min=0.95, higher_is_better=1
+                )
+            )
+            session.add(
+                KpiThreshold(
+                    metric_name="OT Dependency", green_max=0.10, higher_is_better=0
+                )
+            )
+            session.commit()
+        request = RequestFactory().get("/", self._qs())
+        ctx = staffing_dashboard_view._build_staffing_dashboard_context(request)
+        targets = json.loads(ctx["chart_targets_json"])
+        # green_min for higher-is-better, green_max for lower-is-better.
+        self.assertEqual(targets["staffing_rate"], 95.0)
+        self.assertEqual(targets["ot_dependency"], 10.0)
+        self.assertEqual(json.loads(ctx["weeks_per_bucket_json"]), [1, 1])
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ from staffing_tool.metrics import (
     TOTAL_PERSON_SHIFTS,
     compute_period_rollups,
     compute_week_metrics,
+    role_ot_totals,
 )
 from staffing_tool.models import (
     BaseConfig,
@@ -203,9 +204,10 @@ def load_quarter_report_data(
             leave_totals["JURY"] += int(ws_row.leave_jury or 0)
             leave_totals["BREV"] += int(ws_row.leave_brev or 0)
 
-            ot_rn += int(ws_row.ot_rn or 0)
-            ot_medic += int(ws_row.ot_medic or 0)
-            ot_emt += int(ws_row.ot_emt or 0)
+            role_ot = role_ot_totals(row)
+            ot_rn += role_ot["RN"]
+            ot_medic += role_ot["MEDIC"]
+            ot_emt += role_ot["EMT"]
 
             leave_details = (
                 session.query(WeeklyLeaveDetail)

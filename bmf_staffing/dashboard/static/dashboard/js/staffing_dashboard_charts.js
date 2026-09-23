@@ -21,6 +21,17 @@
   const managerLineShiftsBreakdown = readJsonScript("staffing-chart-mgr-breakdown");
   const excTotal = readJsonScript("staffing-chart-exc-total");
   const excBreakdown = readJsonScript("staffing-chart-exc-breakdown");
+  const shiftException = readJsonScript("staffing-chart-shift-exception");
+  const systemRw = readJsonScript("staffing-chart-system-rw");
+  const systemGr = readJsonScript("staffing-chart-system-gr");
+  const weeksPerBucket = readJsonScript("staffing-chart-weeks-per-bucket") || [];
+  const targets = readJsonScript("staffing-chart-targets") || {};
+
+  // Categorical slots, assigned in fixed order (validated for color-vision
+  // deficiency; the old navy/purple pairs were indistinguishable under protanopia).
+  const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7", "#008300", "#e34948"];
+  const NEUTRAL = "#6c757d";
+  const TARGET = "#212529";
 
   if (!labels || typeof Chart === "undefined") {
     return;
@@ -52,36 +63,83 @@
     return out;
   }
 
-  function lineChart(el, series, label, color, ySuffix) {
+  function weeksNote(items) {
+    const n = items.length ? weeksPerBucket[items[0].dataIndex] : null;
+    return n ? n + (n === 1 ? " week" : " weeks") : "";
+  }
+
+  // Dashed, in the series' own color so two targets on one chart stay attributable.
+  function targetDataset(key, label, color) {
+    const value = targets[key];
+    if (value === undefined || value === null) return null;
+    return {
+      label: label + " target (" + value + "%)",
+      data: labels.map(() => value),
+      borderColor: color,
+      borderWidth: 1.5,
+      borderDash: [6, 4],
+      pointRadius: 0,
+      pointHitRadius: 0,
+      backgroundColor: "rgba(0,0,0,0)",
+    };
+  }
+
+  // series: [{label, data, color, targetKey}]
+  function lineChart(el, series) {
     const ctx = document.getElementById(el);
     if (!ctx) return;
+    const datasets = [];
+    series.forEach((s) => {
+      datasets.push({
+        label: s.label,
+        data: s.data || [],
+        borderColor: s.color,
+        backgroundColor: s.color,
+        borderWidth: 2,
+        tension: 0.2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      });
+    });
+    series.forEach((s) => {
+      const t = s.targetKey ? targetDataset(s.targetKey, s.label, s.color) : null;
+      if (t) datasets.push(t);
+    });
     return new Chart(ctx, {
       type: "line",
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: label,
-            data: series,
-            borderColor: color,
-            backgroundColor: "rgba(0,0,0,0)",
-            tension: 0.2,
-            pointRadius: 2,
-          },
-        ],
-      },
+      data: { labels: labels, datasets: datasets },
       options: {
         responsive: true,
-        plugins: { legend: { display: false } },
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: datasets.length > 1, position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label: (c) => c.dataset.label + ": " + c.formattedValue + "%",
+              footer: weeksNote,
+            },
+          },
+        },
         scales: {
-          y: { ticks: { callback: (v) => (ySuffix ? v + ySuffix : v) } },
+          y: { ticks: { callback: (v) => v + "%" } },
         },
       },
     });
   }
 
-  lineChart("chartStaffingRate", staffingRate, "Staffing rate", "#0b3d91", "%");
-  lineChart("chartOt", otDependency, "OT dependency", "#b31b1b", "%");
+  lineChart("chartStaffingRate", [
+    { label: "Staffing rate", data: staffingRate, color: SERIES[0], targetKey: "staffing_rate" },
+  ]);
+  lineChart("chartOt", [
+    { label: "OT dependency", data: otDependency, color: SERIES[1], targetKey: "ot_dependency" },
+  ]);
+  lineChart("chartCoverage", [
+    { label: "System RW", data: systemRw, color: SERIES[0], targetKey: "system_rw" },
+    { label: "System GR", data: systemGr, color: SERIES[1], targetKey: "system_gr" },
+  ]);
+  lineChart("chartShiftException", [
+    { label: "Shift exception", data: shiftException, color: SERIES[2], targetKey: "shift_exception" },
+  ]);
 
   const mgrChartCanvas = document.getElementById("chartManagerLineShifts");
   const mgrChart = mgrChartCanvas
@@ -92,7 +150,7 @@
           responsive: true,
           plugins: {
             legend: { position: "bottom" },
-            tooltip: { mode: "index", intersect: false },
+            tooltip: { mode: "index", intersect: false, callbacks: { footer: weeksNote } },
           },
           scales: {
             x: { stacked: true },
@@ -111,7 +169,7 @@
           responsive: true,
           plugins: {
             legend: { position: "bottom" },
-            tooltip: { mode: "index", intersect: false },
+            tooltip: { mode: "index", intersect: false, callbacks: { footer: weeksNote } },
           },
           scales: {
             x: { stacked: true },
@@ -132,15 +190,15 @@
     includeOther.checked = false;
 
     const colors = {
-      LT: "#0b3d91",
-      LOA: "#5c2d91",
-      SICK: "#b31b1b",
-      AT: "#052c47",
-      JURY: "#198754",
-      BREV: "#6f42c1",
-      Other: "#6c757d",
-      Total: "#c12126",
-      Trend: "#212529",
+      LT: SERIES[0],
+      LOA: SERIES[1],
+      SICK: SERIES[2],
+      AT: SERIES[3],
+      JURY: SERIES[4],
+      BREV: SERIES[5],
+      Other: NEUTRAL,
+      Total: SERIES[0],
+      Trend: TARGET,
     };
 
     function addTrendOverlays(totalSeries, trendModeValue) {
@@ -181,8 +239,8 @@
         label: d.label,
         data: excBreakdown && excBreakdown[d.key] ? excBreakdown[d.key] : [],
         backgroundColor: d.color,
-        borderColor: d.color,
-        borderWidth: 0,
+        borderColor: "#ffffff",
+        borderWidth: { top: 2 },
         order: 2,
       }));
     }
@@ -247,9 +305,9 @@
     if (!mgrChart || !mgrModeBreakdown || !mgrModeTotal || !modeLabel) return;
 
     const colors = {
-      Total: "#052c47",
-      Trend: "#212529",
-      Bars: ["#0b3d91", "#5c2d91", "#b31b1b", "#198754", "#6c757d", "#0dcaf0", "#fd7e14", "#6610f2"],
+      Total: SERIES[0],
+      Trend: TARGET,
+      Bars: SERIES,
     };
 
     function addTrendOverlays(totalSeries, trendModeValue) {
@@ -283,8 +341,8 @@
           label: k,
           data: managerLineShiftsBreakdown[k] || [],
           backgroundColor: color,
-          borderColor: color,
-          borderWidth: 0,
+          borderColor: "#ffffff",
+          borderWidth: { top: 2 },
           order: 2,
         };
       });

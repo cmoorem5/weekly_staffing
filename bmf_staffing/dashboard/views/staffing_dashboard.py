@@ -25,11 +25,13 @@ from staffing_tool.metrics import (
     ROLE_CAPACITY_PER_WEEK,
     ROLE_FILL_LABELS,
     compute_period_rollups,
-    compute_role_fill,
+    compute_role_fill_by_week,
     compute_week_metrics,
+    role_ot_totals,
 )
 from staffing_tool.models import (
     BaseConfig,
+    KpiThreshold,
     WeeklyBaseCoverage,
     WeeklyLeaveDetail,
     WeeklyManagerShift,
@@ -93,6 +95,35 @@ _EXC_GROUP_BY_LEAVE_TYPE: dict[str, str] = {
 def _exc_group_for_leave_type(leave_type: str) -> str:
     lt = (leave_type or "").strip().upper()
     return _EXC_GROUP_BY_LEAVE_TYPE.get(lt, "Other")
+
+
+# Trend charts that get a dashed target line: chart key -> KpiThreshold metric_name.
+_CHART_TARGET_METRICS = {
+    "staffing_rate": "Staffing Rate",
+    "ot_dependency": "OT Dependency",
+    "shift_exception": "Shift Exception %",
+    "system_rw": "System RW Coverage %",
+    "system_gr": "System GR Coverage %",
+}
+
+
+def _chart_targets(session) -> dict[str, float]:
+    """Green-threshold boundary per trend chart, in percent.
+
+    Same boundary the board summary's Target column shows: ``green_min`` for
+    higher-is-better metrics, ``green_max`` for lower-is-better ones. Charts
+    with no configured threshold get no line.
+    """
+    thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
+    out: dict[str, float] = {}
+    for key, metric in _CHART_TARGET_METRICS.items():
+        t = thresholds.get(metric)
+        if t is None:
+            continue
+        bound = t.green_min if (t.higher_is_better or 0) != 0 else t.green_max
+        if bound is not None:
+            out[key] = round(100.0 * float(bound), 2)
+    return out
 
 
 def _build_staffing_dashboard_context(request) -> dict[str, object]:
@@ -326,6 +357,8 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "shift_exception_series_json": "[]",
                 "system_rw_series_json": "[]",
                 "system_gr_series_json": "[]",
+                "weeks_per_bucket_json": "[]",
+                "chart_targets_json": "{}",
                 "table_rows": [],
                 "filters_qs": serialize_filters_query(
                     fy_label, granularity, date_start, date_end
@@ -353,12 +386,10 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
 
         # Role fill (RN/Medic/EMT worked vs. seat capacity), per individual week so
         # buckets can pool (sum worked / sum capacity) across whichever weeks they cover.
-        role_fill_by_week: dict[str, dict[str, tuple[int, int]]] = {}
-        for ws in week_starts:
-            role_fill_by_week[ws] = {
-                rf.role: (rf.worked, rf.capacity)
-                for rf in compute_role_fill(session, [ws])
-            }
+        role_fill_by_week: dict[str, dict[str, tuple[int, int]]] = {
+            ws: {rf.role: (rf.worked, rf.capacity) for rf in fills}
+            for ws, fills in compute_role_fill_by_week(session, week_starts).items()
+        }
 
         cov_rows = (
             session.query(WeeklyBaseCoverage)
@@ -370,6 +401,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             coverages_by_week[c.week_start].append(c)
 
         bases = list(session.query(BaseConfig).all())
+        chart_targets = _chart_targets(session)
 
         # Precompute weekly metrics objects.
         weekly_metrics: list[tuple[date, object]] = []
@@ -379,14 +411,16 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
 
         # Per-role OT (raw shift counts, day+night) and unpartnered counts: these
         # live only on the raw WeeklyStaffing row, not on WeekMetrics, so pull them
-        # here while the row is still session-attached (same day+night-sum
-        # convention as the monthly report -- no legacy-total fallback).
+        # here while the row is still session-attached. role_ot_totals falls back
+        # to the legacy per-role columns for weeks imported before the day/night
+        # split, the same chain compute_week_metrics uses for total OT.
         raw_extra_by_week: dict[str, dict[str, int]] = {}
         for w in weeks:
+            role_ot = role_ot_totals(w)
             raw_extra_by_week[w.week_start] = {
-                "ot_rn": int(w.ot_rn_day or 0) + int(w.ot_rn_night or 0),
-                "ot_medic": int(w.ot_medic_day or 0) + int(w.ot_medic_night or 0),
-                "ot_emt": int(w.ot_emt_day or 0) + int(w.ot_emt_night or 0),
+                "ot_rn": role_ot["RN"],
+                "ot_medic": role_ot["MEDIC"],
+                "ot_emt": role_ot["EMT"],
                 "medic_unpartnered": int(w.medic_unpartnered or 0),
                 "rn_unpartnered": int(w.rn_unpartnered_staff or 0),
             }
@@ -716,6 +750,8 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "shift_exception_series_json": json.dumps(shift_exception_series),
         "system_rw_series_json": json.dumps(system_rw_series),
         "system_gr_series_json": json.dumps(system_gr_series),
+        "weeks_per_bucket_json": json.dumps([r["weeks_included"] for r in table_rows]),
+        "chart_targets_json": json.dumps(chart_targets),
         "table_rows": table_rows,
         "manager_line_shifts_total_series_json": json.dumps(
             manager_line_shifts_total_series

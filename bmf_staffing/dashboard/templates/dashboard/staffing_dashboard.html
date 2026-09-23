@@ -189,6 +189,34 @@
   <div class="row g-3 mt-3">
     <div class="col-12 col-lg-6">
       <div class="card bmf-card shadow-sm">
+        <div class="card-header bmf-card-header">
+          System vehicle coverage (%)
+          <span class="small text-muted fw-normal">RW and GR</span>
+        </div>
+        <div class="card-body">
+          <canvas id="chartCoverage" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card bmf-card shadow-sm">
+        <div class="card-header bmf-card-header">
+          Shift exception (%)
+        </div>
+        <div class="card-body">
+          <canvas id="chartShiftException" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="small text-muted mt-2 mb-0">
+    Dashed lines mark the KPI target from Settings &rarr; KPI thresholds. Rate charts average each week in the period;
+    count charts below are totals, so a period with fewer weeks (the first or last one in the window) reads lower &mdash; hover a bar for its week count.
+  </p>
+
+  <div class="row g-3 mt-3">
+    <div class="col-12 col-lg-6">
+      <div class="card bmf-card shadow-sm">
         <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
           <div class="d-flex flex-wrap align-items-baseline gap-2">
             <span>Manager line shifts (count)</span>
@@ -541,6 +569,11 @@
   <script type="application/json" id="staffing-chart-labels">{{ labels_json|safe }}</script>
   <script type="application/json" id="staffing-chart-staffing-rate">{{ staffing_rate_series_json|safe }}</script>
   <script type="application/json" id="staffing-chart-ot-dependency">{{ ot_dependency_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-shift-exception">{{ shift_exception_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-system-rw">{{ system_rw_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-system-gr">{{ system_gr_series_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-weeks-per-bucket">{{ weeks_per_bucket_json|safe }}</script>
+  <script type="application/json" id="staffing-chart-targets">{{ chart_targets_json|safe }}</script>
   <script type="application/json" id="staffing-chart-mgr-total">{{ manager_line_shifts_total_series_json|safe }}</script>
   <script type="application/json" id="staffing-chart-mgr-breakdown">{{ manager_line_shifts_breakdown_series_json|safe }}</script>
   <script type="application/json" id="staffing-chart-exc-total">{{ exc_total_series_json|safe }}</script>

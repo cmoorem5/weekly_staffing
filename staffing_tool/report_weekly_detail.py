@@ -172,7 +172,7 @@ def _write_weekly_detail(
             row_data.leave_at or 0,
             row_data.leave_lt or 0,
             row_data.leave_sick or 0,
-            row_data.leave_loa or 0,
+            (row_data.leave_loa or 0) + (getattr(row_data, "leave_pfml", 0) or 0),
             getattr(row_data, "leave_jury", 0) or 0,
             getattr(row_data, "leave_brev", 0) or 0,
         ]

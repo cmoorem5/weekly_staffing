@@ -524,6 +524,14 @@ def base_coverage_table(
     return t
 
 
+def _axis_top(values: list[float], *, floor: float, step: float = 10.0) -> float:
+    """Upper y-limit: ``floor`` unless a value exceeds it, then round up past it."""
+    peak = max(values, default=0.0)
+    if peak < floor:
+        return floor
+    return (int(peak // step) + 1) * step
+
+
 def trend_fig(
     trend: list[tuple[str, float, float, float]],
     *,
@@ -565,7 +573,7 @@ def trend_fig(
         zorder=3,
     )
     ax1.set_ylabel("Staffing / Exception %", fontsize=7, color="#333333")
-    ax1.set_ylim(0, 110)
+    ax1.set_ylim(0, _axis_top(staffing + exc_pct, floor=110))
     ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
 
     ax2 = ax1.twinx()
@@ -581,7 +589,9 @@ def trend_fig(
         zorder=3,
     )
     ax2.set_ylabel("OT Dependency %", fontsize=7, color=C_RED)
-    ax2.set_ylim(0, 30)
+    # 30% keeps normal weeks readable; a spike above it widens the axis
+    # instead of drawing the line off the top of the chart.
+    ax2.set_ylim(0, _axis_top(ot_dep, floor=30))
     ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
     ax2.spines["right"].set_color(C_RED)
     ax2.tick_params(axis="y", colors=C_RED, labelsize=7)
