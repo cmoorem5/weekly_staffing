@@ -226,6 +226,36 @@ class CellTextAliasTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].skip_reason, "training")
 
+    def test_clinical_neo_sim_is_training(self):
+        records, issues = _parse_cell("CLINICAL/NEO SIM")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "training")
+
+    def test_aoc_micro_sim_is_admin_skip(self):
+        records, issues = _parse_cell("AOC/ MICRO SIM")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "admin")
+
+    def test_sm_live_aoc_is_admin_skip(self):
+        records, issues = _parse_cell("SM LIVE/AOC")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "admin")
+
+    def test_audio_test_family_is_training(self):
+        for value in (
+            "AUDIO TEST/NEO SIM",
+            "AUDIO TEST/SIM",
+            "AUDIO TEST/SM (VIRTUAL)",
+        ):
+            with self.subTest(value=value):
+                records, issues = _parse_cell(value)
+                self.assertEqual(issues, [])
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0].skip_reason, "training")
+
     def test_cinical_typo_matches_clinical(self):
         records, issues = _parse_cell("CINICAL")
         self.assertEqual(issues, [])

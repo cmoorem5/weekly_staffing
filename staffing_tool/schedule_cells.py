@@ -223,6 +223,15 @@ CELL_TEXT_ALIASES: dict[str, str] = {
     "CLINICAL/ADMIN": "AT",
     "CLINICAL ADMIN": "AT",  # space instead of slash
     "SIM/CLINICAL": "SIM",  # reversed order
+    "CLINICAL/NEO SIM": "NEO SIM",
+    "AOC/ MICRO SIM": "AOC",
+    "SM LIVE/AOC": "AOC",
+    # "AUDIO TEST" is a variant of the training marker "AUDIO"; every
+    # qualifier seen after it is already its own training code, same as the
+    # CLINICAL/<code> entries above.
+    "AUDIO TEST/NEO SIM": "NEO SIM",
+    "AUDIO TEST/SIM": "SIM",
+    "AUDIO TEST/SM (VIRTUAL)": "SM (VIRTUAL)",
     "SM/N9LC": "N9LC",  # SM/N9LP typo (UNIT_CODE_TYPO_ALIASES), OT variant
 }
 
