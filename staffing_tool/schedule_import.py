@@ -41,6 +41,7 @@ from .schedule_aggregate import (  # noqa: F401
 )
 from .schedule_cells import (  # noqa: F401
     _OT_C_VARIANTS,
+    CLINICAL_PREFIX_ALIASES,
     IGNORE_UNIT_CODES,
     LEAVE_CODES,
     LEAVE_SPELLING_ALIASES,

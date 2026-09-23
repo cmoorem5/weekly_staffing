@@ -46,6 +46,7 @@ ENUMERATED_LEAVE_SPELLINGS: dict[str, str] = {
     "LT8": "LT",
     "M-LT": "LT",
     "MIL (LT)": "LT",
+    "LOA (MIL)": "LOA",
     "PER": "LT",
     "SICK SIM": "SICK",
     "SL": "SICK",
@@ -97,13 +98,17 @@ IGNORED_VALUES: tuple[str, ...] = (
 )
 
 
-def _parse_cell(cell_value: str, *, role: str = "MEDIC"):
+def _parse_cell(cell_value: str, *, role: str = "MEDIC", manager: bool = False):
+    # "Holst" is a real name in the built-in manager roster, so every caller
+    # here must pass an explicit roster rather than the (Holst-inclusive)
+    # default, or a "non-manager" cell silently parses as a manager row.
     wb = Workbook()
     ws = wb.active
     ws.title = "RN & Medic"
     ws["C1"] = date(2024, 1, 7)
-    ws["A4"] = "Holst"
+    ws["A4"] = "MGRLAST" if manager else "Holst"
     ws["C4"] = cell_value
+    mgr_upper = frozenset({"MGRLAST"}) if manager else frozenset()
     return _parse_grid(
         ws=ws,
         header_row_idx=1,
@@ -113,6 +118,7 @@ def _parse_cell(cell_value: str, *, role: str = "MEDIC"):
         sheet_label=f"RN & Medic ({role.title()})",
         week_start_date=date(2024, 1, 7),
         week_end_date=date(2024, 1, 13),
+        manager_last_names_upper=mgr_upper,
     )
 
 
@@ -167,6 +173,47 @@ class IgnoredValueTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].skip_reason, "admin")
         self.assertFalse(records[0].included_in_aggregates)
+
+
+class ClinicalPrefixAliasTests(unittest.TestCase):
+    """ "CLINICAL/<code>" is schedulers prefixing a real code out of habit --
+    unlike the leave-family qualifiers above, the qualifier IS the code
+    (SIM = training, AOC = admin, ADMIN = AT leave), so each one substitutes
+    to a specific target rather than resolving on the family alone."""
+
+    def test_clinical_sim_is_training(self):
+        records, issues = _parse_cell("CLINICAL/SIM")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "training")
+        self.assertFalse(records[0].filled)
+
+    def test_clinical_admin_is_at_leave(self):
+        records, issues = _parse_cell("CLINICAL/ADMIN")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].leave_type, "AT")
+        self.assertFalse(records[0].filled)
+
+    def test_clinical_aoc_is_admin_skip(self):
+        records, issues = _parse_cell("CLINICAL/AOC")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "admin")
+        self.assertFalse(records[0].filled)
+
+    def test_clinical_aoc_credits_manager_aoc_same_as_bare_aoc(self):
+        records, issues = _parse_cell("CLINICAL/AOC", manager=True)
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].manager_event_type, "aoc")
+        self.assertFalse(records[0].included_in_aggregates)
+
+    def test_cinical_typo_matches_clinical(self):
+        records, issues = _parse_cell("CINICAL")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "admin")
 
 
 if __name__ == "__main__":
