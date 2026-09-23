@@ -26,6 +26,7 @@
   const systemGr = readJsonScript("staffing-chart-system-gr");
   const weeksPerBucket = readJsonScript("staffing-chart-weeks-per-bucket") || [];
   const targets = readJsonScript("staffing-chart-targets") || {};
+  const baseOrder = readJsonScript("staffing-chart-base-order") || [];
 
   // Categorical slots, assigned in fixed order (validated for color-vision
   // deficiency; the old navy/purple pairs were indistinguishable under protanopia).
@@ -331,8 +332,14 @@
     const colors = {
       Total: SERIES[0],
       Trend: TARGET,
-      Bars: SERIES,
     };
+
+    // Color follows the base, not its position in this window's legend: a base
+    // with no shifts in the selected range must not repaint the others.
+    function baseColor(name) {
+      const i = baseOrder.indexOf(name);
+      return i >= 0 && i < SERIES.length ? SERIES[i] : NEUTRAL;
+    }
 
     function addTrendOverlays(totalSeries, trendModeValue) {
       const mode = trendModeValue || "both";
@@ -358,8 +365,8 @@
 
     function buildBreakdownDatasets() {
       const keys = managerLineShiftsBreakdown ? Object.keys(managerLineShiftsBreakdown) : [];
-      return keys.map((k, idx) => {
-        const color = colors.Bars[idx % colors.Bars.length];
+      return keys.map((k) => {
+        const color = baseColor(k);
         return {
           type: "bar",
           label: k,

@@ -152,6 +152,50 @@ def _cmd_show_thresholds(args: argparse.Namespace, db_path: str) -> None:
         )
 
 
+_OT_SPLIT_FIELDS = (
+    "ot_rn_day",
+    "ot_rn_night",
+    "ot_medic_day",
+    "ot_medic_night",
+    "ot_emt_day",
+    "ot_emt_night",
+)
+
+
+def _check_cli_ot(row: WeeklyStaffing, args: argparse.Namespace) -> None:
+    """Refuse OT input the reports would ignore or can't split by role.
+
+    Metrics read the day/night split first and fall back to the per-role
+    columns only when the split is empty (legacy weeks), so per-role or total
+    OT typed here onto an imported week would be stored and never reported.
+    A bare --ot-shifts with no per-role values reports as 0 OT for every role.
+    Runs after the row's fields are set; raising rolls the session back.
+    """
+    given = {
+        f: getattr(args, f, None) for f in ("ot_shifts", "ot_rn", "ot_medic", "ot_emt")
+    }
+    if all(v is None for v in given.values()):
+        return
+    if any(int(getattr(row, f, 0) or 0) for f in _OT_SPLIT_FIELDS):
+        raise ValueError(
+            f"Week {row.week_start} has day/night OT from a schedule import; "
+            "--ot-* flags write columns the reports don't read for such weeks. "
+            "Change OT on the dashboard's week edit page or re-import the week."
+        )
+    roles = int(row.ot_rn or 0) + int(row.ot_medic or 0) + int(row.ot_emt or 0)
+    if given["ot_shifts"] is not None and roles and given["ot_shifts"] != roles:
+        raise ValueError(
+            f"--ot-shifts {given['ot_shifts']} doesn't match the per-role OT "
+            f"total {roles} (RN + Medic + EMT)."
+        )
+    if roles == 0 and int(row.ot_shifts or 0) > 0:
+        raise ValueError(
+            "OT needs a role split: pass --ot-rn / --ot-medic / --ot-emt "
+            "(--ot-shifts alone reports as 0 OT for every role)."
+        )
+    row.ot_shifts = roles
+
+
 def _cmd_upsert_week(args: argparse.Namespace, db_path: str) -> None:
     week_start = args.week_start
     _ensure_sunday(week_start)
@@ -252,6 +296,7 @@ def _cmd_upsert_week(args: argparse.Namespace, db_path: str) -> None:
                 updated_at=now,
             )
             session.add(row)
+        _check_cli_ot(row, args)
         session.flush()
 
         # Compute metrics to check audit rules

@@ -389,6 +389,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "system_gr_series_json": "[]",
                 "weeks_per_bucket_json": "[]",
                 "chart_targets_json": "{}",
+                "base_color_order_json": "[]",
                 "table_rows": [],
                 "filters_qs": serialize_filters_query(
                     fy_label, granularity, date_start, date_end
@@ -511,8 +512,12 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             mgr_total_by_week[ws_s] += nn
             mgr_by_week_by_base[ws_s][base_s] += nn
 
-        manager_line_shifts_breakdown_order = sorted(
-            base_names, key=lambda s: s.lower()
+        # Known bases in report order, then anything unexpected alphabetically.
+        manager_line_shifts_breakdown_order = [
+            b for b in BASE_DISPLAY_ORDER if b in base_names
+        ] + sorted(
+            (b for b in base_names if b not in BASE_DISPLAY_ORDER),
+            key=lambda s: s.lower(),
         )
         manager_line_shifts_breakdown_series = {
             b: [] for b in manager_line_shifts_breakdown_order
@@ -783,6 +788,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "system_gr_series_json": json.dumps(system_gr_series),
         "weeks_per_bucket_json": json.dumps([r["weeks_included"] for r in table_rows]),
         "chart_targets_json": json.dumps(chart_targets),
+        "base_color_order_json": json.dumps(BASE_DISPLAY_ORDER),
         "table_rows": table_rows,
         "manager_line_shifts_total_series_json": json.dumps(
             manager_line_shifts_total_series
