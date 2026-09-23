@@ -4,7 +4,8 @@ import csv
 import io
 import json
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from typing import cast
 
 from django.contrib import messages
@@ -48,10 +49,12 @@ from .helpers import (
 # Manager line-shift minimums (policy): full FY and biweekly pay-period equivalent.
 MANAGER_MIN_SHIFTS_PER_FY = 52
 MANAGER_MIN_PER_PAY_PERIOD = 2
-# A manager covering AOC for a week is credited this many line shifts against
-# the 2-per-pay-period minimum, so a full pay period on AOC waives that period
-# outright and a single AOC week waives half of it.
-MANAGER_AOC_CREDIT_PER_WEEK = 1
+# AOC days convert to line-shift credit at this rate: every 7 AOC days is one
+# week of AOC coverage, worth 1 shift against the 2-per-pay-period minimum.
+# The division is on the manager's total AOC days in the range, not on which
+# calendar weeks those days landed in -- scattered AOC days would otherwise
+# credit a whole week each.
+MANAGER_AOC_DAYS_PER_CREDIT = 7
 # Manager leave is entered by hand per manager (annual shifts) because schedule
 # workbooks do not carry manager LT reliably and each manager's entitlement
 # differs. Imported leave rows are shown for reference only.
@@ -195,46 +198,25 @@ def _manager_requirements(session) -> dict[str, dict[str, object]]:
     }
 
 
-def _week_sunday(d: date) -> date:
-    """Sunday on or before ``d`` — schedule weeks start Sunday."""
-    return d - timedelta(days=(d.weekday() + 1) % 7)
+def _aoc_shift_credit(aoc_days: int) -> int:
+    """Line-shift credit earned by ``aoc_days`` days of AOC coverage.
 
-
-def _aoc_weeks_by_manager(
-    session,
-    roster_upper: frozenset[str],
-    date_start: date,
-    date_end: date,
-) -> dict[str, int]:
+    Total days over MANAGER_AOC_DAYS_PER_CREDIT (7), rounded to the nearest
+    whole shift: 76 AOC days is 10.9 weeks of coverage and earns 11 shifts.
+    Rounds half up rather than using ``round``, which is half-to-even and would
+    send 10.5 down to 10 while sending 3.5 up to 4.
     """
-    Count of distinct schedule weeks per manager holding at least one AOC day
-    inside the selected range.
+    if aoc_days <= 0:
+        return 0
+    weeks = Decimal(aoc_days) / Decimal(MANAGER_AOC_DAYS_PER_CREDIT)
+    return int(weeks.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    Each such week backs MANAGER_AOC_CREDIT_PER_WEEK (1) shift out of that
-    manager's target: covering AOC for a week is the work they did instead of a
-    line shift, so a manager on AOC for both weeks of a pay period owes none of
-    that period's 2-shift minimum, and one AOC week leaves them owing one.
 
-    Weeks are keyed on the Sunday derived from ``shift_date`` rather than the
-    stored ``week_start`` so a row written against the wrong week can't
-    double-credit.
-    """
-    weeks_by_manager: dict[str, set[date]] = defaultdict(set)
-    rows = (
-        session.query(WeeklyManagerShift.person_display, WeeklyManagerShift.shift_date)
-        .filter(
-            WeeklyManagerShift.event_type == "aoc",
-            WeeklyManagerShift.shift_date >= date_start.isoformat(),
-            WeeklyManagerShift.shift_date <= date_end.isoformat(),
-        )
-        .all()
-    )
-    for raw_name, shift_date in rows:
-        canon = canonical_manager_name(
-            (raw_name or "").strip() or "(unknown)", roster_upper
-        )
-        weeks_by_manager[canon].add(_week_sunday(date.fromisoformat(str(shift_date))))
-    return {name: len(weeks) for name, weeks in weeks_by_manager.items()}
+def _aoc_weeks_display(aoc_days: int) -> float:
+    """AOC days as weeks, to one decimal, for showing the credit's derivation."""
+    if aoc_days <= 0:
+        return 0.0
+    return round(aoc_days / MANAGER_AOC_DAYS_PER_CREDIT, 1)
 
 
 def _status_for_count(n: int, prorated_min: float) -> tuple[str, bool, float, float]:
@@ -358,9 +340,6 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
                 }
             )
         requirements = _manager_requirements(session)
-        aoc_weeks_by_manager = _aoc_weeks_by_manager(
-            session, roster_upper, date_start, date_end
-        )
 
     grand_total = len(shift_rows)
     aoc_grand_total = len(aoc_rows)
@@ -405,10 +384,10 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
             range_start_d, range_end_d, annual_min=annual_requirement
         )
         leave_credit = round(prorated_before_leave - prorated_min, 1)
-        # AOC weeks are observed inside the selected range, so their credit is
+        # AOC days are observed inside the selected range, so their credit is
         # subtracted as counted, not prorated.
-        aoc_weeks = aoc_weeks_by_manager.get(name, 0)
-        aoc_credit = aoc_weeks * MANAGER_AOC_CREDIT_PER_WEEK
+        aoc_weeks = _aoc_weeks_display(aoc_n)
+        aoc_credit = _aoc_shift_credit(aoc_n)
         adjusted_min = max(0.0, prorated_min - aoc_credit)
         status_label, met, delta, target_disp = _status_for_count(n, adjusted_min)
         cumulative_rows.append(
@@ -609,7 +588,7 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
         "db_date_max": db_max,
         "manager_min_fy": MANAGER_MIN_SHIFTS_PER_FY,
         "manager_min_per_pp": MANAGER_MIN_PER_PAY_PERIOD,
-        "manager_aoc_credit_per_week": MANAGER_AOC_CREDIT_PER_WEEK,
+        "manager_aoc_days_per_credit": MANAGER_AOC_DAYS_PER_CREDIT,
         "manager_pp_per_fy": pp_count,
         "prorated_manager_min": round(default_prorated_min, 1),
         "fy_target_start": fy_anchor_start.isoformat(),
@@ -738,7 +717,7 @@ def manager_shifts_export_csv(request):
         ["Minimum shifts per pay period (policy)", ctx.get("manager_min_per_pp")]
     )
     writer.writerow(
-        ["AOC credit (shifts per AOC week)", ctx.get("manager_aoc_credit_per_week")]
+        ["AOC credit (AOC days per shift)", ctx.get("manager_aoc_days_per_credit")]
     )
     writer.writerow(["LT credit source", MANAGER_LEAVE_CREDIT_NOTE])
     writer.writerow(["Granularity", ctx.get("granularity")])
@@ -762,7 +741,7 @@ def manager_shifts_export_csv(request):
             "LT credit note",
             "LT credit applied",
             "LT days on schedule",
-            "AOC weeks",
+            "AOC weeks (days / 7)",
             "AOC credit shifts",
             "Min (prorated)",
             "Delta",
@@ -921,7 +900,7 @@ def manager_shifts_export_xlsx(request):
         ["Minimum shifts per pay period (policy)", ctx.get("manager_min_per_pp")]
     )
     ws_meta.append(
-        ["AOC credit (shifts per AOC week)", ctx.get("manager_aoc_credit_per_week")]
+        ["AOC credit (AOC days per shift)", ctx.get("manager_aoc_days_per_credit")]
     )
     ws_meta.append(["LT credit source", MANAGER_LEAVE_CREDIT_NOTE])
     ws_meta.append(["Granularity", ctx.get("granularity")])
@@ -945,7 +924,7 @@ def manager_shifts_export_xlsx(request):
             "LT credit note",
             "LT credit applied",
             "LT days on schedule",
-            "AOC weeks",
+            "AOC weeks (days / 7)",
             "AOC credit shifts",
             "Min (prorated)",
             "Delta",

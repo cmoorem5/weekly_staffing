@@ -18,7 +18,7 @@
   <strong>LT credit</strong> is a manual annual number you enter per manager, because each manager carries a different LT entitlement and the schedule workbook does not reflect
   manager leave accurately. It is netted off the annual requirement before proration, so it scales correctly whether you are viewing a quarter or the full year.
   LT/AT/SICK/LOA/JURY/BREV cells on a manager's schedule row are shown under <strong>LT days</strong> for reference only and never move the target on their own.
-  <strong>AOC credit</strong> backs out {{ manager_aoc_credit_per_week }} shift for each week a manager covered AOC — a full pay period on AOC waives that period's {{ manager_min_per_pp }}-shift minimum, one AOC week waives half of it.
+  <strong>AOC credit</strong> is total AOC days divided by {{ manager_aoc_days_per_credit }}, rounded to the nearest whole shift — 76 AOC days is 10.9 weeks of coverage and earns 11 shifts.
 </p>
 
 <form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Manager shift filters">
@@ -186,8 +186,8 @@
             {% endif %}
           </td>
           <td class="text-end">
-            {% if row.aoc_weeks %}
-              {{ row.aoc_weeks }} wk (&minus;{{ row.aoc_credit }})
+            {% if row.aoc_credit %}
+              {{ row.aoc_weeks }} wks (&minus;{{ row.aoc_credit }})
             {% else %}
               —
             {% endif %}
