@@ -26,7 +26,7 @@ from staffing_tool.models import (
     WeeklyPersonShift,
     WeeklyStaffing,
 )
-from staffing_tool.rag import evaluate_rag
+from staffing_tool.rag import NO_TARGET, evaluate_rag
 from staffing_tool.report import export_board_pack
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 from staffing_tool.validation import notes_required, notes_required_message
@@ -133,7 +133,7 @@ def week_list(request):
                 continue
             coverages = coverages_by_week.get(ws, [])
             m = compute_week_metrics(row, coverages, bases)
-            rag = evaluate_rag(m.staffing_rate, th) if th else "—"
+            rag = evaluate_rag(m.staffing_rate, th) if th else NO_TARGET
             weeks.append(
                 {
                     "week_start": ws,

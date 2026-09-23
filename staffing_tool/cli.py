@@ -32,7 +32,7 @@ from .models import (
     WeeklyStaffing,
     WeeklyStaffingDetail,
 )
-from .rag import evaluate_rag
+from .rag import NO_TARGET, evaluate_rag
 from .report import export_board_pack, export_week_excel
 from .validation import notes_required, notes_required_message
 
@@ -418,7 +418,7 @@ def _cmd_list_weeks(args: argparse.Namespace, db_path: str) -> None:
             coverages = coverages_by_week.get(ws, [])
             m = compute_week_metrics(row, coverages, bases)
             th = thresholds.get("Staffing Rate")
-            rag = evaluate_rag(m.staffing_rate, th) if th else "—"
+            rag = evaluate_rag(m.staffing_rate, th) if th else NO_TARGET
             print(
                 f"  {ws}  rate={m.staffing_rate:.1%}  "
                 f"OT dep={m.ot_dependency:.1%}  "

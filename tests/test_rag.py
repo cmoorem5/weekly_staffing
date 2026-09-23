@@ -4,10 +4,13 @@ import unittest
 from types import SimpleNamespace
 
 from staffing_tool.rag import (
+    NO_DATA,
+    NO_TARGET,
     compare_direction,
     direction_for_metric,
     evaluate_rag,
 )
+from staffing_tool.report_data import _rag_for_metric, _status_display
 
 
 def _threshold(**kwargs):
@@ -22,6 +25,29 @@ def _threshold(**kwargs):
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
+
+
+class UnratedStatusTests(unittest.TestCase):
+    """Missing value or missing target is never reported as "On target"."""
+
+    def test_all_blank_threshold_is_no_target(self):
+        self.assertEqual(evaluate_rag(0.10, _threshold()), NO_TARGET)
+        self.assertEqual(evaluate_rag(0.99, _threshold(higher_is_better=1)), NO_TARGET)
+
+    def test_missing_threshold_row_is_no_target(self):
+        self.assertEqual(_rag_for_metric("Staffing Rate", 0.5, {}), NO_TARGET)
+
+    def test_missing_value_is_no_data(self):
+        t = {"Staffing Rate": _threshold(green_min=0.9, higher_is_better=1)}
+        self.assertEqual(_rag_for_metric("Staffing Rate", None, t), NO_DATA)
+
+    def test_zero_value_is_still_rated(self):
+        t = {"Staffing Rate": _threshold(green_min=0.9, higher_is_better=1)}
+        self.assertEqual(_rag_for_metric("Staffing Rate", 0.0, t), "Red")
+
+    def test_display_labels(self):
+        self.assertEqual(_status_display(NO_DATA), "No data")
+        self.assertEqual(_status_display(NO_TARGET), "No target set")
 
 
 class EvaluateRagTests(unittest.TestCase):
@@ -57,11 +83,12 @@ class EvaluateRagTests(unittest.TestCase):
         t = _threshold(green_max=5, higher_is_better=0)
         self.assertEqual(evaluate_rag(1, t), "Green")
 
-    def test_unbounded_yellow_range_catches_everything(self):
-        # Documents existing behavior: an undefined yellow range [None, None]
-        # matches any value, so anything not green falls to yellow.
+    def test_blank_yellow_band_is_skipped_not_a_wildcard(self):
+        # A yellow range with both bounds blank used to match every value, so
+        # anything short of green (even 10%) rated Monitor. A blank band is now
+        # unconfigured: a value below green on a higher-is-better metric is red.
         t = _threshold(green_min=90, green_max=100, higher_is_better=1)
-        self.assertEqual(evaluate_rag(10, t), "Yellow")
+        self.assertEqual(evaluate_rag(10, t), "Red")
 
     def test_below_all_defined_ranges_is_red(self):
         t = _threshold(

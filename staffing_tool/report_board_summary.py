@@ -17,7 +17,7 @@ from .metrics import (
 from .models import (
     KpiThreshold,
 )
-from .rag import RAG, direction_for_metric, evaluate_rag
+from .rag import NO_TARGET, RAG, UNRATED, direction_for_metric, evaluate_rag
 from .report_data import _rag_for_metric, _status_display
 from .report_excel_style import (
     ALIGN_LEFT,
@@ -54,8 +54,13 @@ def _generate_narrative(
     actions = []
 
     # Overall status
-    overall = rag_statuses.get("Staffing Rate", "Green")
-    if overall == "Green":
+    overall = rag_statuses.get("Staffing Rate", NO_TARGET)
+    if overall in UNRATED:
+        takeaways.append(
+            "Staffing rate has no target configured (Settings → KPI thresholds); "
+            "status is not rated."
+        )
+    elif overall == "Green":
         takeaways.append("Overall staffing rate is on target.")
     elif overall == "Yellow":
         takeaways.append("Overall staffing rate is below target; status is Monitor.")
@@ -198,11 +203,7 @@ def _write_board_summary(
         val_12_pool = (
             get_pooled_metric_value(rollups_12w, metric_key) if rollups_12w else None
         )
-        rag = (
-            _rag_for_metric(metric_key, val_this or 0, thresholds)
-            if val_this is not None
-            else "Green"
-        )
+        rag = _rag_for_metric(metric_key, val_this, thresholds)
         direction = direction_for_metric(metric_key, val_this or 0, val_prior)
         thr = thresholds.get(metric_key)
         notable = _kpi_notable(metric_key, val_this or 0, this_metrics)
@@ -269,10 +270,10 @@ def _write_board_summary(
         for base_name in sorted(this_metrics.base_metrics.keys()):
             pcts = this_metrics.base_metrics[base_name]
             rw_pct, gr_pct = pcts.get("rw_pct", 0), pcts.get("gr_pct", 0)
-            rw_rag = evaluate_rag(rw_pct, t_rw) if t_rw else "Green"
-            gr_rag = evaluate_rag(gr_pct, t_gr) if t_gr else "Green"
+            rw_rag = evaluate_rag(rw_pct, t_rw) if t_rw else NO_TARGET
+            gr_rag = evaluate_rag(gr_pct, t_gr) if t_gr else NO_TARGET
             notes = ""
-            if rw_rag != "Green" or gr_rag != "Green":
+            if rw_rag in ("Yellow", "Red") or gr_rag in ("Yellow", "Red"):
                 notes = (
                     "Below threshold"
                     if (rw_rag == "Red" or gr_rag == "Red")

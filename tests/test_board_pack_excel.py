@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openpyxl import load_workbook
 from staffing_tool.db import init_db, session_scope
-from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
+from staffing_tool.models import KpiThreshold, WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_report import export_monthly_report
 from staffing_tool.report import export_board_pack
 from tests._temp_db import TempDbTestCase
@@ -91,6 +91,35 @@ class BoardPackExcelTests(TempDbTestCase):
 
     def test_weekly_board_pack_spec_constraints(self):
         path = export_board_pack(self.db_path, "2026-05-10", output_dir=self.out_dir)
+        self.assertEqual(_spec_violations(path), [])
+
+    def test_blank_threshold_reports_no_target_not_on_target(self):
+        with session_scope(self.db_path) as session:
+            t = session.get(KpiThreshold, "Staffing Rate")
+            for f in (
+                "green_min",
+                "green_max",
+                "yellow_min",
+                "yellow_max",
+                "red_min",
+                "red_max",
+            ):
+                setattr(t, f, None)
+            session.commit()
+        path = export_board_pack(self.db_path, "2026-05-10", output_dir=self.out_dir)
+        ws = load_workbook(path)["Board_Summary"]
+        header_row = next(r for r in range(1, 40) if ws.cell(r, 1).value == "Metric")
+        status_col = next(
+            c for c in range(1, 12) if ws.cell(header_row, c).value == "Status"
+        )
+        sr_row = next(
+            r
+            for r in range(header_row + 1, header_row + 10)
+            if ws.cell(r, 1).value == "Staffing Rate"
+        )
+        status = ws.cell(sr_row, status_col)
+        self.assertEqual(status.value, "No target set")
+        self.assertEqual(status.fill.start_color.rgb[-6:], "E6E6E6")
         self.assertEqual(_spec_violations(path), [])
 
     def test_weekly_board_pack_unknown_week_raises(self):
