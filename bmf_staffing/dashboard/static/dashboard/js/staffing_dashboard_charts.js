@@ -63,6 +63,22 @@
     return out;
   }
 
+  // Count charts: per-week average (default) or raw period total. Periods hold
+  // 1-5 weeks (partial edges, 4- vs 5-week months), so raw totals read a short
+  // period as a drop.
+  function scaleSeries(series, mode) {
+    if (mode !== "per_week" || !series) return series || [];
+    return series.map((v, i) => {
+      const n = weeksPerBucket[i];
+      if (v === null || v === undefined || !n) return v;
+      return Math.round((Number(v) / n) * 10) / 10;
+    });
+  }
+
+  function scaleLabelText(mode) {
+    return mode === "per_week" ? "(per week)" : "(period total)";
+  }
+
   function weeksNote(items) {
     const n = items.length ? weeksPerBucket[items[0].dataIndex] : null;
     return n ? n + (n === 1 ? " week" : " weeks") : "";
@@ -185,6 +201,9 @@
     const modeLabel = document.getElementById("excChartModeLabel");
     const includeOther = document.getElementById("id_exc_include_other");
     const excTrendMode = document.getElementById("excTrendMode");
+    const excScale = document.getElementById("excScale");
+    const excScaleLabel = document.getElementById("excScaleLabel");
+    const scaleMode = () => (excScale ? excScale.value : "total");
     if (!excChart || !excModeBreakdown || !excModeTotal || !modeLabel || !includeOther) return;
 
     includeOther.checked = false;
@@ -237,7 +256,7 @@
       }
       return base.map((d) => ({
         label: d.label,
-        data: excBreakdown && excBreakdown[d.key] ? excBreakdown[d.key] : [],
+        data: scaleSeries(excBreakdown && excBreakdown[d.key] ? excBreakdown[d.key] : [], scaleMode()),
         backgroundColor: d.color,
         borderColor: "#ffffff",
         borderWidth: { top: 2 },
@@ -256,14 +275,14 @@
           excChart.data.datasets.push({
             type: "bar",
             label: "Total exceptions",
-            data: excTotal || [],
+            data: scaleSeries(excTotal, scaleMode()),
             backgroundColor: colors.Total,
             borderColor: colors.Total,
             order: 3,
           });
         }
         if (trendMode === "both" || trendMode === "trend") {
-          addTrendOverlays(excTotal || [], trendMode);
+          addTrendOverlays(scaleSeries(excTotal, scaleMode()), trendMode);
         }
         modeLabel.textContent = "Total";
       } else {
@@ -272,10 +291,11 @@
         const stacked = buildBreakdownDatasets();
         excChart.data.datasets = trendMode === "trend" ? [] : stacked;
         if (trendMode === "both" || trendMode === "trend") {
-          addTrendOverlays(excTotal || [], trendMode);
+          addTrendOverlays(scaleSeries(excTotal, scaleMode()), trendMode);
         }
         modeLabel.textContent = "Breakdown";
       }
+      if (excScaleLabel) excScaleLabel.textContent = scaleLabelText(scaleMode());
       excChart.update();
     }
 
@@ -288,11 +308,12 @@
     includeOther.addEventListener("change", () => {
       if (excModeBreakdown.checked) setExcMode("breakdown");
     });
-    if (excTrendMode) {
-      excTrendMode.addEventListener("change", () => {
+    [excTrendMode, excScale].forEach((el) => {
+      if (!el) return;
+      el.addEventListener("change", () => {
         setExcMode(excModeTotal.checked ? "total" : "breakdown");
       });
-    }
+    });
 
     setExcMode(excModeBreakdown.checked ? "breakdown" : "total");
   })();
@@ -302,6 +323,9 @@
     const mgrModeTotal = document.getElementById("mgrModeTotal");
     const modeLabel = document.getElementById("mgrChartModeLabel");
     const mgrTrendMode = document.getElementById("mgrTrendMode");
+    const mgrScale = document.getElementById("mgrScale");
+    const mgrScaleLabel = document.getElementById("mgrScaleLabel");
+    const scaleMode = () => (mgrScale ? mgrScale.value : "total");
     if (!mgrChart || !mgrModeBreakdown || !mgrModeTotal || !modeLabel) return;
 
     const colors = {
@@ -339,7 +363,7 @@
         return {
           type: "bar",
           label: k,
-          data: managerLineShiftsBreakdown[k] || [],
+          data: scaleSeries(managerLineShiftsBreakdown[k], scaleMode()),
           backgroundColor: color,
           borderColor: "#ffffff",
           borderWidth: { top: 2 },
@@ -359,14 +383,14 @@
           mgrChart.data.datasets.push({
             type: "bar",
             label: "Total manager line shifts",
-            data: managerLineShiftsTotal || [],
+            data: scaleSeries(managerLineShiftsTotal, scaleMode()),
             backgroundColor: colors.Total,
             borderColor: colors.Total,
             order: 3,
           });
         }
         if (trendMode === "both" || trendMode === "trend") {
-          addTrendOverlays(managerLineShiftsTotal || [], trendMode);
+          addTrendOverlays(scaleSeries(managerLineShiftsTotal, scaleMode()), trendMode);
         }
         modeLabel.textContent = "Total";
       } else {
@@ -374,10 +398,11 @@
         mgrChart.options.scales.y.stacked = true;
         mgrChart.data.datasets = trendMode === "trend" ? [] : buildBreakdownDatasets();
         if (trendMode === "both" || trendMode === "trend") {
-          addTrendOverlays(managerLineShiftsTotal || [], trendMode);
+          addTrendOverlays(scaleSeries(managerLineShiftsTotal, scaleMode()), trendMode);
         }
         modeLabel.textContent = "Breakdown";
       }
+      if (mgrScaleLabel) mgrScaleLabel.textContent = scaleLabelText(scaleMode());
       mgrChart.update();
     }
 
@@ -387,11 +412,12 @@
     mgrModeTotal.addEventListener("change", () => {
       if (mgrModeTotal.checked) setMgrMode("total");
     });
-    if (mgrTrendMode) {
-      mgrTrendMode.addEventListener("change", () => {
+    [mgrTrendMode, mgrScale].forEach((el) => {
+      if (!el) return;
+      el.addEventListener("change", () => {
         setMgrMode(mgrModeTotal.checked ? "total" : "breakdown");
       });
-    }
+    });
     setMgrMode(mgrModeBreakdown.checked ? "breakdown" : "total");
   })();
 })();

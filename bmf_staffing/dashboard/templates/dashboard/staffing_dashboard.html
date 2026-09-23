@@ -210,8 +210,9 @@
     </div>
   </div>
   <p class="small text-muted mt-2 mb-0">
-    Dashed lines mark the KPI target from Settings &rarr; KPI thresholds. Rate charts average each week in the period;
-    count charts below are totals, so a period with fewer weeks (the first or last one in the window) reads lower &mdash; hover a bar for its week count.
+    Dashed lines mark the KPI target from Settings &rarr; KPI thresholds. Rate charts average each week in the period.
+    Count charts below default to <strong>per week</strong> so periods of different length (4- vs 5-week months, a partial first or last period) compare fairly;
+    switch to <strong>Period total</strong> for raw counts. Hover a bar for its week count. The tables and exports always show period totals.
   </p>
 
   <div class="row g-3 mt-3">
@@ -219,7 +220,7 @@
       <div class="card bmf-card shadow-sm">
         <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
           <div class="d-flex flex-wrap align-items-baseline gap-2">
-            <span>Manager line shifts (count)</span>
+            <span>Manager line shifts <span id="mgrScaleLabel">(per week)</span></span>
             <span class="small text-muted fw-normal" id="mgrChartModeLabel">Breakdown</span>
           </div>
           <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -230,6 +231,10 @@
               <input type="radio" class="btn-check" name="mgrChartMode" id="mgrModeTotal" autocomplete="off">
               <label class="btn btn-outline-secondary" for="mgrModeTotal">Total</label>
             </div>
+            <select class="form-select form-select-sm" id="mgrScale" style="width: auto;" aria-label="Manager chart scale">
+              <option value="per_week" selected>Per week</option>
+              <option value="total">Period total</option>
+            </select>
             <select class="form-select form-select-sm" id="mgrTrendMode" style="width: auto;" aria-label="Manager trend overlay">
               <option value="both" selected>Actual + trend</option>
               <option value="actual">Actual only</option>
@@ -246,7 +251,7 @@
       <div class="card bmf-card shadow-sm">
         <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
           <div class="d-flex flex-wrap align-items-baseline gap-2">
-            <span>Shift exceptions (count)</span>
+            <span>Shift exceptions <span id="excScaleLabel">(per week)</span></span>
             <span class="small text-muted fw-normal" id="excChartModeLabel">Breakdown</span>
           </div>
           <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -257,6 +262,10 @@
               <input type="radio" class="btn-check" name="excChartMode" id="excModeTotal" autocomplete="off">
               <label class="btn btn-outline-secondary" for="excModeTotal">Total</label>
             </div>
+            <select class="form-select form-select-sm" id="excScale" style="width: auto;" aria-label="Exceptions chart scale">
+              <option value="per_week" selected>Per week</option>
+              <option value="total">Period total</option>
+            </select>
             <select class="form-select form-select-sm" id="excTrendMode" style="width: auto;" aria-label="Exceptions trend overlay">
               <option value="both" selected>Actual + trend</option>
               <option value="actual">Actual only</option>
