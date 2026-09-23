@@ -52,6 +52,8 @@ ENUMERATED_LEAVE_SPELLINGS: dict[str, str] = {
     "SL": "SICK",
     "BRV": "BREV",
     "BERV": "BREV",
+    "RESR": "AT",
+    "EKG": "AT",
 }
 
 # Qualifiers no workbook has used yet: these must resolve on the family alone.
@@ -175,11 +177,14 @@ class IgnoredValueTests(unittest.TestCase):
         self.assertFalse(records[0].included_in_aggregates)
 
 
-class ClinicalPrefixAliasTests(unittest.TestCase):
-    """ "CLINICAL/<code>" is schedulers prefixing a real code out of habit --
-    unlike the leave-family qualifiers above, the qualifier IS the code
-    (SIM = training, AOC = admin, ADMIN = AT leave), so each one substitutes
-    to a specific target rather than resolving on the family alone."""
+class CellTextAliasTests(unittest.TestCase):
+    """CELL_TEXT_ALIASES substitutes raw cell text before any classification
+    runs. Two shapes: "CLINICAL/<code>" is schedulers prefixing a real code
+    out of habit -- unlike the leave-family qualifiers above, the qualifier
+    IS the code (SIM = training, AOC = admin, ADMIN = AT leave), so each one
+    substitutes to a specific target rather than resolving on the family
+    alone. The other shape is a one-off typo that must still go through
+    unit/OT-suffix parsing (SM/N9LC), which UNIT_CODE_TYPO_ALIASES can't do."""
 
     def test_clinical_sim_is_training(self):
         records, issues = _parse_cell("CLINICAL/SIM")
@@ -195,6 +200,12 @@ class ClinicalPrefixAliasTests(unittest.TestCase):
         self.assertEqual(records[0].leave_type, "AT")
         self.assertFalse(records[0].filled)
 
+    def test_clinical_admin_space_variant_is_at_leave(self):
+        records, issues = _parse_cell("CLINICAL ADMIN")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].leave_type, "AT")
+
     def test_clinical_aoc_is_admin_skip(self):
         records, issues = _parse_cell("CLINICAL/AOC")
         self.assertEqual(issues, [])
@@ -209,11 +220,34 @@ class ClinicalPrefixAliasTests(unittest.TestCase):
         self.assertEqual(records[0].manager_event_type, "aoc")
         self.assertFalse(records[0].included_in_aggregates)
 
+    def test_sim_clinical_reversed_is_training(self):
+        records, issues = _parse_cell("SIM/CLINICAL")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "training")
+
     def test_cinical_typo_matches_clinical(self):
         records, issues = _parse_cell("CINICAL")
         self.assertEqual(issues, [])
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].skip_reason, "admin")
+
+    def test_clincial_transposed_typo_matches_clinical(self):
+        records, issues = _parse_cell("CLINCIAL")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].skip_reason, "admin")
+
+    def test_sm_n9lc_typo_preserves_overtime(self):
+        records, issues = _parse_cell("SM/N9LC")
+        self.assertEqual(issues, [])
+        self.assertEqual(len(records), 1)
+        rec = records[0]
+        self.assertTrue(rec.filled)
+        self.assertTrue(rec.overtime)
+        self.assertEqual(rec.base, "Lawrence")
+        self.assertEqual(rec.day_night, "N")
+        self.assertEqual(rec.unit_code, "N9L")
 
 
 if __name__ == "__main__":

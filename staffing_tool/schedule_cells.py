@@ -99,8 +99,8 @@ _LEAVE_FAMILIES: dict[str, str] = {
     "SICK": "SICK",
 }
 
-# Spellings no family rule covers: military leave, per-diem, and two
-# bereavement typos seen in real workbooks.
+# Spellings no family rule covers: military leave, per-diem, two
+# bereavement typos, and standalone AT codes with no family prefix at all.
 LEAVE_SPELLING_ALIASES: dict[str, str] = {
     "SM/AT": "AT",
     "M-LT": "LT",
@@ -110,6 +110,8 @@ LEAVE_SPELLING_ALIASES: dict[str, str] = {
     "SL": "SICK",
     "BRV": "BREV",
     "BERV": "BREV",
+    "RESR": "AT",
+    "EKG": "AT",
 }
 
 
@@ -194,21 +196,34 @@ SKIP_ADMIN_VALUES: set[str] = {
     "AOC",
     "CLINICAL",
     "CINICAL",  # CLINICAL typo seen in real workbooks
+    "CLINCIAL",  # CLINICAL typo (transposed), seen in real workbooks
     "FLOAT",
     "LTM",
     "MIL",
 }
 
-# "CLINICAL/<code>" is a real code that schedulers prefix with "CLINICAL/"
-# out of habit; unlike the leave-family qualifiers above, the part after the
-# slash IS the actual code (SIM = training, AOC = admin, ADMIN = AT leave),
-# not free text. Substitute before classification so every downstream check
-# (skip category, manager AOC credit, leave family) sees the same text as
-# the un-prefixed form, instead of re-teaching each one a second spelling.
-CLINICAL_PREFIX_ALIASES: dict[str, str] = {
+# Raw cell text -> replacement text, substituted before any classification
+# runs (skip category, manager AOC credit, leave family, unit/OT-suffix
+# parsing all see the replacement). Two shapes land here:
+# - "CLINICAL/<code>" is a real code schedulers prefix with "CLINICAL/" out
+#   of habit; unlike the leave-family qualifiers above, the part after the
+#   slash IS the actual code (SIM = training, AOC = admin, ADMIN = AT leave),
+#   not free text.
+# - One-off data-entry typos that must still go through unit/OT-suffix
+#   parsing to work (SM/N9LC needs the trailing C recognized as overtime on
+#   N9L, which UNIT_CODE_TYPO_ALIASES can't do -- it resolves the whole raw
+#   string to a canonical unit directly, before suffix parsing ever runs, so
+#   an alias there wins the "already resolvable" check and the OT flag on
+#   its C/P suffix is silently dropped; see UNIT_CODE_TYPO_ALIASES itself
+#   for the same tradeoff, accepted there because the confirmed typo carries
+#   no OT/dual-role suffix worth preserving).
+CELL_TEXT_ALIASES: dict[str, str] = {
     "CLINICAL/SIM": "SIM",
     "CLINICAL/AOC": "AOC",
     "CLINICAL/ADMIN": "AT",
+    "CLINICAL ADMIN": "AT",  # space instead of slash
+    "SIM/CLINICAL": "SIM",  # reversed order
+    "SM/N9LC": "N9LC",  # SM/N9LP typo (UNIT_CODE_TYPO_ALIASES), OT variant
 }
 
 # Every cell value the grid walker skips. Derived, never hand-listed: these two
