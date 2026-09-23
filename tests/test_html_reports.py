@@ -7,7 +7,7 @@ from pathlib import Path
 
 from staffing_tool import report_html as rh
 from staffing_tool.db import init_db, session_scope
-from staffing_tool.metrics import compute_role_fill
+from staffing_tool.metrics import ROLE_FILL_LABELS, compute_role_fill
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_html_report import (
     export_monthly_report_html,
@@ -205,7 +205,10 @@ class HtmlReportExportTests(TempDbTestCase):
         html = Path(path).read_text(encoding="utf-8")
         self.assertIn("DAY / NIGHT", html)
         self.assertIn("Day (56 required)", html)
-        self.assertIn("RN (Flight Nurse)", html)
+        for label in ROLE_FILL_LABELS.values():
+            self.assertIn(label, html)
+        # The role labels carry no descriptive parenthetical (see ROLE_FILL_LABELS).
+        self.assertNotIn("Flight Nurse", html)
 
     def test_weekly_html_header_embeds_logo(self):
         path = export_weekly_staffing_html(self.db_path, "2025-12-07", self.out_dir)

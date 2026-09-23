@@ -32,6 +32,7 @@ from django.test import Client
 from django.urls import reverse
 from openpyxl import load_workbook
 from staffing_tool.db import init_db, session_scope
+from staffing_tool.metrics import ROLE_FILL_LABELS
 from staffing_tool.models import WeeklyBaseCoverage, WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.time_buckets import buckets_for_range
 from tests._temp_db import TempDbTestCase
@@ -275,10 +276,11 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
 
         ws_role = wb["Role fill"]
         role_header = [c.value for c in ws_role[1]]
-        self.assertIn("RN (Flight Nurse) worked", role_header)
+        rn_label = ROLE_FILL_LABELS["RN"]
+        self.assertIn(f"{rn_label} worked", role_header)
         role_rows = {row[0].value: row for row in ws_role.iter_rows(min_row=2)}
-        rn_worked_col = role_header.index("RN (Flight Nurse) worked")
-        rn_capacity_col = role_header.index("RN (Flight Nurse) capacity")
+        rn_worked_col = role_header.index(f"{rn_label} worked")
+        rn_capacity_col = role_header.index(f"{rn_label} capacity")
         self.assertEqual(role_rows[WEEK_1][rn_worked_col].value, 3)
         self.assertEqual(role_rows[WEEK_1][rn_capacity_col].value, 84)
         self.assertEqual(role_rows[WEEK_2][rn_worked_col].value, 5)
