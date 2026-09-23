@@ -17,10 +17,17 @@ For each week already in schedule_imports (optionally filtered by
   3. Compares that count against the stored issue_count and flags weeks
      where the number or type of issues has changed.
 
+A week can carry issues that are unrelated to whatever you just changed and
+so never show up as "changed" (same count before and after). Pass
+--show-unresolved to also print every week's *current* issue messages,
+changed or not -- the full outstanding backlog in one run, not just what a
+code change touched.
+
 Usage:
     python scripts/audit_schedule_imports.py --dir archive --dir uploads
     python scripts/audit_schedule_imports.py --week 2026-05-24
     python scripts/audit_schedule_imports.py --from-date 2026-01-01
+    python scripts/audit_schedule_imports.py --show-unresolved
 """
 
 from __future__ import annotations
@@ -108,6 +115,7 @@ def run_audit(
     from_date: str | None,
     to_date: str | None,
     max_examples: int,
+    show_unresolved: bool,
 ) -> int:
     ensure_db_ready(db_path)
 
@@ -123,6 +131,7 @@ def run_audit(
     unresolved: list[str] = []
     parse_errors: list[tuple[str, str]] = []
     changed: list[dict] = []
+    outstanding: list[dict] = []
     unchanged = 0
 
     with session_scope(db_path) as session:
@@ -176,6 +185,18 @@ def run_audit(
 
             new_count = len(issues)
             old_count = stored.issue_count
+
+            if new_count > 0:
+                outstanding.append(
+                    {
+                        "week": w,
+                        "count": new_count,
+                        "types": _issue_type_counts(issues),
+                        "examples": issues[:max_examples],
+                        "file": path.name,
+                    }
+                )
+
             if new_count == old_count:
                 unchanged += 1
                 continue
@@ -196,6 +217,7 @@ def run_audit(
     print(f"Changed issue count:              {len(changed)}")
     print(f"Workbook not found (skipped):     {len(unresolved)}")
     print(f"Parse errors:                      {len(parse_errors)}")
+    print(f"Weeks with outstanding issues:     {len(outstanding)}")
 
     if changed:
         print()
@@ -213,6 +235,29 @@ def run_audit(
                 )
                 print(f"      by type: {type_summary}")
             for issue in c["examples"]:
+                print(
+                    f"      [{issue.issue_type}] {issue.sheet} {issue.cell}: {issue.message}"
+                )
+
+    if outstanding and not show_unresolved:
+        print()
+        print(
+            f"{len(outstanding)} week(s) currently carry issues -- rerun with "
+            "--show-unresolved to see them (only weeks whose count *changed* are "
+            "listed above)."
+        )
+
+    if show_unresolved and outstanding:
+        print()
+        print("Weeks with outstanding issues under the current parser:")
+        for o in sorted(outstanding, key=lambda o: o["week"]):
+            print(f"  - {o['week']}  ({o['file']}): {o['count']} issue(s)")
+            if o["types"]:
+                type_summary = ", ".join(
+                    f"{t}={n}" for t, n in o["types"].most_common()
+                )
+                print(f"      by type: {type_summary}")
+            for issue in o["examples"]:
                 print(
                     f"      [{issue.issue_type}] {issue.sheet} {issue.cell}: {issue.message}"
                 )
@@ -275,7 +320,16 @@ def main(argv: list[str] | None = None) -> None:
         "--max-examples",
         type=int,
         default=5,
-        help="Max example issue messages to print per changed week (default 5).",
+        help="Max example issue messages to print per flagged week (default 5).",
+    )
+    parser.add_argument(
+        "--show-unresolved",
+        action="store_true",
+        help=(
+            "Also print issue messages for every week that currently has any "
+            "issues, not just weeks whose count changed -- the full outstanding "
+            "backlog in one run."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -286,6 +340,7 @@ def main(argv: list[str] | None = None) -> None:
         from_date=args.from_date,
         to_date=args.to_date,
         max_examples=args.max_examples,
+        show_unresolved=args.show_unresolved,
     )
     sys.exit(exit_code)
 
