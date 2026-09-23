@@ -20,7 +20,14 @@ from datetime import date
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from staffing_tool import report_style as style
 from staffing_tool.monthly_html_report import MonthlyBoardData, load_monthly_board_data
@@ -226,53 +233,76 @@ def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
         else "No prior-period data available for comparison."
     )
 
+    # Each section is kept together so a table never splits across a page
+    # with an orphaned row or two left dangling on the next page.
+    section_gap = Spacer(1, 16)
+
     story = [
         style.title_banner(
             "MONTHLY STAFFING REPORT",
             f"{period}  |  {data.weeks_count}-Week Period",
             meta_line=f"Prepared {date.today():%B %d, %Y} · CONFIDENTIAL",
         ),
-        Spacer(1, 10),
-        style.section_bar("KEY PERFORMANCE INDICATORS"),
-        _kpi_table(_kpi_rows(data)),
-        Spacer(1, 3),
-        _note(kpi_note),
-        Spacer(1, 10),
+        Spacer(1, 12),
+        KeepTogether(
+            [
+                style.section_bar("KEY PERFORMANCE INDICATORS"),
+                _kpi_table(_kpi_rows(data)),
+                Spacer(1, 4),
+                _note(kpi_note),
+            ]
+        ),
+        section_gap,
     ]
 
     if data.weekly_trend:
         story += [
-            style.section_bar("WEEKLY TREND"),
-            style.chart_to_image(_build_trend_fig(data), style.USABLE_W),
-            Spacer(1, 10),
+            KeepTogether(
+                [
+                    style.section_bar("WEEKLY TREND"),
+                    style.chart_to_image(_build_trend_fig(data), style.USABLE_W),
+                ]
+            ),
+            section_gap,
         ]
 
     story += [
-        style.section_bar("EXCEPTION BREAKDOWN"),
-        style.chart_to_image(
-            _build_exception_bar_fig(data), style.USABLE_W, 1.8 * inch
+        KeepTogether(
+            [
+                style.section_bar("EXCEPTION BREAKDOWN"),
+                style.chart_to_image(
+                    _build_exception_bar_fig(data), style.USABLE_W, 1.8 * inch
+                ),
+                Spacer(1, 8),
+                style.exception_table(data.leave_breakdown),
+            ]
         ),
-        Spacer(1, 8),
-        style.exception_table(data.leave_breakdown),
-        Spacer(1, 10),
+        section_gap,
     ]
 
     if any(rf.worked for rf in data.role_fill):
         story += [
-            style.section_bar("FILL RATE BY ROLE"),
-            _role_fill_table(data),
-            Spacer(1, 10),
+            KeepTogether(
+                [style.section_bar("FILL RATE BY ROLE"), _role_fill_table(data)]
+            ),
+            section_gap,
         ]
 
     story += [
-        style.section_bar("OVERTIME BY ROLE"),
-        _ot_table(data),
-        Spacer(1, 10),
-        style.section_bar("COVERAGE BY BASE"),
-        style.base_coverage_table(data.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8]),
-        Spacer(1, 10),
-        style.section_bar("WEEK-BY-WEEK DETAIL"),
-        _weekly_detail_table(data),
+        KeepTogether([style.section_bar("OVERTIME BY ROLE"), _ot_table(data)]),
+        section_gap,
+        KeepTogether(
+            [
+                style.section_bar("COVERAGE BY BASE"),
+                style.base_coverage_table(
+                    data.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8]
+                ),
+            ]
+        ),
+        section_gap,
+        KeepTogether(
+            [style.section_bar("WEEK-BY-WEEK DETAIL"), _weekly_detail_table(data)]
+        ),
         Spacer(1, 10),
     ]
 
