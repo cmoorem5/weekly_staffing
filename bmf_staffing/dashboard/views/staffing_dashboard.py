@@ -38,6 +38,7 @@ from staffing_tool.models import (
     WeeklyManagerShift,
     WeeklyStaffing,
 )
+from staffing_tool.rag import green_boundary
 from staffing_tool.time_buckets import bucket_label, buckets_for_range
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
@@ -118,10 +119,7 @@ def _chart_targets(session) -> dict[str, float]:
     thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
     out: dict[str, float] = {}
     for key, metric in _CHART_TARGET_METRICS.items():
-        t = thresholds.get(metric)
-        if t is None:
-            continue
-        bound = t.green_min if (t.higher_is_better or 0) != 0 else t.green_max
+        bound = green_boundary(thresholds.get(metric))
         if bound is not None:
             out[key] = round(100.0 * float(bound), 2)
     return out

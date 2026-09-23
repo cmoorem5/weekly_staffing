@@ -12,7 +12,7 @@ monthly_report.py remains the working/analyst format.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
@@ -31,6 +31,7 @@ from staffing_tool.metrics import (
     role_ot_totals,
 )
 from staffing_tool.models import BaseConfig, WeeklyStaffing
+from staffing_tool.report_data import load_trend_targets
 
 EM = rh.EM
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -59,6 +60,8 @@ class MonthlyBoardData:
     ot_by_role: list[tuple[str, int]]
     base_coverage: list[tuple[str, str, str, str, str]]
     role_fill: list[RoleFill]
+    # KPI metric name -> green-boundary target (fraction), for trend target lines
+    trend_targets: dict[str, float] = field(default_factory=dict)
 
 
 def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
@@ -206,6 +209,7 @@ def load_monthly_board_data(
             role_fill=compute_role_fill(
                 session, [str(row.week_start) for row in week_rows]
             ),
+            trend_targets=load_trend_targets(session),
         )
 
 

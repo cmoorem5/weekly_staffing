@@ -203,15 +203,40 @@ class TrendFigureTests(unittest.TestCase):
     def test_series_follow_the_trend_data(self):
         fig = W._build_trend_fig(weekly_ctx())
         try:
-            ax = fig.axes[0]
-            staffing = ax.get_lines()[0]
+            top, bottom = fig.axes
+            staffing = top.get_lines()[0]
             self.assertEqual(
                 [round(float(v), 4) for v in staffing.get_ydata()], [0.91, 0.87]
             )
+            # OT dependency sits on its own panel, not a second y-axis.
+            ot = bottom.get_lines()[0]
+            self.assertEqual([round(float(v), 4) for v in ot.get_ydata()], [0.12, 0.15])
             self.assertEqual(
-                [t.get_text() for t in ax.get_xticklabels()],
+                [t.get_text() for t in bottom.get_xticklabels()],
                 ["2025-12-07", "2025-12-14"],
             )
+        finally:
+            _close(fig)
+
+    def test_single_y_axis_per_panel(self):
+        fig = W._build_trend_fig(weekly_ctx())
+        try:
+            # Two stacked panels; a twinx axis would make it three.
+            self.assertEqual(len(fig.axes), 2)
+        finally:
+            _close(fig)
+
+    def test_target_lines_drawn_on_their_panel(self):
+        ctx = weekly_ctx()
+        ctx.trend_targets = {"Staffing Rate": 0.95, "OT Dependency": 0.08}
+        fig = W._build_trend_fig(ctx)
+        try:
+            top, bottom = fig.axes
+            top_labels = [ln.get_label() for ln in top.get_lines()]
+            bottom_labels = [ln.get_label() for ln in bottom.get_lines()]
+            self.assertIn("Staffing target (95%)", top_labels)
+            self.assertIn("OT target (8%)", bottom_labels)
+            self.assertNotIn("Exception target", " ".join(top_labels))
         finally:
             _close(fig)
 
@@ -222,10 +247,10 @@ class TrendFigureTests(unittest.TestCase):
         )
         try:
             self.assertEqual(
-                [round(v, 3) for v in weekly.get_size_inches()], [7.5, 2.4]
+                [round(v, 3) for v in weekly.get_size_inches()], [7.5, 3.4]
             )
             self.assertEqual(
-                [round(v, 3) for v in quarterly.get_size_inches()], [7.5, 2.6]
+                [round(v, 3) for v in quarterly.get_size_inches()], [7.5, 3.6]
             )
         finally:
             _close(weekly, quarterly)
@@ -237,11 +262,24 @@ class TrendFigureTests(unittest.TestCase):
         )
         try:
             self.assertEqual(
-                [list(ln.get_ydata()) for ln in weekly.axes[0].get_lines()],
-                [list(ln.get_ydata()) for ln in quarterly.axes[0].get_lines()],
+                [[list(ln.get_ydata()) for ln in ax.get_lines()] for ax in weekly.axes],
+                [
+                    [list(ln.get_ydata()) for ln in ax.get_lines()]
+                    for ax in quarterly.axes
+                ],
             )
         finally:
             _close(weekly, quarterly)
+
+    def test_chart_to_image_keeps_aspect_ratio(self):
+        from staffing_tool import report_style as style
+
+        fig = W._build_trend_fig(weekly_ctx())
+        img = style.chart_to_image(fig, style.USABLE_W)
+        # 7.5 x 3.4 in figure (+/- tight-bbox cropping): drawn height must
+        # follow the aspect, not the PNG's pixel height (~2x taller).
+        ratio = img.drawHeight / img.drawWidth
+        self.assertAlmostEqual(ratio, 3.4 / 7.5, delta=0.08)
 
     def test_exception_bars_follow_the_leave_breakdown(self):
         weekly, quarterly = (

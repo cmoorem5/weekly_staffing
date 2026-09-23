@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -296,18 +297,26 @@ def full_width_col_widths(relative: list[float]) -> list[float]:
 
 
 def chart_to_image(fig, width_in_doc, height_in_doc=None):
+    """Embed a matplotlib figure at ``width_in_doc``, keeping its aspect ratio.
+
+    reportlab's ``Image(width=...)`` alone takes the PNG's pixel height as the
+    height in points, which drew a 7.5 x 2.6 in trend chart about 5.4 in tall
+    (vertically stretched ~2x). Height now follows the rendered aspect unless
+    ``height_in_doc`` is given explicitly.
+    """
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     buf.seek(0)
-    img = Image(buf, width=width_in_doc)
-    if height_in_doc is not None:
-        img.drawHeight = height_in_doc
-    return img
+    px_w, px_h = ImageReader(buf).getSize()
+    buf.seek(0)
+    if height_in_doc is None:
+        height_in_doc = width_in_doc * px_h / px_w
+    return Image(buf, width=width_in_doc, height=height_in_doc)
 
 
 def apply_below_chart_legend(fig, *axes, ncol: int = 3) -> None:
-    """Combined legend under the plot (dual-axis trend charts)."""
+    """Combined legend under the plot (multi-panel trend charts)."""
     handles: list = []
     labels: list[str] = []
     for ax in axes:
@@ -532,6 +541,34 @@ def _axis_top(values: list[float], *, floor: float, step: float = 10.0) -> float
     return (int(peak // step) + 1) * step
 
 
+def _style_panel(ax) -> None:
+    import matplotlib.ticker as mticker
+
+    ax.set_facecolor("white")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color(C_MGRAY)
+    ax.spines["bottom"].set_color(C_MGRAY)
+    ax.tick_params(colors="#333333", labelsize=7)
+    ax.yaxis.grid(True, color=C_MGRAY, linewidth=0.5, linestyle="--")
+    ax.set_axisbelow(True)
+    ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
+
+
+def _target_line(ax, fraction: float | None, color: str, label: str) -> None:
+    """Dashed KPI target (green boundary) in the series' own color."""
+    if fraction is None:
+        return
+    ax.axhline(
+        100.0 * fraction,
+        color=color,
+        linewidth=1,
+        linestyle=(0, (4, 3)),
+        label=f"{label} target ({100.0 * fraction:.0f}%)",
+        zorder=2,
+    )
+
+
 def trend_fig(
     trend: list[tuple[str, float, float, float]],
     *,
@@ -540,19 +577,43 @@ def trend_fig(
     xtick_fontsize: int = 7,
     xtick_rotation: int = 0,
     xtick_ha: str = "center",
+    targets: dict[str, float] | None = None,
 ):
-    """Staffing / exception bars plus an OT-dependency line on a twin axis."""
-    import matplotlib.ticker as mticker
+    """Weekly trend as two stacked panels sharing the week axis.
 
+    Top: staffing % line over shift-exception % bars (both 0-100 scale).
+    Bottom: OT dependency % on its own scale. This replaced a single chart
+    with OT on a second y-axis, where the two lines crossing looked like a
+    signal but only reflected two unrelated scales. ``targets`` maps KPI
+    metric names to their green boundary (fraction) and draws each as a
+    dashed line; omitted metrics get none.
+    """
     labels = [r[0] for r in trend]
     staffing = [r[1] for r in trend]
     ot_dep = [r[2] for r in trend]
     exc_pct = [r[3] for r in trend]
-    x = range(len(labels))
+    targets = targets or {}
+    x = list(range(len(labels)))
 
-    fig, ax1 = plt.subplots(figsize=(7.5, height_in))
+    fig, (ax1, ax2) = plt.subplots(
+        2,
+        1,
+        sharex=True,
+        figsize=(7.5, height_in),
+        gridspec_kw={"height_ratios": [3, 2]},
+    )
     fig.patch.set_facecolor("white")
-    ax1.set_facecolor("white")
+
+    ax1.plot(
+        x,
+        staffing,
+        color=C_BLUE,
+        linewidth=2,
+        marker="o",
+        markersize=4,
+        label="Staffing Rate %",
+        zorder=3,
+    )
     ax1.bar(
         x,
         exc_pct,
@@ -562,21 +623,16 @@ def trend_fig(
         label=exception_label,
         zorder=1,
     )
-    ax1.plot(
-        x,
-        staffing,
-        color=C_BLUE,
-        linewidth=2,
-        marker="o",
-        markersize=4,
-        label="Staffing Rate % (left)",
-        zorder=3,
+    _target_line(ax1, targets.get("Staffing Rate"), C_BLUE, "Staffing")
+    _target_line(ax1, targets.get("Shift Exception %"), "#6B6670", "Exception")
+    ax1.set_ylim(
+        0,
+        _axis_top(
+            staffing + exc_pct + [100.0 * v for v in targets.values()], floor=110
+        ),
     )
-    ax1.set_ylabel("Staffing / Exception %", fontsize=7, color="#333333")
-    ax1.set_ylim(0, _axis_top(staffing + exc_pct, floor=110))
-    ax1.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
+    ax1.set_ylabel("Staffing / Exception", fontsize=7, color="#333333")
 
-    ax2 = ax1.twinx()
     ax2.plot(
         x,
         ot_dep,
@@ -584,31 +640,28 @@ def trend_fig(
         linewidth=1.5,
         marker="s",
         markersize=3,
-        linestyle="--",
-        label="OT Dependency % (right)",
+        label="OT Dependency %",
         zorder=3,
     )
-    ax2.set_ylabel("OT Dependency %", fontsize=7, color=C_RED)
+    _target_line(ax2, targets.get("OT Dependency"), C_RED, "OT")
+    ot_target = targets.get("OT Dependency")
     # 30% keeps normal weeks readable; a spike above it widens the axis
     # instead of drawing the line off the top of the chart.
-    ax2.set_ylim(0, _axis_top(ot_dep, floor=30))
-    ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f%%"))
-    ax2.spines["right"].set_color(C_RED)
-    ax2.tick_params(axis="y", colors=C_RED, labelsize=7)
+    ax2.set_ylim(
+        0,
+        _axis_top(ot_dep + ([100.0 * ot_target] if ot_target else []), floor=30),
+    )
+    ax2.set_ylabel("OT Dependency", fontsize=7, color="#333333")
 
-    ax1.set_xticks(list(x))
-    ax1.set_xticklabels(
+    for ax in (ax1, ax2):
+        _style_panel(ax)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(
         labels, fontsize=xtick_fontsize, rotation=xtick_rotation, ha=xtick_ha
     )
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["left"].set_color(C_MGRAY)
-    ax1.spines["bottom"].set_color(C_MGRAY)
-    ax1.tick_params(colors="#333333", labelsize=7)
-    ax1.yaxis.grid(True, color=C_MGRAY, linewidth=0.5, linestyle="--")
-    ax1.set_axisbelow(True)
 
-    apply_below_chart_legend(fig, ax1, ax2)
-    fig.tight_layout(pad=0.3, rect=(0, 0.10, 1, 1))
+    apply_below_chart_legend(fig, ax1, ax2, ncol=4)
+    fig.tight_layout(pad=0.3, h_pad=1.2, rect=(0, 0.10, 1, 1))
     return fig
 
 

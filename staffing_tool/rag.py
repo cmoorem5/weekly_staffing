@@ -27,6 +27,19 @@ def _in_range(value: float, lo: float | None, hi: float | None) -> bool:
     return True
 
 
+def green_boundary(threshold: KpiThreshold | None) -> float | None:
+    """The target a chart line or "Target" column shows for a KPI.
+
+    ``green_min`` for higher-is-better metrics, ``green_max`` for
+    lower-is-better ones; None when no threshold or bound is set.
+    """
+    if threshold is None:
+        return None
+    if (threshold.higher_is_better or 0) != 0:
+        return threshold.green_min
+    return threshold.green_max
+
+
 def _band_set(lo: float | None, hi: float | None) -> bool:
     return lo is not None or hi is not None
 
