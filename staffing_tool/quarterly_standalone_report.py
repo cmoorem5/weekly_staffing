@@ -1,5 +1,5 @@
 """
-CLI wrapper for database-backed quarterly staffing PDF reports.
+CLI wrapper for database-backed quarterly and annual staffing PDF reports.
 
 For Django UI use Reports → Quarterly staffing report.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from staffing_tool.annual_report import export_annual_staffing_pdf
 from staffing_tool.paths import OUTPUT_DIR
 from staffing_tool.quarterly_pdf_report import (
     export_quarterly_staffing_pdf,
@@ -33,6 +34,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Fiscal quarter 1–4. Required with --fy unless using default.",
     )
     parser.add_argument(
+        "--annual",
+        action="store_true",
+        help="Build the full fiscal-year (month-by-month) report for --fy instead of a quarter.",
+    )
+    parser.add_argument(
         "--db",
         default="staffing.db",
         help="Path to staffing.db (default: staffing.db in cwd).",
@@ -43,6 +49,14 @@ def main(argv: list[str] | None = None) -> None:
         help=f"Output directory (default: {OUTPUT_DIR}).",
     )
     args = parser.parse_args(argv)
+
+    out = args.output_dir or str(OUTPUT_DIR)
+    if args.annual:
+        if args.fy is None:
+            print("--annual requires --fy.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Written: {export_annual_staffing_pdf(args.db, args.fy, out)}")
+        return
 
     fy = args.fy
     quarter = args.quarter
@@ -62,7 +76,6 @@ def main(argv: list[str] | None = None) -> None:
             )
             sys.exit(1)
 
-    out = args.output_dir or str(OUTPUT_DIR)
     path = export_quarterly_staffing_pdf(args.db, fy, quarter, out)
     print(f"Written: {path}")
 

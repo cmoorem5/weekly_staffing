@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build quarterly staffing PDF from staffing.db."""
+"""Build quarterly (or, with --annual, full fiscal-year) staffing PDF from staffing.db."""
 
 from __future__ import annotations
 
