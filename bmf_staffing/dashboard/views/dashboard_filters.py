@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 from urllib.parse import urlencode
 
 from staffing_tool.fiscal_year import (
+    fy_end_date,
+    fy_label_year,
     fy_week1_for_label_year,
     fy_week1_sunday_containing,
     normalize_fy_anchor,
@@ -78,3 +81,61 @@ def serialize_filters_query(
 def serialize_filters_query_from_parts(parts: dict[str, str]) -> str:
     clean = {k: v for k, v in parts.items() if v is not None and str(v).strip() != ""}
     return urlencode(clean)
+
+
+@dataclass(frozen=True)
+class FyDateWindow:
+    """FY selection plus the date window inside it, as resolved from a request."""
+
+    fy_start: date
+    fy_end: date
+    fy_label: int
+    is_current_fy: bool
+    default_start: date
+    default_end: date
+    date_start: date
+    date_end: date
+
+
+def resolve_fy_date_window(request, today: date) -> FyDateWindow:
+    """
+    FY from ``fy``; dates from ``date_start``/``date_end``, clamped to that FY.
+
+    The FY drives the window: forms post a hidden ``dates_fy`` naming the FY the
+    date inputs were filled for, and when the user picks a different FY those
+    stale dates are dropped in favour of the new FY's defaults (FY-to-date at
+    the last closed pay period for the current FY, the full FY otherwise).
+    Without that, switching FY clamped the old dates into a sliver of the new
+    FY or silently fell back to defaults depending on how they overlapped.
+    Links without ``dates_fy`` (presets, report-hub cards) are unaffected.
+    """
+    fy_start = parse_fy_week1_from_request(request, today)
+    fy_end = fy_end_date(fy_start)
+    fy_label = fy_label_year(fy_start)
+    is_current_fy = fy_start == fy_week1_sunday_containing(today)
+    default_end = (
+        last_closed_pay_period_end_for_fy(today, fy_start) if is_current_fy else fy_end
+    )
+    default_start = fy_start
+
+    dates_fy = (request.GET.get("dates_fy") or "").strip()
+    if dates_fy and dates_fy != str(fy_label):
+        date_start, date_end = default_start, default_end
+    else:
+        date_start = parse_date_param(request.GET.get("date_start", ""), default_start)
+        date_end = parse_date_param(request.GET.get("date_end", ""), default_end)
+        date_start = max(date_start, fy_start)
+        date_end = min(date_end, fy_end)
+        if date_start > date_end:
+            date_start, date_end = default_start, default_end
+
+    return FyDateWindow(
+        fy_start=fy_start,
+        fy_end=fy_end,
+        fy_label=fy_label,
+        is_current_fy=is_current_fy,
+        default_start=default_start,
+        default_end=default_end,
+        date_start=date_start,
+        date_end=date_end,
+    )

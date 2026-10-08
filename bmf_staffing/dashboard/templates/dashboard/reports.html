@@ -38,8 +38,11 @@
   &middot; {{ pp_count }} pay periods in this FY
 </p>
 
+{% for section in report_sections %}
+<h2 class="h5 {% if not forloop.first %}mt-5 {% endif %}mb-1">{{ section.title }}</h2>
+<p class="small text-muted mb-3">{{ section.subtitle }}</p>
 <div class="row g-4">
-  {% for card in report_cards %}
+  {% for card in section.cards %}
   <div class="col-md-6 col-lg-4">
     <div class="card bmf-card shadow-sm h-100">
       <div class="card-header bmf-card-header">{{ card.title }}</div>
@@ -56,6 +59,7 @@
   </div>
   {% endfor %}
 </div>
+{% endfor %}
 
 <p class="small text-muted mt-4 mb-0">{{ fy_policy_note }}</p>
 {% endblock %}
