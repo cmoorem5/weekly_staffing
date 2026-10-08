@@ -146,7 +146,7 @@ def _chart_payload(report: ShiftMixReport) -> dict[str, object]:
         ],
         "blocks": [
             {
-                "label": f"{b.start:%b %-d}",
+                "label": f"{b.start:%b} {b.start.day}",
                 "nights": b.nights,
                 "requiredNights": b.required_nights,
                 "weekend": b.weekend,

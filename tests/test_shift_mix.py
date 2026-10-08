@@ -363,6 +363,20 @@ class LoadShiftMixTests(TempDbTestCase):
         self.assertEqual(r.data_weeks, 2)  # only weeks with person rows count
         self.assertEqual(len(r.missing_weeks), 4)
 
+    def test_chart_labels_avoid_platform_specific_strftime(self):
+        # "%-d" raises ValueError on Windows, where this app is deployed.
+        r = load_shift_mix(
+            self.db_path,
+            "Smith, Jane",
+            ANCHOR,
+            BLOCK_END,
+            role="RN",
+            anchor=ANCHOR,
+            today=TODAY,
+        )
+        payload = shift_mix._chart_payload(r)
+        self.assertEqual(payload["blocks"][0]["label"], "Jan 4")
+
     def test_page_and_exports_render(self):
         with contextlib.ExitStack() as stack:
             for mod in (helpers, shift_mix):
