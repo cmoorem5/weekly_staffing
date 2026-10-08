@@ -286,11 +286,15 @@ class ShiftMixReport:
         return sum(1 for b in self.scored_blocks if b.status == "Met")
 
 
-def default_block_anchor(range_start: date) -> date:
-    """Week 1 Sunday of the fiscal year containing ``range_start``."""
-    from .fiscal_year import fy_week1_sunday_containing
+# Sunday the 6-week blocks are counted from. Blocks run continuously from here,
+# so they do not reset at fiscal year boundaries (a 52-week year is not a
+# multiple of 6 weeks).
+SHIFT_BLOCK_ANCHOR = date(2025, 9, 28)
 
-    return fy_week1_sunday_containing(range_start)
+
+def default_block_anchor(range_start: date | None = None) -> date:
+    """The fixed block anchor; ``range_start`` is accepted for call stability."""
+    return SHIFT_BLOCK_ANCHOR
 
 
 def block_windows(

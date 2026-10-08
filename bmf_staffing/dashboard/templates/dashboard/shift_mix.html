@@ -69,7 +69,7 @@
 </form>
 
 <p class="small text-muted mt-2 mb-0">
-  Blocks start {{ block_start }}{% if block_start != default_block_start %} (default would be {{ default_block_start }}, fiscal year week 1){% else %} (fiscal year week 1){% endif %}.
+  Blocks start {{ block_start }}{% if block_start != default_block_start %} (standard anchor is {{ default_block_start }}){% else %} (standard anchor){% endif %}.
   {% if db_date_min and db_date_max %}Database spans <strong>{{ db_date_min }}</strong> to <strong>{{ db_date_max }}</strong>.{% endif %}
 </p>
 
