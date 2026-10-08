@@ -104,6 +104,10 @@ Both living schedulers share one shape, so a change to one almost always belongs
 - **Applying rotations dedupes on `(date, person)`, not `(date, slot)`.** A person already on a day is skipped whatever slot they are in, so manual edits survive and re-applying stays a no-op — but two people whose rotations land on the same seat now *both* get scheduled instead of one silently losing the day. That is why there is no same-seat rotation conflict warning any more.
 - **Calendar drag-and-drop moves; it does not swap.** Since slots are shared, `views/rotations._move` and `_reslot` just reassign the row (the old sentinel-value swap dance is gone). Both refuse only one thing: putting the same person on a day twice.
 
+### Dashboard FY/date filters
+
+The staffing dashboard, manager line shifts, and training summary pages resolve their FY and date range through one helper, `dashboard_filters.resolve_fy_date_window`; don't re-inline the FY/default/clamp logic in a view. The FY drives the window: each filter form posts a hidden `dates_fy` naming the FY its date inputs were filled for, and when the submitted `fy` differs the stale dates are dropped for the new FY's defaults (FY-to-date at the last closed pay period for the current FY, the full FY otherwise). Links without `dates_fy` (presets, Reports hub cards) keep the plain clamp-to-FY behavior. A new FY-filtered page should use the helper and carry the hidden input.
+
 ### Report generator constraints (non-negotiable)
 
 From `docs/report-generator-spec.md`, enforced by a Cursor rule (`.cursor/rules/report-generator.mdc`) when touching the Board_Summary/Weekly_Detail Excel generator or any `report*`/`generator*` module:

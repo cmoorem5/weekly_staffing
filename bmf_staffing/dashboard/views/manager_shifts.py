@@ -34,9 +34,7 @@ from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
 from .dashboard_filters import (
     fy_choice_rows,
-    last_closed_pay_period_end_for_fy,
-    parse_date_param,
-    parse_fy_week1_from_request,
+    resolve_fy_date_window,
     serialize_filters_query,
 )
 from .helpers import (
@@ -243,26 +241,15 @@ def _build_manager_shifts_context(request) -> dict[str, object]:
 
     today = date.today()
     roster_upper = _manager_last_names_upper_for_parse()
-    fy_start = parse_fy_week1_from_request(request, today)
-    fy_end = fy_end_date(fy_start)
-    fy_label = fy_label_year(fy_start)
+    win = resolve_fy_date_window(request, today)
+    fy_start, fy_end, fy_label = win.fy_start, win.fy_end, win.fy_label
+    is_current_fy, default_end = win.is_current_fy, win.default_end
+    date_start, date_end = win.date_start, win.date_end
     fy_choices = fy_choice_rows(fy_label_year(fy_week1_sunday_containing(today)))
 
     granularity = (request.GET.get("granularity") or "pay_period").strip().lower()
     if granularity not in {"quarter", "month", "pay_period", "fy_total"}:
         granularity = "pay_period"
-
-    is_current_fy = fy_start == fy_week1_sunday_containing(today)
-    last_closed_in_fy = last_closed_pay_period_end_for_fy(today, fy_start)
-    default_end = last_closed_in_fy if is_current_fy else fy_end
-    default_start = fy_start
-
-    date_start = parse_date_param(request.GET.get("date_start", ""), default_start)
-    date_end = parse_date_param(request.GET.get("date_end", ""), default_end)
-    date_start = max(date_start, fy_start)
-    date_end = min(date_end, fy_end)
-    if date_start > date_end:
-        date_start, date_end = default_start, default_end
 
     date_start_s = date_start.isoformat()
     date_end_s = date_end.isoformat()

@@ -56,6 +56,7 @@ def reports_index(request):
 
     report_cards = [
         {
+            "group": "analytics",
             "title": "Staffing dashboard",
             "description": (
                 "FY trends for staffing rate, OT dependency, shift exceptions, "
@@ -79,6 +80,7 @@ def reports_index(request):
             ],
         },
         {
+            "group": "analytics",
             "title": "Manager line shifts",
             "description": (
                 "Per-manager FY shift counts vs the 52-shift annual minimum, "
@@ -100,6 +102,7 @@ def reports_index(request):
             ],
         },
         {
+            "group": "executive",
             "title": "Weekly staffing report",
             "description": (
                 "Polished PDF and HTML email summary for one week — KPIs, 8-week trend, "
@@ -110,6 +113,7 @@ def reports_index(request):
             "exports": [],
         },
         {
+            "group": "executive",
             "title": "Quarterly & annual staffing report",
             "description": (
                 "Fiscal-year or fiscal-quarter PDF/HTML for executive review — KPI averages, "
@@ -121,6 +125,7 @@ def reports_index(request):
             "exports": [],
         },
         {
+            "group": "board",
             "title": "Monthly board report",
             "description": (
                 "Aggregate selected weeks into the Boston MedFlight monthly Excel layout "
@@ -129,6 +134,24 @@ def reports_index(request):
             "open_url_name": "monthly_report",
             "open_qs": "",
             "exports": [],
+        },
+    ]
+
+    report_sections = [
+        {
+            "title": "Executive reports",
+            "subtitle": "Polished PDF / HTML for the CEO and leadership: one week, one quarter, or a full fiscal year.",
+            "cards": [c for c in report_cards if c["group"] == "executive"],
+        },
+        {
+            "title": "Board pack",
+            "subtitle": "Monthly board report and the Excel workbook behind it.",
+            "cards": [c for c in report_cards if c["group"] == "board"],
+        },
+        {
+            "title": "Analytics",
+            "subtitle": "Interactive trends and exports for digging into the numbers.",
+            "cards": [c for c in report_cards if c["group"] == "analytics"],
         },
     ]
 
@@ -144,7 +167,7 @@ def reports_index(request):
             "latest_updated_at": latest_updated_at,
             "last_import_week_start": last_import_week_start,
             "last_import_updated_at": last_import_updated_at,
-            "report_cards": report_cards,
+            "report_sections": report_sections,
             "fy_policy_note": FY_AND_PAY_PERIOD_POLICY_NOTE,
             "pp_count": len(pay_periods_for_fy(fy_start)),
         },

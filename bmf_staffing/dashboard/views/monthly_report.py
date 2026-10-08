@@ -1,10 +1,13 @@
 """Monthly report download view."""
 
+import calendar
 from datetime import date, timedelta
 
 from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import redirect, render
+from staffing_tool.db import session_scope
+from staffing_tool.models import WeeklyStaffing
 from staffing_tool.monthly_report import export_monthly_report
 
 from .helpers import DB_PATH, _ensure_db, _resolve_output_dir, serve_download
@@ -17,6 +20,30 @@ def _default_previous_calendar_month():
     last_prev = first_this - timedelta(days=1)
     first_prev = last_prev.replace(day=1)
     return first_prev.isoformat(), last_prev.isoformat()
+
+
+def _months_with_data(db_path: str) -> list[dict[str, str]]:
+    """Calendar months holding at least one week_start, newest first.
+
+    Feeds the month picker; a week belongs to the month its Sunday falls in,
+    the same rule the export applies to the date range.
+    """
+    with session_scope(db_path) as session:
+        week_starts = [r[0] for r in session.query(WeeklyStaffing.week_start).all()]
+    months = sorted({ws[:7] for ws in week_starts}, reverse=True)
+    out = []
+    for ym in months:
+        year, month = int(ym[:4]), int(ym[5:7])
+        first = date(year, month, 1)
+        last = date(year, month, calendar.monthrange(year, month)[1])
+        out.append(
+            {
+                "label": first.strftime("%B %Y"),
+                "date_start": first.isoformat(),
+                "date_end": last.isoformat(),
+            }
+        )
+    return out
 
 
 def monthly_report(request):
@@ -66,6 +93,7 @@ def monthly_report(request):
             {
                 "date_start": start or default_start,
                 "date_end": end or default_end,
+                "months": _months_with_data(DB_PATH),
             },
         )
 
@@ -75,5 +103,6 @@ def monthly_report(request):
         {
             "date_start": default_start,
             "date_end": default_end,
+            "months": _months_with_data(DB_PATH),
         },
     )

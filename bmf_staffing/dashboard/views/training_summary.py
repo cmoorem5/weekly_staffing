@@ -11,7 +11,6 @@ from django.shortcuts import redirect, render
 from sqlalchemy import func
 from staffing_tool.db import session_scope
 from staffing_tool.fiscal_year import (
-    fy_end_date,
     fy_label_year,
     fy_week1_sunday_containing,
     pay_periods_for_fy,
@@ -22,9 +21,7 @@ from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
 from .dashboard_filters import (
     fy_choice_rows,
-    last_closed_pay_period_end_for_fy,
-    parse_date_param,
-    parse_fy_week1_from_request,
+    resolve_fy_date_window,
     serialize_filters_query_from_parts,
 )
 from .helpers import DB_PATH, _ensure_db
@@ -49,26 +46,15 @@ def _build_training_summary_context(request) -> dict[str, object]:
         raise Http404("Database is not configured (STAFFING_DB_PATH).")
 
     today = date.today()
-    fy_start = parse_fy_week1_from_request(request, today)
-    fy_end = fy_end_date(fy_start)
-    fy_label = fy_label_year(fy_start)
+    win = resolve_fy_date_window(request, today)
+    fy_start, fy_end, fy_label = win.fy_start, win.fy_end, win.fy_label
+    is_current_fy, default_end = win.is_current_fy, win.default_end
+    date_start, date_end = win.date_start, win.date_end
     fy_choices = fy_choice_rows(fy_label_year(fy_week1_sunday_containing(today)))
 
     granularity = (request.GET.get("granularity") or "pay_period").strip().lower()
     if granularity not in {"week", "pay_period", "month", "quarter"}:
         granularity = "pay_period"
-
-    last_closed_in_fy = last_closed_pay_period_end_for_fy(today, fy_start)
-    is_current_fy = fy_start == fy_week1_sunday_containing(today)
-    default_end = last_closed_in_fy if is_current_fy else fy_end
-    default_start = fy_start
-
-    date_start = parse_date_param(request.GET.get("date_start", ""), default_start)
-    date_end = parse_date_param(request.GET.get("date_end", ""), default_end)
-    date_start = max(date_start, fy_start)
-    date_end = min(date_end, fy_end)
-    if date_start > date_end:
-        date_start, date_end = default_start, default_end
 
     periods = pay_periods_for_fy(fy_start)
     end_anchor = default_end
