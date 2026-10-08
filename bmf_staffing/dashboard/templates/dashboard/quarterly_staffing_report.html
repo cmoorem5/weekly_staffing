@@ -1,12 +1,11 @@
 {% extends "dashboard/base.html" %}
-{% block title %}Quarterly staffing report{% endblock %}
+{% block title %}Quarterly &amp; annual staffing report{% endblock %}
 {% block content %}
-<h1 class="bmf-page-title">Quarterly staffing report</h1>
+<h1 class="bmf-page-title">Quarterly &amp; annual staffing report</h1>
 <p class="bmf-page-subtitle">
-  Choose a fiscal quarter with data in the database. Download a polished
+  Choose a full fiscal year or a fiscal quarter with data in the database. Download a polished
   <strong>PDF</strong> or <strong>HTML</strong> report for board or executive
-  review — the HTML version matches the weekly staffing report's style and
-  includes change vs the prior quarter.
+  review. The HTML version includes change vs the prior year or quarter.
 </p>
 
 {% if not quarters %}
@@ -18,15 +17,25 @@
 <form method="post" class="mt-3" style="max-width: 32rem;" autocomplete="off" data-busy-label="Generating report…">
   {% csrf_token %}
   <div class="mb-3">
-    <label class="form-label" for="id_quarter_pick">Fiscal quarter</label>
+    <label class="form-label" for="id_quarter_pick">Period</label>
     <select name="quarter_pick" id="id_quarter_pick" class="form-select" required
             onchange="var p=this.value.split('|');document.getElementById('id_fy').value=p[0];document.getElementById('id_quarter').value=p[1];">
+      <optgroup label="Full fiscal year (month-by-month)">
+      {% for y in years %}
+      <option value="{{ y.fy_label_year }}|{{ annual_quarter }}"
+        {% if y.fy_label_year == selected_fy and annual_quarter == selected_quarter %} selected{% endif %}>
+        {{ y.period }} full year ({{ y.date_start }} – {{ y.date_end }})
+      </option>
+      {% endfor %}
+      </optgroup>
+      <optgroup label="Fiscal quarter (week-by-week)">
       {% for q in quarters %}
       <option value="{{ q.fy_label_year }}|{{ q.quarter }}"
         {% if q.fy_label_year == selected_fy and q.quarter == selected_quarter %} selected{% endif %}>
         {{ q.period }} ({{ q.date_start }} – {{ q.date_end }})
       </option>
       {% endfor %}
+      </optgroup>
     </select>
     <input type="hidden" name="fy_label_year" id="id_fy" value="{{ selected_fy }}">
     <input type="hidden" name="quarter" id="id_quarter" value="{{ selected_quarter }}">
@@ -49,8 +58,10 @@
 </form>
 
 <p class="small text-muted mt-4 mb-0">
-  <strong>Includes:</strong> KPI averages, weekly trend chart, exception breakdown (AT/LT/SICK/LOA/JURY/BREV),
-  period volumes by role, coverage by base, and week-by-week detail. Quarters follow BMF fiscal calendar
+  <strong>Includes:</strong> KPI averages, trend chart, exception breakdown (AT/LT/SICK/LOA/JURY/BREV),
+  period volumes by role, and coverage by base. The full-year report trends and details month to month
+  (each week counted in the month its Sunday falls in) and notes any weeks missing from the database;
+  quarters trend and detail week by week. Quarters follow BMF fiscal calendar
   (Q1 Sep–Nov, Q2 Dec–Feb, Q3 Mar–May, Q4 Jun–FY end).
 </p>
 {% endif %}

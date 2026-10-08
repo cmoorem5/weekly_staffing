@@ -28,13 +28,14 @@ from staffing_tool.metrics import (
     ROLE_CAPACITY_PER_WEEK,
     ROLE_FILL_LABELS,
     TOTAL_PERSON_SHIFTS,
+    WeekMetrics,
     compute_period_rollups,
     compute_week_metrics,
+    coverages_by_week,
     role_ot_totals,
 )
 from staffing_tool.models import (
     BaseConfig,
-    WeeklyBaseCoverage,
     WeeklyLeaveDetail,
     WeeklyStaffing,
 )
@@ -64,6 +65,9 @@ class QuarterlyReportContext:
     weekly_detail: list[tuple[str, str, str, str]]
     # KPI metric name -> green-boundary target (fraction), for trend target lines
     trend_targets: dict[str, float] = field(default_factory=dict)
+    # Per-week metrics in week order, for callers that re-bucket the window
+    # (the annual report groups these by month).
+    week_metrics: list[WeekMetrics] = field(default_factory=list)
 
 
 def _pct(v: float) -> str:
@@ -135,7 +139,29 @@ def load_quarter_report_data(
     quarter: int,
 ) -> QuarterlyReportContext:
     q_start, q_end = _quarter_window(fy_label_year, quarter)
-    period = f"FY{fy_label_year} Q{quarter}"
+    return load_window_report_data(
+        db_path,
+        q_start,
+        q_end,
+        period=f"FY{fy_label_year} Q{quarter}",
+        fy_label_year=fy_label_year,
+        quarter=quarter,
+    )
+
+
+def load_window_report_data(
+    db_path: str,
+    q_start: date,
+    q_end: date,
+    *,
+    period: str,
+    fy_label_year: int,
+    quarter: int,
+) -> QuarterlyReportContext:
+    """Report context for any date window (a fiscal quarter or a full FY).
+
+    Weeks are included when any of their seven days falls in the window.
+    """
     dates = _format_date_range(q_start, q_end)
 
     with session_scope(db_path) as session:
@@ -165,20 +191,26 @@ def load_quarter_report_data(
         base_rw: dict[str, int] = {b: 0 for b in BASE_ORDER}
         base_gr: dict[str, int] = {b: 0 for b in BASE_ORDER}
 
+        rows_by_week = {
+            str(r.week_start): r
+            for r in session.query(WeeklyStaffing)
+            .filter(WeeklyStaffing.week_start.in_(week_starts))
+            .all()
+        }
+        cov_by_week = coverages_by_week(session, week_starts)
+        leave_by_week: dict[str, list[WeeklyLeaveDetail]] = {}
+        for ld in (
+            session.query(WeeklyLeaveDetail)
+            .filter(WeeklyLeaveDetail.week_start.in_(week_starts))
+            .all()
+        ):
+            leave_by_week.setdefault(str(ld.week_start), []).append(ld)
+
         for ws in week_starts:
-            row = (
-                session.query(WeeklyStaffing)
-                .filter(WeeklyStaffing.week_start == ws)
-                .first()
-            )
+            row = rows_by_week.get(ws)
             if not row:
                 continue
-            coverages = (
-                session.query(WeeklyBaseCoverage)
-                .filter(WeeklyBaseCoverage.week_start == ws)
-                .all()
-            )
-            wm = compute_week_metrics(row, coverages, base_configs)
+            wm = compute_week_metrics(row, cov_by_week.get(ws, []), base_configs)
             metrics_list.append(wm)
             weekly_trend.append(
                 (
@@ -212,12 +244,7 @@ def load_quarter_report_data(
             ot_medic += role_ot["MEDIC"]
             ot_emt += role_ot["EMT"]
 
-            leave_details = (
-                session.query(WeeklyLeaveDetail)
-                .filter(WeeklyLeaveDetail.week_start == ws)
-                .all()
-            )
-            for ld in leave_details:
+            for ld in leave_by_week.get(ws, []):
                 if ld.role in exc_by_role:
                     exc_by_role[ld.role] += int(ld.count)
 
@@ -320,6 +347,7 @@ def load_quarter_report_data(
             base_coverage=base_coverage,
             weekly_detail=weekly_detail,
             trend_targets=load_trend_targets(session),
+            week_metrics=metrics_list,
         )
 
 

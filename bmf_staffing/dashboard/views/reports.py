@@ -110,10 +110,11 @@ def reports_index(request):
             "exports": [],
         },
         {
-            "title": "Quarterly staffing report",
+            "title": "Quarterly & annual staffing report",
             "description": (
-                "Fiscal-quarter PDF — weekly trend, exception breakdown (AT/LT/SICK/LOA/JURY/BREV), "
-                "period volumes, base coverage, and week-by-week detail from staffing.db."
+                "Fiscal-year or fiscal-quarter PDF/HTML for executive review — KPI averages, "
+                "trend, exception breakdown (AT/LT/SICK/LOA/JURY/BREV), role volumes, and "
+                "base coverage. The annual report runs month to month with change vs the prior FY."
             ),
             "open_url_name": "quarterly_staffing_report",
             "open_qs": "",
