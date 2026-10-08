@@ -17,6 +17,30 @@
   imported before auto-sync was enabled.
 </p>
 
+<div class="card bmf-card shadow-sm mb-4">
+  <div class="card-header bmf-card-header">Date of hire (for the <a href="{% url 'shift_mix_report' %}">Shift mix report</a>)</div>
+  <div class="card-body">
+    <p class="small text-muted mb-2">
+      Upload a CSV with a header row: <code>Last Name, First Name, Role (optional), Date of Hire</code>.
+      A single <code>Name</code> column ("Last, First") also works. Dates can be
+      <code>YYYY-MM-DD</code> or <code>M/D/YYYY</code>. Years of service set each person's night
+      requirement. EMTs are not tracked on the shift mix report.
+      {% if missing_hire_dates %}
+      <strong>{{ missing_hire_dates }}</strong> active RN/Medic {% if missing_hire_dates == 1 %}has{% else %}have{% endif %} no date of hire yet.
+      {% endif %}
+    </p>
+    <form method="post" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="import_hire_dates">
+      <div>
+        <label class="form-label mb-0 small" for="hire_date_file">CSV file</label>
+        <input type="file" name="hire_date_file" id="hire_date_file" accept=".csv,text/csv" class="form-control form-control-sm" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Upload hire dates</button>
+    </form>
+  </div>
+</div>
+
 {% if import_weeks %}
 <div class="card bmf-card shadow-sm mb-4">
   <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">

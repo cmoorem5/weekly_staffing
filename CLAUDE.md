@@ -81,6 +81,16 @@ Things that look like they should be simple but aren't, because real schedule wo
 - **Base coverage is capped at each base's weekly plan on both import paths.** `_cap_base_coverage_split` (`MAX_RW_UNIT_DAYS_PER_WEEK`/`MAX_GR_UNIT_DAYS_PER_WEEK`, night reduced first) applies to OPS View counts and grid-derived counts alike, so opportunistic extra vehicles (Bedford `GR2`/`NG2`) never report >100% base coverage or inflate the fixed-denominator system GR %; those unit codes are also excluded from role fill via `metrics.EXTRA_UNIT_CODES`.
 - **Role fill counts seats (grid cells), not person rows.** EMT partner rows list two people in columns A–B for one grid cell, and `weekly_person_shift_mappings` writes one `WeeklyPersonShift` row per person; `metrics.compute_role_fill` dedupes worked shifts on (role, week, date, source tab, source cell) so a pair-staffed seat-day counts once against the seat-based `ROLE_CAPACITY_PER_WEEK` (EMT 49 = 7 required lines × 7 days). Rows without cell provenance count individually.
 
+### Shift mix report (per-person CBA requirements)
+
+`staffing_tool/shift_mix.py` (pure calculation, no Django) backs `dashboard/views/shift_mix.py` and `shift_mix.html` (RN and Medic only; EMTs are a separate track). It reads `WeeklyPersonShift` through `load_person_ops_detail` and reports one person over a date range.
+
+- **Worked means `event_type == "staffed"`.** OT, training, and leave are reported beside the mix and never count toward the 3-a-week target, the night requirement, or the weekend requirement.
+- **Blocks are fixed 6-week periods from a Sunday anchor** (`block_start` param, default FY week 1 of the range start). The loader widens the window to whole blocks, so a block is never scored on a partial window while the day/night/RW/GR mix still honors the selected range. Only blocks that have ended and have per-person rows for all six weeks are scored; the rest show "In progress" or "Incomplete data".
+- **A week has data only if it has `WeeklyPersonShift` rows** (aggregate-only CEO weeks do not). Missing weeks are excluded from the expected-shift target and flagged, never counted as zero.
+- **Night requirement** comes from `NIGHT_REQUIREMENT_TIERS` (years of service on the block start date, lower bound inclusive). **Weekend shifts** are Fri N, Sat D/N, Sun D/N (`is_weekend_shift`), 5 per block.
+- **Date of hire lives on `StaffRosterEntry.hire_date`** (ISO text; `migrate_staff_roster_hire_date`, mirrored on the Django model). Settings -> Staff roster takes a CSV upload (`staffing_tool/hire_dates.py`) and per-person edits. No hire date means the night requirement is not scored; weekends still are.
+
 ### crew_hub: person-first schedulers (Comm Center + duty officers)
 
 Both living schedulers share one shape, so a change to one almost always belongs in the other. A day is **a pool of people, not a grid of slots**: `CommShiftAssignment` and `DutyAssignment` each hold one person on one date, and the slot (`seat` / `role`) is an *editable attribute* of that row rather than the key rows are created against.

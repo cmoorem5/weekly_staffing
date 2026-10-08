@@ -30,6 +30,9 @@ from .views import (
     reports_index,
     restore_db,
     settings_index,
+    shift_mix_export_csv,
+    shift_mix_export_xlsx,
+    shift_mix_report,
     staff_exceptions_export_csv,
     staff_exceptions_report,
     staff_roster_settings,
@@ -151,6 +154,17 @@ urlpatterns = [
         "ops/person/export.csv",
         person_ops_export_csv,
         name="person_ops_export_csv",
+    ),
+    path("ops/shift-mix/", shift_mix_report, name="shift_mix_report"),
+    path(
+        "ops/shift-mix/export.csv",
+        shift_mix_export_csv,
+        name="shift_mix_export_csv",
+    ),
+    path(
+        "ops/shift-mix/export.xlsx",
+        shift_mix_export_xlsx,
+        name="shift_mix_export_xlsx",
     ),
     path("ops/exceptions/", staff_exceptions_report, name="staff_exceptions_report"),
     path(
