@@ -108,6 +108,25 @@ def migrate_weekly_staffing_columns(engine: Engine) -> None:
         conn.commit()
 
 
+def migrate_staff_roster_hire_date(engine: Engine) -> None:
+    """Add hire_date (ISO date text) to staff_roster_entry."""
+    with engine.connect() as conn:
+        exists = conn.execute(
+            text(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name='staff_roster_entry'"
+            )
+        ).fetchone()
+        if not exists:
+            return
+        columns = _pragma_column_names(conn, "staff_roster_entry")
+        if "hire_date" not in columns:
+            conn.execute(
+                text("ALTER TABLE staff_roster_entry ADD COLUMN hire_date TEXT")
+            )
+            conn.commit()
+
+
 def migrate_manager_shift_event_type(engine: Engine) -> None:
     """Add event_type to weekly_manager_shifts (line_shift | aoc)."""
     with engine.connect() as conn:
@@ -453,6 +472,7 @@ def init_db(db_path: str | None = None) -> None:
     migrate_manager_shift_leave_type(engine)
     migrate_manager_shift_indexes(engine)
     migrate_manager_requirement_leave_credit(engine)
+    migrate_staff_roster_hire_date(engine)
     SessionLocal = _sessionmaker_for_path(_resolve_db_path(db_path))
     with SessionLocal() as session:
         seed_base_config(session)

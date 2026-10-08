@@ -4,6 +4,11 @@ from django.contrib import messages
 from django.db import IntegrityError
 from django.shortcuts import redirect, render
 from staffing_tool.db import session_scope
+from staffing_tool.hire_dates import (
+    apply_hire_dates,
+    parse_hire_date,
+    parse_hire_date_csv,
+)
 from staffing_tool.models import KpiThreshold
 from staffing_tool.models import StaffRosterEntry as SaStaffRosterEntry
 from staffing_tool.staff_roster import (
@@ -434,6 +439,70 @@ def staff_roster_settings(request):
             elif raw_id.isdigit():
                 messages.error(request, "Database is not configured.")
             return redirect("staff_roster_settings")
+        elif action == "import_hire_dates":
+            upload = request.FILES.get("hire_date_file")
+            if not upload:
+                messages.error(request, "Choose a CSV file to upload.")
+            elif upload.size > 1_000_000:
+                messages.error(request, "That file is too large for a roster CSV.")
+            elif not DB_PATH:
+                messages.error(request, "Database is not configured.")
+            else:
+                try:
+                    text = upload.read().decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    text = ""
+                    messages.error(
+                        request, "Could not read the file. Save it as CSV (UTF-8)."
+                    )
+                if text:
+                    parsed, errors = parse_hire_date_csv(text)
+                    for err in errors[:10]:
+                        messages.warning(request, err)
+                    if len(errors) > 10:
+                        messages.warning(request, f"...and {len(errors) - 10} more.")
+                    if parsed:
+                        with session_scope(DB_PATH) as session:
+                            result = apply_hire_dates(session, parsed)
+                        messages.success(
+                            request,
+                            f"Hire dates: {result.updated} updated, "
+                            f"{result.unchanged} already current.",
+                        )
+                        if result.unmatched:
+                            messages.warning(
+                                request,
+                                "Not on the roster ("
+                                f"{len(result.unmatched)}): "
+                                + "; ".join(result.unmatched[:15])
+                                + ("..." if len(result.unmatched) > 15 else ""),
+                            )
+                        if result.ambiguous:
+                            messages.warning(
+                                request,
+                                "Matched more than one roster entry, skipped ("
+                                f"{len(result.ambiguous)}): "
+                                + "; ".join(result.ambiguous[:15]),
+                            )
+            return redirect("staff_roster_settings")
+        elif action == "set_hire_date":
+            raw_id = (request.POST.get("roster_id") or "").strip()
+            raw_date = (request.POST.get("hire_date") or "").strip()
+            hired = parse_hire_date(raw_date) if raw_date else None
+            if not raw_id.isdigit() or not DB_PATH:
+                messages.error(request, "Invalid roster entry.")
+            elif raw_date and hired is None:
+                messages.error(request, f"Could not read the date '{raw_date}'.")
+            else:
+                with session_scope(DB_PATH) as session:
+                    row = session.get(SaStaffRosterEntry, int(raw_id))
+                    if row:
+                        row.hire_date = hired.isoformat() if hired else None
+                if row:
+                    messages.success(request, "Hire date saved.")
+                else:
+                    messages.error(request, "Entry not found.")
+            return redirect("staff_roster_settings")
         elif action == "merge":
             keep_raw = (request.POST.get("keep_id") or "").strip()
             remove_raw = (request.POST.get("remove_id") or "").strip()
@@ -479,6 +548,7 @@ def staff_roster_settings(request):
                 "display": canonical_display(row),
                 "last_name": row.last_name,
                 "first_name": row.first_name,
+                "hire_date": row.hire_date or "",
             }
         )
 
@@ -492,6 +562,9 @@ def staff_roster_settings(request):
         "roster_by_role": roster_by_role,
         "inactive_rows": inactive_rows,
         "active_count": len(active_rows),
+        "missing_hire_dates": sum(
+            1 for r in active_rows if r.role != "EMT" and not r.hire_date
+        ),
         "duplicate_candidates": duplicate_candidates,
     }
     ctx.update(_staff_roster_import_context(import_week or None))

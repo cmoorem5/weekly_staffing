@@ -50,6 +50,7 @@ class StaffRosterEntry(models.Model):
     active = models.BooleanField(default=True)
     created_at = models.CharField(max_length=32, null=True, blank=True)
     notes = models.TextField(blank=True, null=True)
+    hire_date = models.CharField(max_length=10, blank=True, null=True)
 
     class Meta:
         managed = False

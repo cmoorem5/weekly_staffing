@@ -1,0 +1,281 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+{% block title %}Shift mix{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Shift mix and CBA requirements</h1>
+<p class="bmf-page-subtitle">
+  Day / night, RW / GR, and per-base mix for one RN or Medic, plus progress against the
+  {{ weekly_target }}-shifts-a-week line requirement and the night and weekend requirements in fixed
+  {{ block_weeks }}-week blocks. Only worked line shifts count. OT, training, and leave are listed separately.
+  Hire dates are managed in <a href="{% url 'staff_roster_settings' %}">Settings &rarr; Staff roster</a>.
+</p>
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Shift mix filters">
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_role">Role</label>
+    <select name="role" id="id_role" class="form-select">
+      {% for value, label in role_choices %}
+      <option value="{{ value }}"{% if value == role_filter %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto" style="min-width: 18rem;">
+    <label class="form-label mb-0" for="id_person">Person</label>
+    <select name="person" id="id_person" class="form-select">
+      {% if not person_options %}
+      <option value="">No RN or Medic on the roster</option>
+      {% else %}
+        {% for group in person_option_groups %}
+        <optgroup label="{{ group.letter }}">
+          {% for name in group.names %}
+          <option value="{{ name }}"{% if name == selected_person %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      {% endif %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">End date</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_block_start">6-week block start (Sunday)</label>
+    <input type="date" name="block_start" id="id_block_start" class="form-control" value="{{ block_start }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Update</button>
+  </div>
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?person={{ selected_person|urlencode }}&amp;role={{ role_filter }}&amp;date_start={{ fy_start }}&amp;date_end={{ fy_end }}">FY{{ fy_label }}</a>
+      {% if db_date_min and db_date_max %}
+      <a class="btn btn-outline-secondary btn-sm" href="?person={{ selected_person|urlencode }}&amp;role={{ role_filter }}&amp;date_start={{ db_date_min }}&amp;date_end={{ db_date_max }}">All data</a>
+      {% endif %}
+    </div>
+  </div>
+  {% if report %}
+  <div class="col-12 mt-2 d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'shift_mix_export_xlsx' %}?{{ qs }}">Export Excel</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'shift_mix_export_csv' %}?{{ qs }}">Export CSV</a>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">Print</button>
+  </div>
+  {% endif %}
+</form>
+
+<p class="small text-muted mt-2 mb-0">
+  Blocks start {{ block_start }}{% if block_start != default_block_start %} (default would be {{ default_block_start }}, fiscal year week 1){% else %} (fiscal year week 1){% endif %}.
+  {% if db_date_min and db_date_max %}Database spans <strong>{{ db_date_min }}</strong> to <strong>{{ db_date_max }}</strong>.{% endif %}
+</p>
+
+{% if not person_options %}
+<div class="alert alert-secondary mt-4" role="status">
+  No active RN or Medic on the roster. <a href="{% url 'staff_roster_settings' %}">Add people to the staff roster</a>.
+</div>
+{% elif report %}
+
+<h2 class="bmf-section-title mt-4">{{ report.person }} <span class="text-muted fs-6">{{ report.role }}</span></h2>
+<p class="small text-muted">
+  {% if report.hire_date %}
+    Hired {{ report.hire_date|date:"M j, Y" }}.
+  {% else %}
+    <span class="text-danger fw-semibold">No date of hire on file.</span> The night requirement cannot be scored until one is added in Settings.
+  {% endif %}
+  {{ report.range_start|date:"M j, Y" }} to {{ report.range_end|date:"M j, Y" }}.
+</p>
+
+{% if report.missing_weeks %}
+<div class="alert alert-warning small" role="status">
+  {{ report.missing_weeks|length }} week{{ report.missing_weeks|length|pluralize }} in this range
+  ha{{ report.missing_weeks|length|pluralize:"s,ve" }} no per-person schedule data and {{ report.missing_weeks|length|pluralize:"is,are" }} left out of the
+  target and percentages (not counted as zero):
+  {% for wk in report.missing_weeks|slice:":12" %}{{ wk|date:"M j" }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if report.missing_weeks|length > 12 %}, and {{ report.missing_weeks|length|add:"-12" }} more{% endif %}.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100"><div class="card-body">
+      <div class="text-muted small">Worked shifts (excl. OT)</div>
+      <div class="fs-4 fw-semibold">{{ report.worked.total }}</div>
+      <div class="small text-muted">Expected {{ report.expected_shifts|floatformat:"-1" }} at {{ weekly_target }}/week
+        {% if report.target_pct is not None %}&middot; <strong>{{ report.target_pct|floatformat:"-1" }}%</strong>{% endif %}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100"><div class="card-body">
+      <div class="text-muted small">Day / Night</div>
+      <div class="fs-4 fw-semibold">{{ report.worked.day }} / {{ report.worked.night }}</div>
+      <div class="small text-muted">{{ report.day_pct|default_if_none:"n/a" }}{% if report.day_pct is not None %}%{% endif %} day &middot; {{ report.night_pct|default_if_none:"n/a" }}{% if report.night_pct is not None %}%{% endif %} night</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100"><div class="card-body">
+      <div class="text-muted small">RW / GR</div>
+      <div class="fs-4 fw-semibold">{{ report.worked.rw }} / {{ report.worked.gr }}</div>
+      <div class="small text-muted">{{ report.rw_pct|default_if_none:"n/a" }}{% if report.rw_pct is not None %}%{% endif %} RW &middot; {{ report.gr_pct|default_if_none:"n/a" }}{% if report.gr_pct is not None %}%{% endif %} GR</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card bmf-card h-100"><div class="card-body">
+      <div class="text-muted small">Not counted</div>
+      <div class="fs-6">OT <strong>{{ report.ot.total }}</strong> ({{ report.ot.day }}D / {{ report.ot.night }}N)</div>
+      <div class="fs-6">Training <strong>{{ report.training }}</strong></div>
+      <div class="fs-6">Leave <strong>{{ report.leave_total }}</strong></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">Requirement progress ({{ report.scored_blocks|length }} scored {{ block_weeks }}-week block{{ report.scored_blocks|length|pluralize }})</div>
+  <div class="card-body">
+    {% if report.scored_blocks %}
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="d-flex justify-content-between small"><span>Nights</span>
+          <span>{{ report.nights_worked_total }} of {{ report.nights_required_total }}{% if report.nights_pct is not None %} ({{ report.nights_pct|floatformat:"-1" }}%){% endif %}</span></div>
+        <div class="progress" role="progressbar" aria-label="Night requirement" aria-valuenow="{{ report.nights_pct|default:0 }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar" style="width: {% if report.nights_pct is not None %}{% if report.nights_pct > 100 %}100{% else %}{{ report.nights_pct|stringformat:'.0f' }}{% endif %}{% else %}0{% endif %}%; background-color: #2a4492;"></div>
+        </div>
+        {% if not report.hire_date %}<div class="small text-danger mt-1">Needs date of hire.</div>{% endif %}
+      </div>
+      <div class="col-lg-4">
+        <div class="d-flex justify-content-between small"><span>Weekend shifts</span>
+          <span>{{ report.weekend_worked_total }} of {{ report.weekend_required_total }}{% if report.weekend_pct is not None %} ({{ report.weekend_pct|floatformat:"-1" }}%){% endif %}</span></div>
+        <div class="progress" role="progressbar" aria-label="Weekend requirement" aria-valuenow="{{ report.weekend_pct|default:0 }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar" style="width: {% if report.weekend_pct is not None %}{% if report.weekend_pct > 100 %}100{% else %}{{ report.weekend_pct|stringformat:'.0f' }}{% endif %}{% else %}0{% endif %}%; background-color: #1f8a70;"></div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="d-flex justify-content-between small"><span>Blocks fully met</span>
+          <span>{{ report.blocks_met }} of {{ report.scored_blocks|length }}</span></div>
+        <div class="progress" role="progressbar" aria-label="Blocks met" aria-valuemin="0" aria-valuemax="{{ report.scored_blocks|length }}" aria-valuenow="{{ report.blocks_met }}">
+          <div class="progress-bar" style="width: {% widthratio report.blocks_met report.scored_blocks|length 100 %}%; background-color: #6c7a89;"></div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">No complete {{ block_weeks }}-week block falls in this range yet (a block needs all six weeks imported and ended). Widen the range or check the block start date.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <div class="card bmf-card h-100"><div class="card-header bmf-card-header">Day vs night</div>
+      <div class="card-body"><div style="height: 220px;"><canvas id="chartDayNight" aria-label="Day versus night worked shifts" role="img"></canvas></div></div></div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card bmf-card h-100"><div class="card-header bmf-card-header">RW vs GR</div>
+      <div class="card-body"><div style="height: 220px;"><canvas id="chartRwGr" aria-label="Rotor wing versus ground worked shifts" role="img"></canvas></div></div></div>
+  </div>
+  <div class="col-xl-6">
+    <div class="card bmf-card h-100"><div class="card-header bmf-card-header">By base (day / night)</div>
+      <div class="card-body"><div style="height: 220px;"><canvas id="chartBases" aria-label="Worked shifts by base" role="img"></canvas></div></div></div>
+  </div>
+</div>
+
+<div class="card bmf-card mb-4">
+  <div class="card-header bmf-card-header">{{ block_weeks }}-week blocks: nights and weekend shifts vs requirement</div>
+  <div class="card-body">
+    <div style="height: 260px;"><canvas id="chartBlocks" aria-label="Nights and weekend shifts per block against requirement" role="img"></canvas></div>
+    <div class="table-responsive mt-3">
+      <table class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Block</th><th class="text-end">Years</th><th class="text-end">Worked</th>
+            <th class="text-end">Nights</th><th class="text-end">Req.</th>
+            <th class="text-end">Weekend</th><th class="text-end">Req.</th>
+            <th class="text-end">OT</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in report.blocks %}
+          <tr>
+            <td>{{ b.start|date:"M j, Y" }} to {{ b.end|date:"M j, Y" }}</td>
+            <td class="text-end">{% if b.years is not None %}{{ b.years|floatformat:1 }}{% else %}n/a{% endif %}</td>
+            <td class="text-end">{{ b.worked }}<span class="text-muted"> / {{ block_target }}</span></td>
+            <td class="text-end">{{ b.nights }}</td>
+            <td class="text-end">{% if b.required_nights is not None %}{{ b.required_nights }}{% else %}n/a{% endif %}</td>
+            <td class="text-end">{{ b.weekend }}</td>
+            <td class="text-end">{{ weekend_target }}</td>
+            <td class="text-end">{{ b.ot }}</td>
+            <td>
+              {% if b.status == "Met" %}<span class="badge text-bg-success fw-normal">Met</span>
+              {% elif b.status == "Short" %}<span class="badge text-bg-danger fw-normal">Short</span>
+              {% else %}<span class="badge text-bg-secondary fw-normal">{{ b.status }}</span>{% if b.missing_weeks and not b.in_progress %} <span class="small text-muted">{{ b.missing_weeks }} wk no data</span>{% endif %}{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-muted">No blocks in this range.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small text-muted mt-2 mb-0">
+      Blocks run to their full six weeks even when they extend past your dates, so a block is never scored on a partial window.
+      Only blocks that have ended and have import data for every week are scored.
+      Weekend shifts are Friday night through Sunday night.
+    </p>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card bmf-card h-100">
+      <div class="card-header bmf-card-header">Leave and other (not counted)</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Type</th><th class="text-end">Days</th></tr></thead>
+          <tbody>
+            {% for label, n in report.leave_counts.items %}
+            <tr><td>{{ label }}</td><td class="text-end">{{ n }}</td></tr>
+            {% empty %}
+            <tr><td colspan="2" class="text-muted">No leave in this range.</td></tr>
+            {% endfor %}
+            <tr><td>OT shifts</td><td class="text-end">{{ report.ot.total }}</td></tr>
+            <tr><td class="ps-4 text-muted">OT RW / GR</td><td class="text-end text-muted">{{ report.ot.rw }} / {{ report.ot.gr }}</td></tr>
+            <tr><td>Training events</td><td class="text-end">{{ report.training }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card bmf-card h-100">
+      <div class="card-header bmf-card-header">Worked shifts by base</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Base</th><th>RW/GR</th><th class="text-end">Day</th><th class="text-end">Night</th><th class="text-end">Total</th></tr></thead>
+          <tbody>
+            {% for b in report.by_base %}
+            <tr><td>{{ b.base }}</td><td>{{ b.service_type }}</td><td class="text-end">{{ b.day }}</td><td class="text-end">{{ b.night }}</td><td class="text-end">{{ b.total }}</td></tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-muted">No worked shifts in this range.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<details class="mb-4">
+  <summary class="small text-muted">Night requirement by years of service (per {{ block_weeks }}-week block)</summary>
+  <table class="table table-sm w-auto mt-2">
+    <thead><tr><th>Years of service</th><th class="text-end">Nights</th></tr></thead>
+    <tbody>{% for label, nights in night_table %}<tr><td>{{ label }}</td><td class="text-end">{{ nights }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <p class="small text-muted">Measured on the block start date. A tier's lower bound is inclusive, so exactly 3 years falls in the 7-night tier.</p>
+</details>
+
+{{ chart|json_script:"shift-mix-chart-data" }}
+<script src="{% static 'dashboard/vendor/chartjs/chart.umd.min.js' %}"></script>
+<script src="{% static 'dashboard/js/shift_mix_charts.js' %}"></script>
+{% endif %}
+{% endblock %}

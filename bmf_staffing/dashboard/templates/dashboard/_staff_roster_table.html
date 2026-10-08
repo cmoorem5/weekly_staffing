@@ -4,6 +4,7 @@
     <tr>
       <th scope="col" style="width: 4rem;">Role</th>
       <th scope="col">Name</th>
+      <th scope="col" style="width: 13rem;">Date of hire</th>
       <th scope="col" class="text-end" style="width: 6rem;">Remove</th>
     </tr>
   </thead>
@@ -12,6 +13,15 @@
     <tr>
       <td class="text-muted small">{{ row.role }}</td>
       <td>{{ row.display }}</td>
+      <td>
+        <form method="post" class="d-flex gap-1">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_hire_date">
+          <input type="hidden" name="roster_id" value="{{ row.id }}">
+          <input type="date" name="hire_date" value="{{ row.hire_date }}" class="form-control form-control-sm" aria-label="Date of hire for {{ row.display }}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
+        </form>
+      </td>
       <td class="text-end">
         <form method="post" class="d-inline" onsubmit="return confirm('Remove {{ row.display|escapejs }} from the active roster?');">
           {% csrf_token %}

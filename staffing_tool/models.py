@@ -103,6 +103,8 @@ class StaffRosterEntry(Base):
     active = Column(Integer, nullable=False, default=1)
     created_at = Column(String(32), nullable=True)
     notes = Column(Text, nullable=True)
+    # ISO date (YYYY-MM-DD); drives years of service for the shift-mix report.
+    hire_date = Column(String(10), nullable=True)
 
     def __repr__(self) -> str:
         return (
