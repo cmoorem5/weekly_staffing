@@ -44,7 +44,10 @@ $djangoProcess = $null
 
 if (-not (Test-Port8000)) {
     $startedDjango = $true
-    $python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+    # The venv lives outside this folder (see Update_Crew_Hub.bat); the repo-local
+    # .venv is the legacy location.
+    $python = Join-Path $env:LOCALAPPDATA "BMFStaffing\venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $python)) { $python = Join-Path $RepoRoot ".venv\Scripts\python.exe" }
     if (-not (Test-Path -LiteralPath $python)) { $python = "python" }
 
     $logDir = Join-Path $RepoRoot "output"

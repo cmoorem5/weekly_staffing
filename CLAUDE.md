@@ -49,7 +49,7 @@ python scripts/audit_schedule_imports.py --dir archive --dir uploads
 cd bmf_staffing && python manage.py runserver
 ```
 
-No build step (no frontend bundler; templates are server-rendered Django/Bootstrap). The Windows deployment serves via waitress + whitenoise (`scripts/launch_crew_hub.ps1`), so `Update_Crew_Hub.bat` runs `collectstatic`; `manage.py runserver` remains the dev workflow and needs no collectstatic (`WHITENOISE_USE_FINDERS` under `DEBUG`).
+No build step (no frontend bundler; templates are server-rendered Django/Bootstrap). The Windows deployment serves via waitress + whitenoise (`scripts/launch_crew_hub.ps1`), so `Update_Crew_Hub.bat` runs `collectstatic`; `manage.py runserver` remains the dev workflow and needs no collectstatic (`WHITENOISE_USE_FINDERS` under `DEBUG`). On Windows the virtual environment lives in `%LOCALAPPDATA%\BMFStaffing\venv`, not in the repo folder: the folder can sync through OneDrive, and a synced `.venv` carries one PC's Python path onto the next and breaks. `Update_Crew_Hub.bat` creates it (rebuilding it if the Python it points at is gone) and the launcher/shortcut scripts read it, falling back to a legacy repo-local `.venv`.
 
 ## Architecture
 

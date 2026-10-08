@@ -28,14 +28,30 @@ if "%DO_PULL%"=="1" (
 echo.
 
 REM --- 2) Python virtual environment --------------------------------
-if not exist ".venv\Scripts\python.exe" (
+REM Kept in %LOCALAPPDATA% (per Windows user, per machine), NOT in this
+REM folder. This folder can sync through OneDrive, and a venv synced from
+REM another PC points at that PC's Python and stops working.
+set "VENV_DIR=%LOCALAPPDATA%\BMFStaffing\venv"
+if exist "%VENV_DIR%\Scripts\python.exe" (
+  "%VENV_DIR%\Scripts\python.exe" --version >nul 2>nul
+  if errorlevel 1 (
+    echo [2/8] Virtual environment is broken, Python was moved or removed. Rebuilding...
+    rmdir /s /q "%VENV_DIR%"
+  )
+)
+if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo [2/8] Creating the Python virtual environment...
-  py -3.12 -m venv .venv 2>nul || python -m venv .venv
+  if not exist "%LOCALAPPDATA%\BMFStaffing" mkdir "%LOCALAPPDATA%\BMFStaffing"
+  py -3 -m venv "%VENV_DIR%" 2>nul || python -m venv "%VENV_DIR%"
 ) else (
   echo [2/8] Virtual environment already exists.
 )
-set "PYEXE=.venv\Scripts\python.exe"
+set "PYEXE=%VENV_DIR%\Scripts\python.exe"
 if not exist "%PYEXE%" set "PYEXE=python"
+if exist ".venv\Scripts\python.exe" (
+  echo       Note: the old .venv folder in this directory is no longer used.
+  echo       Delete it so OneDrive stops syncing it.
+)
 echo.
 
 REM --- 3) Dependencies ----------------------------------------------
