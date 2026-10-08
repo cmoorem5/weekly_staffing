@@ -69,6 +69,8 @@ class AnnualReportViewTests(TempDbTestCase):
         err.assert_not_called()
         self.assertEqual(resp.status_code, 200)
         self.assertIn("BMF_Annual_Staffing_FY2026.pdf", resp["Content-Disposition"])
+        # FileResponse holds the PDF open; Windows can't delete the temp dir until closed.
+        resp.close()
 
     def test_annual_rejects_fy_without_data(self):
         resp, err = self._post(fy_label_year="2024", quarter="0", format="pdf")
