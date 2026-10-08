@@ -28,8 +28,10 @@ from staffing_tool.hire_dates import (
 from staffing_tool.models import StaffRosterEntry, WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.person_ops import PersonOpsRow
 from staffing_tool.shift_mix import (
+    SHIFT_BLOCK_ANCHOR,
     block_windows,
     build_shift_mix,
+    default_block_anchor,
     is_weekend_shift,
     load_shift_mix,
     required_nights,
@@ -125,6 +127,21 @@ class RequirementRuleTests(unittest.TestCase):
         self.assertTrue(is_weekend_shift(sun, "N"))
         self.assertFalse(is_weekend_shift(mon, "N"))
         self.assertFalse(is_weekend_shift(thu, "N"))
+
+    def test_default_anchor_is_fixed_and_blocks_cross_fiscal_years(self):
+        self.assertEqual(SHIFT_BLOCK_ANCHOR, date(2025, 9, 28))
+        self.assertEqual(SHIFT_BLOCK_ANCHOR.weekday(), 6)  # Sunday
+        # Same anchor whatever the range, including after FY2027 begins.
+        self.assertEqual(default_block_anchor(date(2025, 10, 1)), SHIFT_BLOCK_ANCHOR)
+        self.assertEqual(default_block_anchor(date(2026, 10, 1)), SHIFT_BLOCK_ANCHOR)
+        blocks = block_windows(
+            SHIFT_BLOCK_ANCHOR, date(2025, 9, 28), date(2026, 12, 31)
+        )
+        self.assertEqual(blocks[0][1], date(2025, 9, 28))
+        self.assertEqual(blocks[1][1], date(2025, 11, 9))
+        for _idx, start, end in blocks:
+            self.assertEqual((start - SHIFT_BLOCK_ANCHOR).days % 42, 0)
+            self.assertEqual((end - start).days, 41)
 
     def test_block_windows_are_fixed_and_cover_the_range(self):
         windows = block_windows(ANCHOR, date(2026, 2, 1), date(2026, 3, 1))
