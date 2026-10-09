@@ -5,7 +5,7 @@ Same KPIs, exception breakdown, role volumes, and base coverage as the
 quarterly report, loaded through ``load_window_report_data`` over the full FY.
 The detail and trend run month to month instead of week by week: a week
 belongs to the calendar month its Sunday ``week_start`` falls in (the same
-rule the monthly board pack uses), so FY edge months can hold only a few weeks
+rule the monthly report uses), so FY edge months can hold only a few weeks
 and say so in the Weeks column. Monthly figures are the mean of that month's
 weekly ratios, matching the KPI averages.
 
