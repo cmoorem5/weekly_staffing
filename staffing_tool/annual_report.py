@@ -19,9 +19,17 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
+from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from staffing_tool import report_style as style
 from staffing_tool.db import session_scope
@@ -36,9 +44,24 @@ from staffing_tool.metrics import WeekMetrics, compute_period_rollups
 from staffing_tool.models import WeeklyStaffing
 from staffing_tool.quarterly_pdf_report import (
     QuarterlyReportContext,
+    _build_base_coverage_fig,
     _kpis_with_deltas,
     _period_volumes_table,
     load_window_report_data,
+)
+from staffing_tool.report_data import STATUS_TINTS, kpi_grader
+
+# monthly_detail column index -> KPI label it is graded against.
+MONTHLY_GRADED_COLUMNS = {
+    2: "Staffing Rate",
+    3: "OT Dependency",
+    4: "Shift Exception %",
+    5: "System RW %",
+    6: "System GR %",
+}
+SHADING_NOTE = (
+    "Cell shading against Settings → KPI thresholds: green = On target, "
+    "amber = Monitor, red = Action needed; unshaded = no target set."
 )
 
 MONTHLY_HEADERS = [
@@ -75,6 +98,9 @@ class AnnualReportContext:
     # month), so a prior year lines up month for month even when it is
     # missing months.
     month_keys: list[int] = field(default_factory=list)
+    # Per monthly_detail row: status ("Green"/"Yellow"/"Red"/None) for each
+    # graded column, keyed by column index (MONTHLY_GRADED_COLUMNS).
+    monthly_status: list[dict[int, str]] = field(default_factory=list)
     prior: AnnualReportContext | None = None
 
     def prior_trend_aligned(self) -> list[tuple[str, float, float, float]]:
@@ -132,8 +158,13 @@ def list_fiscal_years(db_path: str) -> list[dict[str, Any]]:
 
 
 def _monthly_rows(
-    metrics: list[WeekMetrics], fy_start: date
-) -> tuple[list[tuple[str, float, float, float]], list[tuple[str, ...]], list[int]]:
+    metrics: list[WeekMetrics], fy_start: date, grade=None
+) -> tuple[
+    list[tuple[str, float, float, float]],
+    list[tuple[str, ...]],
+    list[int],
+    list[dict[int, str]],
+]:
     by_month: dict[tuple[int, int], list[WeekMetrics]] = {}
     for wm in metrics:
         d = datetime.strptime(wm.week_start, "%Y-%m-%d").date()
@@ -142,6 +173,7 @@ def _monthly_rows(
     trend: list[tuple[str, float, float, float]] = []
     detail: list[tuple[str, ...]] = []
     keys: list[int] = []
+    statuses: list[dict[int, str]] = []
     for (year, month), weeks in sorted(by_month.items()):
         r = compute_period_rollups(weeks)
         if r is None:
@@ -167,7 +199,21 @@ def _monthly_rows(
                 style.pct(r.avg_system_gr_pct),
             )
         )
-    return trend, detail, keys
+        values = {
+            2: r.avg_staffing_rate,
+            3: r.avg_ot_dependency,
+            4: r.avg_leave_exposure,
+            5: r.avg_system_rw_pct,
+            6: r.avg_system_gr_pct,
+        }
+        row_status: dict[int, str] = {}
+        if grade is not None:
+            for col, label in MONTHLY_GRADED_COLUMNS.items():
+                rag = grade(label, values[col])
+                if rag:
+                    row_status[col] = rag
+        statuses.append(row_status)
+    return trend, detail, keys, statuses
 
 
 def load_annual_report_data(
@@ -179,7 +225,9 @@ def load_annual_report_data(
     window = load_window_report_data(
         db_path, start, end, period=period, fy_label_year=fy, quarter=0
     )
-    trend, detail, keys = _monthly_rows(window.week_metrics, start)
+    with session_scope(db_path) as session:
+        grade = kpi_grader(session)
+    trend, detail, keys, statuses = _monthly_rows(window.week_metrics, start, grade)
     prior = None
     if include_prior:
         try:
@@ -195,6 +243,7 @@ def load_annual_report_data(
         monthly_trend=trend,
         monthly_detail=detail,
         month_keys=keys,
+        monthly_status=statuses,
         prior=prior,
     )
 
@@ -221,9 +270,28 @@ def _monthly_detail_table(ctx: AnnualReportContext) -> Table:
                 ("ALIGN", (1, 0), (-1, -1), "CENTER"),
             ]
             + style.num_style_cells([1, 2, 3, 4, 5, 6])
+            + [
+                (
+                    "BACKGROUND",
+                    (col, row),
+                    (col, row),
+                    colors.HexColor(STATUS_TINTS[rag]),
+                )
+                for row, statuses in enumerate(ctx.monthly_status, start=1)
+                for col, rag in statuses.items()
+            ]
         )
     )
     return t
+
+
+def _monthly_cell_bg(ctx: AnnualReportContext) -> dict[tuple[int, int], str]:
+    """(body row, column) -> tint hex for the HTML month table."""
+    return {
+        (row, col): STATUS_TINTS[rag]
+        for row, statuses in enumerate(ctx.monthly_status)
+        for col, rag in statuses.items()
+    }
 
 
 def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
@@ -264,6 +332,8 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
         Spacer(1, 10),
         style.section_bar("MONTH-BY-MONTH DETAIL"),
         _monthly_detail_table(ctx),
+        Spacer(1, 4),
+        Paragraph(SHADING_NOTE, note_style),
         Spacer(1, 10),
         style.section_bar("EXCEPTION BREAKDOWN"),
         style.chart_to_image(
@@ -276,8 +346,14 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
         style.section_bar("ANNUAL VOLUMES"),
         _period_volumes_table(w),
         Spacer(1, 10),
-        style.section_bar("COVERAGE BY BASE"),
-        style.base_coverage_table(w.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8]),
+        KeepTogether(
+            [
+                style.section_bar("COVERAGE BY BASE"),
+                style.chart_to_image(_build_base_coverage_fig(w), style.USABLE_W),
+                Spacer(1, 6),
+                style.base_coverage_table(w.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8]),
+            ]
+        ),
         Spacer(1, 10),
     ]
     doc.build(
@@ -324,7 +400,9 @@ def build_html(
             MONTHLY_HEADERS,
             [list(r) for r in ctx.monthly_detail],
             right_cols={1, 2, 3, 4, 5, 6},
+            cell_bg=_monthly_cell_bg(ctx),
         )
+        + rh.note(SHADING_NOTE)
     )
 
     top2 = style.leave_top2(w.leave_breakdown)
@@ -357,7 +435,11 @@ def build_html(
 
     body += rh.section_bar("COVERAGE BY BASE")
     body += rh.body_cell(
-        rh.data_table(
+        rh.chart_img(
+            rh.fig_to_png_base64(_build_base_coverage_fig(w)), "Coverage by base"
+        )
+        + '<div style="height:12px;"></div>'
+        + rh.data_table(
             ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
             [list(r) for r in w.base_coverage],
             right_cols={1, 2, 3, 4},

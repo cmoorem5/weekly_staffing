@@ -86,6 +86,19 @@ class AnnualReportTests(TempDbTestCase):
 
             plt.close(fig)
 
+    def test_month_cells_shaded_by_status(self):
+        from staffing_tool import annual_report as A
+        from staffing_tool.report_data import STATUS_TINTS
+
+        ctx = load_annual_report_data(self.db_path, 2026)
+        # Default thresholds: every month here is far under 95% staffing.
+        self.assertTrue(all(s.get(2) == "Red" for s in ctx.monthly_status))
+        self.assertEqual(len(ctx.monthly_status), len(ctx.monthly_detail))
+        bg = A._monthly_cell_bg(ctx)
+        self.assertEqual(bg[(0, 2)], STATUS_TINTS["Red"])
+        self.assertNotIn((0, 0), bg)  # month label and week count stay plain
+        self.assertNotIn((0, 1), bg)
+
     def test_completeness_note_flags_missing_weeks(self):
         ctx = load_annual_report_data(self.db_path, 2026)
         self.assertEqual(ctx.weeks_expected, 52)

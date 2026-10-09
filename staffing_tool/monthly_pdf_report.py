@@ -227,6 +227,7 @@ def _weekly_detail_table(data: MonthlyBoardData) -> Table:
 
 def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
     from staffing_tool.quarterly_pdf_report import (
+        _build_base_coverage_fig,
         _build_exception_bar_fig,
         _build_trend_fig,
     )
@@ -314,6 +315,8 @@ def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
         KeepTogether(
             [
                 style.section_bar("COVERAGE BY BASE"),
+                style.chart_to_image(_build_base_coverage_fig(data), style.USABLE_W),
+                Spacer(1, 6),
                 style.base_coverage_table(
                     data.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8]
                 ),

@@ -258,6 +258,7 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
     # Chart builders are shared with the quarterly report; they only read
     # .weekly_trend / .leave_breakdown, so a namespace stand-in works.
     from staffing_tool.quarterly_pdf_report import (
+        _build_base_coverage_fig,
         _build_exception_bar_fig,
         _build_trend_fig,
     )
@@ -322,7 +323,11 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
 
     body += rh.section_bar("COVERAGE BY BASE")
     body += rh.body_cell(
-        rh.data_table(
+        rh.chart_img(
+            rh.fig_to_png_base64(_build_base_coverage_fig(data)), "Coverage by base"
+        )
+        + '<div style="height:12px;"></div>'
+        + rh.data_table(
             ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
             [list(r) for r in data.base_coverage],
             right_cols={1, 2, 3, 4},
