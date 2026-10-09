@@ -27,7 +27,7 @@ def _report_card_qs(**parts: str) -> str:
 
 
 def reports_index(request):
-    """Hub linking to staffing analytics, manager tracking, and board exports."""
+    """Hub linking to leadership reports, staffing analytics, and manager tracking."""
     _ensure_db()
     today = date.today()
     fy_start = fy_week1_sunday_containing(today)
@@ -102,7 +102,7 @@ def reports_index(request):
             ],
         },
         {
-            "group": "executive",
+            "group": "leadership",
             "title": "Weekly staffing report",
             "description": (
                 "Polished PDF and HTML email summary for one week — KPIs, 8-week trend, "
@@ -113,10 +113,21 @@ def reports_index(request):
             "exports": [],
         },
         {
-            "group": "executive",
+            "group": "leadership",
+            "title": "Monthly staffing report",
+            "description": (
+                "One month (or any date range) as an HTML/PDF summary with change vs the "
+                "prior period, or the full Excel workbook with weekly, base, and exception detail."
+            ),
+            "open_url_name": "monthly_report",
+            "open_qs": "",
+            "exports": [],
+        },
+        {
+            "group": "leadership",
             "title": "Quarterly & annual staffing report",
             "description": (
-                "Fiscal-year or fiscal-quarter PDF/HTML for executive review — KPI averages, "
+                "Fiscal-year or fiscal-quarter PDF/HTML — KPI averages, "
                 "trend, exception breakdown (AT/LT/SICK/LOA/JURY/BREV), role volumes, and "
                 "base coverage. The annual report runs month to month with change vs the prior FY."
             ),
@@ -124,29 +135,13 @@ def reports_index(request):
             "open_qs": "",
             "exports": [],
         },
-        {
-            "group": "board",
-            "title": "Monthly board report",
-            "description": (
-                "Aggregate selected weeks into the Boston MedFlight monthly Excel layout "
-                "(Board Summary + Weekly Detail)."
-            ),
-            "open_url_name": "monthly_report",
-            "open_qs": "",
-            "exports": [],
-        },
     ]
 
     report_sections = [
         {
-            "title": "Executive reports",
-            "subtitle": "Polished PDF / HTML for the CEO and leadership: one week, one quarter, or a full fiscal year.",
-            "cards": [c for c in report_cards if c["group"] == "executive"],
-        },
-        {
-            "title": "Board pack",
-            "subtitle": "Monthly board report and the Excel workbook behind it.",
-            "cards": [c for c in report_cards if c["group"] == "board"],
+            "title": "Leadership reports",
+            "subtitle": "Polished PDF / HTML summaries for leadership: one week, one month, one quarter, or a full fiscal year.",
+            "cards": [c for c in report_cards if c["group"] == "leadership"],
         },
         {
             "title": "Analytics",

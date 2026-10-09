@@ -141,7 +141,7 @@ def settings_index(request):
         {
             "title": "KPI thresholds",
             "description": (
-                "Green / yellow / red ranges for dashboard RAG status and board pack targets."
+                "Green / yellow / red ranges for dashboard RAG status and report targets."
             ),
             "url_name": "kpi_thresholds_settings",
             "meta": f"{threshold_count} metric{'s' if threshold_count != 1 else ''}",

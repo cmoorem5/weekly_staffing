@@ -110,7 +110,7 @@ class ReportsHubSectionTests(TempDbTestCase):
     def setUp(self):
         self.make_temp_db()
 
-    def test_cards_grouped_into_three_sections(self):
+    def test_cards_grouped_into_two_sections(self):
         with (
             patch.object(reports, "DB_PATH", self.db_path),
             patch.object(helpers, "DB_PATH", self.db_path),
@@ -120,15 +120,15 @@ class ReportsHubSectionTests(TempDbTestCase):
         positions = [
             html.index(t)
             for t in (
-                "Executive reports",
+                "Leadership reports",
+                "Monthly staffing report",
                 "Quarterly &amp; annual staffing report",
-                "Board pack",
-                "Monthly board report",
                 "Analytics",
                 "Manager line shifts",
             )
         ]
         self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("Board pack", html)
 
 
 if __name__ == "__main__":

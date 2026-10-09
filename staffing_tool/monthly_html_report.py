@@ -328,7 +328,7 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
 
     html = rh.report_shell(
         title="MONTHLY STAFFING REPORT",
-        subtitle=f"Board summary &nbsp;|&nbsp; {data.date_start} to {data.date_end}",
+        subtitle=f"Leadership summary &nbsp;|&nbsp; {data.date_start} to {data.date_end}",
         meta=(
             f"Weeks included: {data.weeks_count} &middot; "
             f"Prepared {date.today():%B %d, %Y} &middot; CONFIDENTIAL"
