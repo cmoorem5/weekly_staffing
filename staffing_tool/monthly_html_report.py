@@ -31,7 +31,7 @@ from staffing_tool.metrics import (
     role_ot_totals,
 )
 from staffing_tool.models import BaseConfig, WeeklyStaffing
-from staffing_tool.report_data import load_trend_targets
+from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
 
 EM = rh.EM
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -62,6 +62,8 @@ class MonthlyBoardData:
     role_fill: list[RoleFill]
     # KPI metric name -> green-boundary target (fraction), for trend target lines
     trend_targets: dict[str, float] = field(default_factory=dict)
+    # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
+    kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
@@ -210,6 +212,16 @@ def load_monthly_board_data(
                 session, [str(row.week_start) for row in week_rows]
             ),
             trend_targets=load_trend_targets(session),
+            kpi_status=kpi_tile_statuses(
+                session,
+                {
+                    "Staffing Rate": rollups.avg_staffing_rate,
+                    "OT Dependency": rollups.avg_ot_dependency,
+                    "Shift Exception %": rollups.avg_leave_exposure,
+                    "System RW %": rollups.avg_system_rw_pct,
+                    "System GR %": rollups.avg_system_gr_pct,
+                },
+            ),
         )
 
 
@@ -267,7 +279,7 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
         if data.prior_rollups
         else rh.note("No prior-period data available for comparison.")
     )
-    body += rh.body_cell(rh.kpi_strip(_board_kpis(data)) + kpi_note)
+    body += rh.body_cell(rh.kpi_strip(_board_kpis(data), data.kpi_status) + kpi_note)
 
     if trend_b64:
         body += rh.section_bar("WEEKLY TREND THIS PERIOD")
@@ -280,7 +292,7 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
         rh.chart_img(exc_b64, "Exception breakdown")
         + '<div style="height:12px;"></div>'
         + rh.exception_mix_table(data.leave_breakdown, top2)
-        + rh.note(f"Top drivers (red in chart): {top2_note or 'n/a'}.")
+        + rh.note(f"Top drivers: {top2_note or 'n/a'}.")
     )
 
     if any(rf.worked for rf in data.role_fill):

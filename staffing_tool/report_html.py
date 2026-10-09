@@ -136,12 +136,19 @@ def data_table(
     )
 
 
-def kpi_strip(kpis: list[tuple[str, str] | tuple[str, str, str]]) -> str:
+def kpi_strip(
+    kpis: list[tuple[str, str] | tuple[str, str, str]],
+    statuses: dict[str, tuple[str, str]] | None = None,
+) -> str:
     """Row of KPI cells: (label, value) or (label, value, sub_html).
 
     ``sub_html`` renders under the value — used for the vs-prior-period
-    delta on board-level reports.
+    delta on leadership reports. ``statuses`` (label -> (text, hex color),
+    from ``report_data.kpi_tile_statuses``) adds a status line and a colored
+    top border on the tile. A ``td`` border survives Outlook's Word engine,
+    unlike a div background (see share_bar).
     """
+    statuses = statuses or {}
     cells = ""
     for kpi in kpis:
         label, value = kpi[0], kpi[1]
@@ -149,10 +156,19 @@ def kpi_strip(kpis: list[tuple[str, str] | tuple[str, str, str]]) -> str:
         sub_html = (
             f'<div style="font-size:10px;margin-top:2px;">{sub}</div>' if sub else ""
         )
+        status = statuses.get(label)
+        status_html = (
+            f'<div style="font-size:10px;font-weight:bold;margin-top:3px;'
+            f'color:{status[1]};">{status[0]}</div>'
+            if status
+            else ""
+        )
+        top = f"border-top:4px solid {status[1]};" if status else ""
         cells += (
-            f'<td style="padding:8px 4px;text-align:center;border:1px solid {MGRAY};">'
+            f'<td style="padding:8px 4px;text-align:center;border:1px solid {MGRAY};{top}">'
             f'<div style="font-size:18px;font-weight:bold;color:{NAVY};">{value}</div>'
-            f'<div style="font-size:11px;color:#333;">{label}</div>{sub_html}</td>'
+            f'<div style="font-size:11px;color:#333;">{label}</div>'
+            f"{sub_html}{status_html}</td>"
         )
     return (
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'

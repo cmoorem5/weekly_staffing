@@ -200,60 +200,97 @@ class BaseCoverageTableTests(unittest.TestCase):
 
 
 class TrendFigureTests(unittest.TestCase):
-    def test_series_follow_the_trend_data(self):
+    def _current(self, ax):
+        """The current-period series: the marker line (prior/target have none)."""
+        return next(ln for ln in ax.get_lines() if ln.get_marker() == "o")
+
+    def test_one_panel_per_kpi_with_its_own_series(self):
         fig = W._build_trend_fig(weekly_ctx())
         try:
-            top, bottom = fig.axes
-            staffing = top.get_lines()[0]
+            staffing, ot, exc = fig.axes
+            for ax, expected in (
+                (staffing, [0.91, 0.87]),
+                (ot, [0.12, 0.15]),
+                (exc, [0.08, 0.10]),
+            ):
+                self.assertEqual(
+                    [round(float(v), 4) for v in self._current(ax).get_ydata()],
+                    expected,
+                )
             self.assertEqual(
-                [round(float(v), 4) for v in staffing.get_ydata()], [0.91, 0.87]
-            )
-            # OT dependency sits on its own panel, not a second y-axis.
-            ot = bottom.get_lines()[0]
-            self.assertEqual([round(float(v), 4) for v in ot.get_ydata()], [0.12, 0.15])
-            self.assertEqual(
-                [t.get_text() for t in bottom.get_xticklabels()],
+                [t.get_text() for t in staffing.get_xticklabels()],
                 ["2025-12-07", "2025-12-14"],
             )
         finally:
             _close(fig)
 
-    def test_single_y_axis_per_panel(self):
+    def test_three_panels_and_never_a_second_y_axis(self):
         fig = W._build_trend_fig(weekly_ctx())
         try:
-            # Two stacked panels; a twinx axis would make it three.
-            self.assertEqual(len(fig.axes), 2)
+            # One axis per KPI; a twinx axis would add a fourth.
+            self.assertEqual(len(fig.axes), 3)
+            self.assertEqual(
+                [ax.get_title(loc="left") for ax in fig.axes],
+                ["Staffing rate", "OT dependency", "Shift exception %"],
+            )
         finally:
             _close(fig)
 
-    def test_target_lines_drawn_on_their_panel(self):
+    def test_target_named_in_panel_and_drawn_when_on_scale(self):
         ctx = weekly_ctx()
-        ctx.trend_targets = {"Staffing Rate": 0.95, "OT Dependency": 0.08}
+        ctx.trend_data = [("Dec 7", 93.0, 9.0, 4.0), ("Dec 14", 96.0, 7.0, 5.0)]
+        ctx.trend_targets = {
+            "Staffing Rate": 0.95,
+            "OT Dependency": 0.08,
+            "Shift Exception %": 0.25,
+        }
         fig = W._build_trend_fig(ctx)
         try:
-            top, bottom = fig.axes
-            top_labels = [ln.get_label() for ln in top.get_lines()]
-            bottom_labels = [ln.get_label() for ln in bottom.get_lines()]
-            self.assertIn("Staffing target (95%)", top_labels)
-            self.assertIn("OT target (8%)", bottom_labels)
-            self.assertNotIn("Exception target", " ".join(top_labels))
+            staffing, ot, exc = fig.axes
+
+            def texts(ax):
+                return [t.get_text() for t in ax.texts]
+
+            self.assertIn("target ≥ 95%", texts(staffing))
+            self.assertIn("target ≤ 8%", texts(ot))
+            self.assertIn("target ≤ 25%", texts(exc))
+            labels = [[ln.get_label() for ln in ax.get_lines()] for ax in fig.axes]
+            self.assertIn("Staffing Rate target", labels[0])
+            self.assertIn("OT Dependency target", labels[1])
+            # 25% is far above a 4-5% series: named, not drawn, so the
+            # exception panel stays zoomed on the data.
+            self.assertNotIn("Shift Exception % target", labels[2])
+            # Latest value printed at the end of each line.
+            self.assertIn("96.0%", texts(staffing))
+            self.assertIn("5.0%", texts(exc))
         finally:
             _close(fig)
 
-    def test_each_report_keeps_its_own_figure_height(self):
-        weekly, quarterly = (
-            W._build_trend_fig(weekly_ctx()),
-            Q._build_trend_fig(quarterly_ctx()),
+    def test_prior_period_drawn_behind_with_a_legend(self):
+        from staffing_tool import report_style as style
+
+        trend = [("Oct", 92.0, 9.0, 4.0), ("Nov", 94.0, 8.0, 5.0)]
+        prior = [("Oct", 90.0, 10.0, 3.0), ("Nov", float("nan"), 9.5, 3.5)]
+        fig = style.trend_fig(
+            trend, prior=prior, current_label="FY2026", prior_label="FY2025"
         )
         try:
+            gray = [
+                ln for ln in fig.axes[0].get_lines() if ln.get_color() == style.C_PRIOR
+            ]
+            self.assertEqual(len(gray), 1)
             self.assertEqual(
-                [round(v, 3) for v in weekly.get_size_inches()], [7.5, 3.4]
-            )
-            self.assertEqual(
-                [round(v, 3) for v in quarterly.get_size_inches()], [7.5, 3.6]
+                [t.get_text() for t in fig.legends[0].texts], ["FY2026", "FY2025"]
             )
         finally:
-            _close(weekly, quarterly)
+            _close(fig)
+
+    def test_single_series_has_no_legend(self):
+        fig = W._build_trend_fig(weekly_ctx())
+        try:
+            self.assertEqual(fig.legends, [])
+        finally:
+            _close(fig)
 
     def test_both_reports_plot_the_same_series_from_the_same_data(self):
         weekly, quarterly = (
@@ -268,6 +305,9 @@ class TrendFigureTests(unittest.TestCase):
                     for ax in quarterly.axes
                 ],
             )
+            self.assertEqual(
+                [round(v, 3) for v in weekly.get_size_inches()], [7.5, 2.5]
+            )
         finally:
             _close(weekly, quarterly)
 
@@ -276,21 +316,29 @@ class TrendFigureTests(unittest.TestCase):
 
         fig = W._build_trend_fig(weekly_ctx())
         img = style.chart_to_image(fig, style.USABLE_W)
-        # 7.5 x 3.4 in figure (+/- tight-bbox cropping): drawn height must
-        # follow the aspect, not the PNG's pixel height (~2x taller).
+        # 7.5 x 2.5 in figure (+/- tight-bbox cropping): drawn height must
+        # follow the aspect, not the PNG's pixel height.
         ratio = img.drawHeight / img.drawWidth
-        self.assertAlmostEqual(ratio, 3.4 / 7.5, delta=0.08)
+        self.assertAlmostEqual(ratio, 2.5 / 7.5, delta=0.08)
 
-    def test_exception_bars_follow_the_leave_breakdown(self):
+    def test_exception_bars_sorted_largest_first_in_one_color(self):
         weekly, quarterly = (
             W._build_exception_bar_fig(weekly_ctx()),
             Q._build_exception_bar_fig(quarterly_ctx()),
         )
         try:
-            w_heights = [p.get_height() for p in weekly.axes[0].patches]
-            q_heights = [p.get_height() for p in quarterly.axes[0].patches]
-            self.assertEqual(w_heights, q_heights)
-            self.assertEqual(len(w_heights), len(LEAVE_BREAKDOWN))
+            bars = weekly.axes[0].patches
+            self.assertEqual([p.get_width() for p in bars], [10, 6, 3, 1])
+            self.assertEqual(len({p.get_facecolor() for p in bars}), 1)
+            self.assertEqual(
+                [t.get_text() for t in weekly.axes[0].get_yticklabels()],
+                ["AT", "LT", "SICK", "JURY"],
+            )
+            self.assertIn("10 (50%)", [t.get_text() for t in weekly.axes[0].texts])
+            self.assertEqual(
+                [p.get_width() for p in bars],
+                [p.get_width() for p in quarterly.axes[0].patches],
+            )
         finally:
             _close(weekly, quarterly)
 

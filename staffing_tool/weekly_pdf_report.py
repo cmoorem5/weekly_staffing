@@ -41,6 +41,7 @@ from staffing_tool.metrics import (
     REQUIRED_TOTAL,
     compute_role_fill,
     compute_week_metrics,
+    role_ot_totals,
 )
 from staffing_tool.models import (
     BaseConfig,
@@ -49,7 +50,7 @@ from staffing_tool.models import (
     WeeklyLeaveDetail,
     WeeklyStaffing,
 )
-from staffing_tool.report_data import load_trend_targets
+from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
 from staffing_tool.schedule_import import (
     DailyDetailDay,
     aggregate_week_from_records,
@@ -81,9 +82,11 @@ class WeeklyReportContext:
     daily_totals: tuple[str, str, str, str]  # filled/target, rw, gr, exceptions
     base_coverage: list[tuple[str, str, str, str, str]]
     leave_breakdown: list[tuple[str, int]]
-    ot_by_role: list[tuple[str, int, int]]  # label, day, night
-    ot_total_day: int
-    ot_total_night: int
+    # label, day, night, total. Day/night are None on legacy weeks, which
+    # store per-role OT only in the aggregate columns (see role_ot_totals).
+    ot_by_role: list[tuple[str, int | None, int | None, int]]
+    ot_total_day: int | None
+    ot_total_night: int | None
     exception_by_role: list[tuple[str, int, int, int, int, int, int]]  # label + 6 cols
     exception_col_totals: tuple[int, int, int, int, int, int]
     trend_data: list[tuple[str, float, float, float]] = field(default_factory=list)
@@ -92,6 +95,8 @@ class WeeklyReportContext:
     role_fill: list[tuple[str, str, str, str]] = field(default_factory=list)
     # KPI metric name -> green-boundary target (fraction), for trend target lines
     trend_targets: dict[str, float] = field(default_factory=dict)
+    # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
+    kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def _pct(v: float) -> str:
@@ -294,7 +299,11 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             for col in EXCEPTION_GRID_COLS
         )
 
-        ot_by_role = [
+        # Day/night split when the week has one; otherwise the legacy per-role
+        # totals via role_ot_totals, with day/night shown as unknown. Reading
+        # only the split columns reported 0 OT per role on every legacy week
+        # while the OT Dependency KPI above it was non-zero.
+        split = [
             (ROLE_LABELS["RN"], int(ws.ot_rn_day or 0), int(ws.ot_rn_night or 0)),
             (
                 ROLE_LABELS["Medic"],
@@ -303,8 +312,22 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             ),
             (ROLE_LABELS["EMT"], int(ws.ot_emt_day or 0), int(ws.ot_emt_night or 0)),
         ]
-        ot_total_day = sum(day for _, day, _ in ot_by_role)
-        ot_total_night = sum(night for _, _, night in ot_by_role)
+        ot_by_role: list[tuple[str, int | None, int | None, int]]
+        if any(day or night for _, day, night in split):
+            ot_by_role = [(lab, d, n, d + n) for lab, d, n in split]
+            ot_total_day = sum(d for _, d, _ in split)
+            ot_total_night = sum(n for _, _, n in split)
+        else:
+            role_ot = role_ot_totals(row)
+            ot_by_role = [
+                (ROLE_LABELS[key], None, None, role_ot[metric_key])
+                for key, metric_key in (
+                    ("RN", "RN"),
+                    ("Medic", "MEDIC"),
+                    ("EMT", "EMT"),
+                )
+            ]
+            ot_total_day = ot_total_night = None
 
         cfg_by_name = {b.base_name: b for b in base_configs}
         base_coverage: list[tuple[str, str, str, str, str]] = []
@@ -379,6 +402,16 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
 
         return WeeklyReportContext(
             trend_targets=load_trend_targets(session),
+            kpi_status=kpi_tile_statuses(
+                session,
+                {
+                    "Staffing Rate": metrics.staffing_rate,
+                    "OT Dependency": metrics.ot_dependency,
+                    "Shift Exception %": metrics.leave_exposure,
+                    "System RW %": metrics.system_rw_pct,
+                    "System GR %": metrics.system_gr_pct,
+                },
+            ),
             week_start=week_start,
             week_of=week_of,
             week_dates=week_dates,
@@ -486,20 +519,31 @@ def _exception_table(ctx: WeeklyReportContext):
     return style.exception_table(ctx.leave_breakdown)
 
 
-def _ot_by_role_table(ctx: WeeklyReportContext):
-    headers = ["Role", "Day", "Night", "Total"]
-    col_w = style.full_width_col_widths([2.5, 1.25, 1.25, 1.25])
-    rows = [headers]
-    for label, day, night in ctx.ot_by_role:
-        rows.append([label, str(day), str(night), str(day + night)])
+def _ot_rows(ctx: WeeklyReportContext) -> list[list[str]]:
+    """OT-by-role body rows plus a Total row; unknown day/night show an em dash."""
+
+    def cell(v: int | None) -> str:
+        return EM if v is None else str(v)
+
+    rows = [
+        [label, cell(day), cell(night), str(total)]
+        for label, day, night, total in ctx.ot_by_role
+    ]
     rows.append(
         [
             "Total",
-            str(ctx.ot_total_day),
-            str(ctx.ot_total_night),
-            str(ctx.ot_total_day + ctx.ot_total_night),
+            cell(ctx.ot_total_day),
+            cell(ctx.ot_total_night),
+            str(sum(total for *_rest, total in ctx.ot_by_role)),
         ]
     )
+    return rows
+
+
+def _ot_by_role_table(ctx: WeeklyReportContext):
+    headers = ["Role", "Day", "Night", "Total"]
+    col_w = style.full_width_col_widths([2.5, 1.25, 1.25, 1.25])
+    rows = [headers] + _ot_rows(ctx)
     total_row = len(rows) - 1
     t = Table(rows, colWidths=col_w)
     t.setStyle(
@@ -595,8 +639,6 @@ def _fig_to_png_base64(fig) -> str:
 def _build_trend_fig(ctx: WeeklyReportContext):
     return style.trend_fig(
         ctx.trend_data,
-        height_in=3.4,
-        exception_label="Exception %",
         targets=ctx.trend_targets,
     )
 
@@ -640,7 +682,7 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
         ),
         Spacer(1, 10),
         style.section_bar("KEY PERFORMANCE INDICATORS"),
-        style.kpi_row(ctx.kpi_data),
+        style.kpi_row(ctx.kpi_data, ctx.kpi_status),
         Spacer(1, 10),
         # Each heading stays on the page with its content; without this the
         # SCHEDULE EXCEPTIONS / COVERAGE BY BASE headings were left alone at
@@ -706,12 +748,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     trend_b64 = _fig_to_png_base64(_build_trend_fig(ctx)) if ctx.trend_data else ""
     exc_chart_b64 = _fig_to_png_base64(_build_exception_bar_fig(ctx))
 
-    kpi_cells = "".join(
-        f'<td style="padding:8px 4px;text-align:center;border:1px solid {mgray};">'
-        f'<div style="font-size:18px;font-weight:bold;color:{navy};">{val}</div>'
-        f'<div style="font-size:11px;color:#333;">{label}</div></td>'
-        for label, val in ctx.kpi_data
-    )
+    kpi_strip = rh.kpi_strip(ctx.kpi_data, ctx.kpi_status)
 
     max_count = max((c for _, c in ctx.leave_breakdown), default=1) or 1
     exc_rows = ""
@@ -767,18 +804,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
         right_cols={1, 2, 3, 4},
     )
 
-    ot_rows = [
-        [label, str(day), str(night), str(day + night)]
-        for label, day, night in ctx.ot_by_role
-    ]
-    ot_rows.append(
-        [
-            "Total",
-            str(ctx.ot_total_day),
-            str(ctx.ot_total_night),
-            str(ctx.ot_total_day + ctx.ot_total_night),
-        ]
-    )
+    ot_rows = _ot_rows(ctx)
     ot_table = _html_data_table(
         ["Role", "Day", "Night", "Total"],
         ot_rows,
@@ -872,7 +898,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 
 {_html_section_bar("KEY PERFORMANCE INDICATORS", navy)}
 <tr><td style="padding:12px 16px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>{kpi_cells}</tr></table>
+{kpi_strip}
 </td></tr>
 
 {fill_section}
@@ -897,7 +923,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 <td style="border:1px solid {mgray};"></td>
 </tr>
 </table>
-<p style="font-size:11px;color:#555;margin:10px 0 0;">Top drivers (red in chart): {top2_note or "n/a"}.</p>
+<p style="font-size:11px;color:#555;margin:10px 0 0;">Top drivers: {top2_note or "n/a"}.</p>
 </td></tr>
 
 {_html_section_bar("OVERTIME BY ROLE", navy)}
