@@ -109,9 +109,16 @@ def data_table(
     *,
     right_cols: set[int] | None = None,
     total_row: bool = False,
+    cell_bg: dict[tuple[int, int], str] | None = None,
 ) -> str:
-    """Zebra-striped table matching the weekly report's look."""
+    """Zebra-striped table matching the weekly report's look.
+
+    ``cell_bg`` maps (body row, column) to a background hex for status
+    shading; it is set as the legacy ``bgcolor`` attribute plus an inline
+    ``background-color`` so the tint survives an Outlook paste.
+    """
     right_cols = right_cols or set()
+    cell_bg = cell_bg or {}
     th = "".join(
         f'<th style="padding:6px 8px;text-align:{"right" if i in right_cols else "left"};">{h}</th>'
         for i, h in enumerate(headers)
@@ -124,8 +131,12 @@ def data_table(
         cells = ""
         for ci, cell in enumerate(row):
             align = "right" if ci in right_cols else ("left" if ci == 0 else "center")
+            tint = cell_bg.get((ri, ci))
+            bg_attr = f' bgcolor="{tint}"' if tint else ""
+            bg_css = f"background-color:{tint};" if tint else ""
             cells += (
-                f'<td style="padding:6px 8px;text-align:{align};border:1px solid {MGRAY};{fw}">'
+                f'<td{bg_attr} style="padding:6px 8px;text-align:{align};'
+                f'border:1px solid {MGRAY};{bg_css}{fw}">'
                 f"{cell}</td>"
             )
         body += f'<tr style="background:{bg};">{cells}</tr>'

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
@@ -151,6 +152,45 @@ KPI_TILE_METRICS = {
 STATUS_COLORS = {"Green": "#2F7D4F", "Yellow": "#B7791F", "Red": "#C12126"}
 
 
+# Light cell tints for status shading in tables, paired with the ink-colored
+# value (the status words live in the table's legend note).
+STATUS_TINTS = {"Green": "#E3F1E8", "Yellow": "#FBEFD9", "Red": "#F8DEDF"}
+
+
+def kpi_grader(session: Session):
+    """Return ``grade(label, fraction) -> "Green"|"Yellow"|"Red"|None``.
+
+    Thresholds are copied out of the session, so the grader stays usable
+    after it closes. ``label`` is a KPI tile or column label (an "Avg "
+    prefix is ignored); None means no target is set for that KPI.
+    """
+    snapshot = {
+        str(t.metric_name): SimpleNamespace(
+            green_min=t.green_min,
+            green_max=t.green_max,
+            yellow_min=t.yellow_min,
+            yellow_max=t.yellow_max,
+            red_min=t.red_min,
+            red_max=t.red_max,
+            higher_is_better=t.higher_is_better,
+        )
+        for t in session.query(KpiThreshold).all()
+    }
+
+    def grade(label: str, value: float | None) -> str | None:
+        metric = KPI_TILE_METRICS.get(label.removeprefix("Avg "))
+        t = snapshot.get(metric) if metric else None
+        if t is None or value is None:
+            return None
+        rag = evaluate_rag(value, t)  # type: ignore[arg-type]
+        if rag not in STATUS_COLORS or green_boundary(t) is None:  # type: ignore[arg-type]
+            return None
+        return rag
+
+    grade.thresholds = snapshot  # type: ignore[attr-defined]
+    return grade
+
+
 def kpi_tile_statuses(
     session: Session, values: dict[str, float]
 ) -> dict[str, tuple[str, str]]:
@@ -161,17 +201,14 @@ def kpi_tile_statuses(
     needed); a KPI with no threshold row, or no usable bound, is left out so
     its tile shows the number alone rather than a made-up status.
     """
-    thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
+    grade = kpi_grader(session)
     out: dict[str, tuple[str, str]] = {}
     for label, value in values.items():
-        metric = KPI_TILE_METRICS.get(label.removeprefix("Avg "))
-        t = thresholds.get(metric) if metric else None
-        if t is None or value is None:
+        rag = grade(label, value)
+        if rag is None:
             continue
-        rag = evaluate_rag(value, t)
+        t = grade.thresholds[KPI_TILE_METRICS[label.removeprefix("Avg ")]]
         bound = green_boundary(t)
-        if rag not in STATUS_COLORS or bound is None:
-            continue
         op = "≥" if (t.higher_is_better or 0) != 0 else "≤"
         out[label] = (
             f"{_status_display(rag)} · {op} {100.0 * bound:.0f}%",
@@ -181,7 +218,14 @@ def kpi_tile_statuses(
 
 
 # KPIs the PDF trend charts draw a target line for.
-TREND_TARGET_METRICS = ("Staffing Rate", "Shift Exception %", "OT Dependency")
+TREND_TARGET_METRICS = (
+    "Staffing Rate",
+    "Shift Exception %",
+    "OT Dependency",
+    # Coverage targets: drawn on the base coverage chart, not the trend chart.
+    "System RW Coverage %",
+    "System GR Coverage %",
+)
 
 
 def load_trend_targets(session: Session) -> dict[str, float]:

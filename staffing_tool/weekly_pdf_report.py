@@ -515,6 +515,10 @@ def _base_coverage_table(ctx: WeeklyReportContext):
     return style.base_coverage_table(ctx.base_coverage, [1.5, 1.25, 1.25, 1.25, 2.25])
 
 
+def _build_base_coverage_fig(ctx: WeeklyReportContext):
+    return style.base_coverage_fig(ctx.base_coverage, ctx.trend_targets)
+
+
 def _exception_table(ctx: WeeklyReportContext):
     return style.exception_table(ctx.leave_breakdown)
 
@@ -697,9 +701,18 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
         ("OVERTIME BY ROLE", _ot_by_role_table(ctx), 10),
         ("SCHEDULE EXCEPTIONS BY ROLE", _exception_by_role_table(ctx), 10),
         ("DAILY DETAIL", _daily_table(ctx), 10),
-        ("COVERAGE BY BASE", _base_coverage_table(ctx), 10),
+        (
+            "COVERAGE BY BASE",
+            [
+                style.chart_to_image(_build_base_coverage_fig(ctx), style.USABLE_W),
+                Spacer(1, 6),
+                _base_coverage_table(ctx),
+            ],
+            10,
+        ),
     ):
-        story.append(KeepTogether([style.section_bar(title), flowable]))
+        items = flowable if isinstance(flowable, list) else [flowable]
+        story.append(KeepTogether([style.section_bar(title), *items]))
         story.append(Spacer(1, gap))
 
     doc.build(
@@ -942,7 +955,8 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 </td></tr>
 
 {_html_section_bar("COVERAGE BY BASE", navy)}
-<tr><td style="padding:12px 16px;">{base_table}</td></tr>
+<tr><td style="padding:12px 16px;">{rh.chart_img(_fig_to_png_base64(_build_base_coverage_fig(ctx)), "Coverage by base")}
+<div style="height:12px;"></div>{base_table}</td></tr>
 
 <tr><td style="padding:16px 24px;font-size:11px;color:#666;border-top:1px solid {mgray};">
 Boston MedFlight &middot; Clinical Operations &middot; Confidential

@@ -12,7 +12,13 @@ from datetime import date, datetime, timedelta
 from typing import Any, cast
 
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    KeepTogether,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from staffing_tool import report_style as style
 from staffing_tool.db import session_scope
@@ -426,6 +432,13 @@ def _base_coverage_table(ctx: QuarterlyReportContext):
     return style.base_coverage_table(ctx.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8])
 
 
+def _build_base_coverage_fig(ctx):
+    # Also called with MonthlyBoardData by the monthly reports.
+    return style.base_coverage_fig(
+        ctx.base_coverage, getattr(ctx, "trend_targets", None)
+    )
+
+
 def _exceptions_table(ctx: QuarterlyReportContext):
     return style.exception_table(ctx.leave_breakdown)
 
@@ -507,8 +520,14 @@ def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
         style.section_bar("PERIOD VOLUMES"),
         _period_volumes_table(ctx),
         Spacer(1, 10),
-        style.section_bar("COVERAGE BY BASE"),
-        _base_coverage_table(ctx),
+        KeepTogether(
+            [
+                style.section_bar("COVERAGE BY BASE"),
+                style.chart_to_image(_build_base_coverage_fig(ctx), style.USABLE_W),
+                Spacer(1, 6),
+                _base_coverage_table(ctx),
+            ]
+        ),
         Spacer(1, 10),
         style.section_bar("SCHEDULE EXCEPTIONS"),
         _exceptions_table(ctx),
@@ -646,7 +665,11 @@ def build_html(
 
     body += rh.section_bar("COVERAGE BY BASE")
     body += rh.body_cell(
-        rh.data_table(
+        rh.chart_img(
+            rh.fig_to_png_base64(_build_base_coverage_fig(ctx)), "Coverage by base"
+        )
+        + '<div style="height:12px;"></div>'
+        + rh.data_table(
             ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
             [list(r) for r in ctx.base_coverage],
             right_cols={1, 2, 3, 4},

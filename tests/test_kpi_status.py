@@ -70,3 +70,40 @@ class KpiTileRenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BaseCoverageFigTests(unittest.TestCase):
+    ROWS = [
+        ("Bedford", "7", "100.0%", "7", "50.0%"),
+        ("Manchester", "6", "85.7%", "—", "—"),
+        ("Plymouth", "7", "10.0%", "4", "57.1%"),
+    ]
+
+    def test_two_panels_skip_bases_without_a_plan(self):
+        import matplotlib.pyplot as plt
+
+        fig = style.base_coverage_fig(self.ROWS, {"System RW Coverage %": 0.95})
+        try:
+            rw, gr = fig.axes
+            self.assertEqual([p.get_width() for p in rw.patches], [100.0, 85.7, 10.0])
+            # Manchester has no GR plan: left off, not drawn as zero.
+            self.assertEqual(
+                [t.get_text() for t in gr.get_yticklabels()], ["Bedford", "Plymouth"]
+            )
+            self.assertIn("target ≥ 95%", [t.get_text() for t in rw.texts])
+            self.assertIn(
+                "System RW Coverage % target", [ln.get_label() for ln in rw.get_lines()]
+            )
+            self.assertEqual(gr.get_lines(), [])  # no GR target given
+        finally:
+            plt.close(fig)
+
+
+class StatusShadingTests(unittest.TestCase):
+    def test_html_table_cell_tint_is_outlook_safe(self):
+        html = rh.data_table(
+            ["A", "B"], [["x", "1"], ["y", "2"]], cell_bg={(1, 1): "#F8DEDF"}
+        )
+        self.assertIn('bgcolor="#F8DEDF"', html)
+        self.assertIn("background-color:#F8DEDF", html)
+        self.assertEqual(html.count("bgcolor"), 1)

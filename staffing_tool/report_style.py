@@ -716,6 +716,95 @@ def trend_fig(
     return fig
 
 
+def _pct_value(cell: str) -> float | None:
+    """'95.2%' -> 95.2; an em dash (base has no plan for that vehicle) -> None."""
+    try:
+        return float(cell.rstrip("%"))
+    except (AttributeError, ValueError):
+        return None
+
+
+def base_coverage_fig(
+    base_coverage: list[tuple[str, str, str, str, str]],
+    targets: dict[str, float] | None = None,
+):
+    """Coverage by base as two bar panels, rotor wing beside ground.
+
+    Rows are the coverage table's (base, RW shifts, RW %, GR shifts, GR %).
+    A base with no plan for a vehicle type (an em dash) is left off that
+    panel rather than drawn as a zero. Bars are one color, labeled with the
+    value; the system coverage target is named in the subtitle and drawn as
+    a dashed line, so the reader sees which bases fall short of it.
+    """
+    targets = targets or {}
+    panels = (
+        ("Rotor wing (RW) availability", 2, "System RW Coverage %"),
+        ("Ground (GR) availability", 4, "System GR Coverage %"),
+    )
+    n_rows = max(
+        (sum(1 for r in base_coverage if _pct_value(r[idx]) is not None))
+        for _t, idx, _m in panels
+    )
+    fig, axes = plt.subplots(1, 2, figsize=(7.5, 0.5 + 0.32 * max(n_rows, 2)))
+    fig.patch.set_facecolor("white")
+    for ax, (title, idx, metric) in zip(axes, panels, strict=True):
+        rows = [(r[0], _pct_value(r[idx])) for r in base_coverage]
+        rows = [(b, v) for b, v in rows if v is not None]
+        names = [b for b, _v in rows]
+        vals = [v for _b, v in rows]
+        y = list(range(len(rows)))
+        ax.barh(y, vals, color=C_BLUE, height=0.55, zorder=2)
+        ax.set_yticks(y)
+        ax.set_yticklabels(names, fontsize=7, color=C_INK)
+        ax.invert_yaxis()
+        ax.set_xlim(0, 104)
+        for i, v in enumerate(vals):
+            # Inside the bar end in white, so the label never sits on the
+            # target line; outside only when the bar is too short to hold it.
+            if v >= 20:
+                ax.text(
+                    v - 1.5,
+                    i,
+                    f"{v:.1f}%",
+                    va="center",
+                    ha="right",
+                    fontsize=7,
+                    color="white",
+                    fontweight="bold",
+                    zorder=4,
+                )
+            else:
+                ax.text(v + 1.5, i, f"{v:.1f}%", va="center", fontsize=7, color=C_INK)
+        target = targets.get(metric)
+        ax.set_title(
+            title, fontsize=8, color=C_INK, loc="left", fontweight="bold", pad=10
+        )
+        if target is not None:
+            ax.axvline(
+                100.0 * target,
+                color=C_MUTED,
+                linewidth=1,
+                linestyle=(0, (3, 3)),
+                label=f"{metric} target",
+                zorder=3,
+            )
+            ax.text(
+                0,
+                1.01,
+                f"target ≥ {100.0 * target:.0f}%",
+                transform=ax.transAxes,
+                fontsize=6.5,
+                color=C_MUTED,
+            )
+        for side in ("top", "right", "bottom"):
+            ax.spines[side].set_visible(False)
+        ax.spines["left"].set_color(C_MGRAY)
+        ax.set_xticks([])
+        ax.tick_params(axis="y", length=0)
+    fig.tight_layout(pad=0.3, w_pad=2.0)
+    return fig
+
+
 def exception_bar_fig(leave_breakdown: list[tuple[str, int]]):
     """Horizontal exception-count bars, largest first, labeled count and share.
 
