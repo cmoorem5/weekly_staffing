@@ -21,7 +21,7 @@ from staffing_tool.metrics import (
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_html_report import load_monthly_board_data
 from staffing_tool.monthly_report import export_monthly_report
-from staffing_tool.report_style import _axis_top
+from staffing_tool.report_style import _panel_range
 from tests._temp_db import TempDbTestCase
 
 
@@ -79,16 +79,22 @@ class WeeklyLeaveTotalTests(unittest.TestCase):
         self.assertEqual(compute_week_metrics(row, [], []).leave_total, 28)
 
 
-class AxisTopTests(unittest.TestCase):
-    def test_keeps_floor_for_normal_values(self):
-        self.assertEqual(_axis_top([4.0, 12.5, 29.9], floor=30), 30)
+class PanelRangeTests(unittest.TestCase):
+    """Each trend panel zooms on its data so real movement is visible."""
 
-    def test_expands_past_floor_so_spikes_stay_on_chart(self):
-        self.assertEqual(_axis_top([12.0, 34.2], floor=30), 40)
-        self.assertEqual(_axis_top([30.0], floor=30), 40)
+    def test_rates_zoom_under_a_100_percent_ceiling(self):
+        self.assertEqual(_panel_range([88.0, 95.4], higher_is_better=True), (86, 98))
+
+    def test_zoomed_window_is_at_least_ten_points_tall(self):
+        self.assertEqual(_panel_range([93.0, 94.0], higher_is_better=True), (86, 96))
+
+    def test_lower_is_better_starts_at_zero_and_keeps_spikes_on_chart(self):
+        self.assertEqual(_panel_range([4.0, 6.1], higher_is_better=False), (0, 10))
+        self.assertEqual(_panel_range([12.0, 34.2], higher_is_better=False), (0, 38))
 
     def test_empty_series(self):
-        self.assertEqual(_axis_top([], floor=110), 110)
+        self.assertEqual(_panel_range([], higher_is_better=True), (0, 100))
+        self.assertEqual(_panel_range([], higher_is_better=False), (0, 10))
 
 
 class ReportPathConsistencyTests(TempDbTestCase):
@@ -150,6 +156,32 @@ class ReportPathConsistencyTests(TempDbTestCase):
     def test_monthly_html_per_role_ot_includes_legacy_week(self):
         data = load_monthly_board_data(self.db_path, "2025-12-01", "2025-12-31")
         self.assertEqual(dict(data.ot_by_role), {"RN": 6, "Paramedic": 4, "EMT": 2})
+
+    def test_weekly_ot_by_role_falls_back_on_legacy_week(self):
+        from staffing_tool import weekly_pdf_report as W
+
+        legacy = W.load_week_report_data(self.db_path, "2025-12-07")
+        # Legacy week: no day/night split, so those show unknown while the
+        # per-role totals come from the aggregate columns (was all zeros).
+        self.assertEqual(
+            W._ot_rows(legacy),
+            [
+                ["RN", "—", "—", "4"],
+                ["Paramedic", "—", "—", "3"],
+                ["EMT", "—", "—", "2"],
+                ["Total", "—", "—", "9"],
+            ],
+        )
+        split = W.load_week_report_data(self.db_path, "2025-12-14")
+        self.assertEqual(
+            W._ot_rows(split),
+            [
+                ["RN", "1", "1", "2"],
+                ["Paramedic", "1", "0", "1"],
+                ["EMT", "0", "0", "0"],
+                ["Total", "2", "1", "3"],
+            ],
+        )
 
     def test_monthly_excel_volumes_match_metrics(self):
         path = export_monthly_report(

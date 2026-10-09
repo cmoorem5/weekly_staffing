@@ -80,17 +80,23 @@ def _kpi_rows(data: MonthlyBoardData) -> list[tuple[str, str, str, colors.Color]
     return rows
 
 
-def _kpi_table(rows: list[tuple[str, str, str, colors.Color]]) -> Table:
+def _kpi_table(
+    rows: list[tuple[str, str, str, colors.Color]],
+    statuses: dict[str, tuple[str, str]] | None = None,
+) -> Table:
+    """KPI tiles: value, delta vs prior, label, and a status line when targeted."""
     n = len(rows)
     col_w = style.USABLE_W / n
+    statuses = statuses or {}
     values = [[v for _, v, _, _ in rows]]
     deltas = [[d for _, _, d, _ in rows]]
     labels = [[label for label, _, _, _ in rows]]
-    t = Table(
-        values + deltas + labels,
-        colWidths=[col_w] * n,
-        rowHeights=[0.5 * inch, 0.22 * inch, 0.28 * inch],
-    )
+    table_rows = values + deltas + labels
+    heights = [0.5 * inch, 0.22 * inch, 0.28 * inch]
+    if statuses:
+        table_rows.append([statuses.get(label, ("", ""))[0] for label, *_ in rows])
+        heights.append(0.2 * inch)
+    t = Table(table_rows, colWidths=[col_w] * n, rowHeights=heights)
     cmds = [
         ("BACKGROUND", (0, 0), (-1, -1), style.WHITE),
         ("BOX", (0, 0), (-1, -1), 0.5, style.MGRAY),
@@ -119,6 +125,20 @@ def _kpi_table(rows: list[tuple[str, str, str, colors.Color]]) -> Table:
         cmds.append(("LINEBEFORE", (col, 0), (col, -1), 0.5, style.MGRAY))
     for col, (_, _, _, color) in enumerate(rows):
         cmds.append(("TEXTCOLOR", (col, 1), (col, 1), color))
+    if statuses:
+        cmds += [
+            ("FONTNAME", (0, 3), (-1, 3), style.F("BarlowBold")),
+            ("FONTSIZE", (0, 3), (-1, 3), 6.5),
+            ("ALIGN", (0, 3), (-1, 3), "CENTER"),
+            ("VALIGN", (0, 3), (-1, 3), "TOP"),
+            ("TOPPADDING", (0, 3), (-1, 3), 0),
+            ("BOTTOMPADDING", (0, 2), (-1, 2), 1),
+        ]
+        for col, (label, *_rest) in enumerate(rows):
+            if label in statuses:
+                c = colors.HexColor(statuses[label][1])
+                cmds.append(("TEXTCOLOR", (col, 3), (col, 3), c))
+                cmds.append(("LINEABOVE", (col, 0), (col, 0), 3, c))
     t.setStyle(TableStyle(cmds))
     return t
 
@@ -247,7 +267,7 @@ def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
         KeepTogether(
             [
                 style.section_bar("KEY PERFORMANCE INDICATORS"),
-                _kpi_table(_kpi_rows(data)),
+                _kpi_table(_kpi_rows(data), data.kpi_status),
                 Spacer(1, 4),
                 _note(kpi_note),
             ]

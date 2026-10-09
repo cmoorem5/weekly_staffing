@@ -39,7 +39,7 @@ from staffing_tool.models import (
     WeeklyLeaveDetail,
     WeeklyStaffing,
 )
-from staffing_tool.report_data import load_trend_targets
+from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -68,6 +68,8 @@ class QuarterlyReportContext:
     # Per-week metrics in week order, for callers that re-bucket the window
     # (the annual report groups these by month).
     week_metrics: list[WeekMetrics] = field(default_factory=list)
+    # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
+    kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def _pct(v: float) -> str:
@@ -348,6 +350,16 @@ def load_window_report_data(
             weekly_detail=weekly_detail,
             trend_targets=load_trend_targets(session),
             week_metrics=metrics_list,
+            kpi_status=kpi_tile_statuses(
+                session,
+                {
+                    "Avg Staffing Rate": rollups.avg_staffing_rate,
+                    "Avg OT Dependency": rollups.avg_ot_dependency,
+                    "Avg Shift Exception %": rollups.avg_leave_exposure,
+                    "Avg System RW %": rollups.avg_system_rw_pct,
+                    "Avg System GR %": rollups.avg_system_gr_pct,
+                },
+            ),
         )
 
 
@@ -450,11 +462,6 @@ def _weekly_detail_table(ctx: QuarterlyReportContext):
 def _build_trend_fig(ctx: QuarterlyReportContext):
     return style.trend_fig(
         ctx.weekly_trend,
-        height_in=3.6,
-        exception_label="Shift Exception %",
-        xtick_fontsize=6,
-        xtick_rotation=30,
-        xtick_ha="right",
         # Also called with MonthlyBoardData by the monthly PDF.
         targets=getattr(ctx, "trend_targets", None),
     )
@@ -489,7 +496,7 @@ def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
         ),
         Spacer(1, 10),
         style.section_bar("KEY PERFORMANCE INDICATORS"),
-        style.kpi_row(ctx.kpi_data),
+        style.kpi_row(ctx.kpi_data, ctx.kpi_status),
         Spacer(1, 10),
         style.section_bar("WEEKLY TREND"),
         style.chart_to_image(_build_trend_fig(ctx), style.USABLE_W),
@@ -596,7 +603,9 @@ def build_html(
         else ""
     )
     body = rh.section_bar("KEY PERFORMANCE INDICATORS — QUARTER AVERAGES")
-    body += rh.body_cell(rh.kpi_strip(_kpis_with_deltas(ctx, prior_ctx)) + kpi_note)
+    body += rh.body_cell(
+        rh.kpi_strip(_kpis_with_deltas(ctx, prior_ctx), ctx.kpi_status) + kpi_note
+    )
 
     if trend_b64:
         body += rh.section_bar("WEEKLY TREND THIS QUARTER")
@@ -613,7 +622,7 @@ def build_html(
         rh.chart_img(exc_b64, "Exception breakdown")
         + '<div style="height:12px;"></div>'
         + rh.exception_mix_table(ctx.leave_breakdown, top2)
-        + rh.note(f"Top drivers (red in chart): {top2_note or 'n/a'}.")
+        + rh.note(f"Top drivers: {top2_note or 'n/a'}.")
     )
 
     body += rh.section_bar("PERIOD VOLUMES BY ROLE")

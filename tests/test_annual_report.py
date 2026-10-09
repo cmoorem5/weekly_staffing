@@ -1,5 +1,6 @@
 """Annual (fiscal-year) staffing report: month bucketing, completeness, exports."""
 
+import math
 import os
 import tempfile
 import unittest
@@ -59,6 +60,31 @@ class AnnualReportTests(TempDbTestCase):
         oct_row = ctx.window.week_metrics[1:3]
         expected = sum(m.staffing_rate for m in oct_row) / 2 * 100
         self.assertAlmostEqual(ctx.monthly_trend[1][1], expected)
+
+    def test_prior_year_aligns_by_fiscal_month(self):
+        ctx = load_annual_report_data(self.db_path, 2026)
+        self.assertEqual(ctx.prior.period, "FY2025")
+        aligned = ctx.prior_trend_aligned()
+        self.assertEqual(len(aligned), len(ctx.monthly_trend))
+        # FY2025 only has an October week: it lands in October's slot (index
+        # 1, after the Sep 2025 edge month); the other slots are empty.
+        self.assertEqual(aligned[1][0], "Oct 24")
+        self.assertTrue(math.isnan(aligned[0][1]))
+        self.assertTrue(math.isnan(aligned[2][1]))
+
+    def test_trend_chart_draws_the_prior_year(self):
+        from staffing_tool import annual_report as A
+        from staffing_tool import report_style as style
+
+        fig = A._build_trend_fig(load_annual_report_data(self.db_path, 2026))
+        try:
+            self.assertTrue(
+                any(ln.get_color() == style.C_PRIOR for ln in fig.axes[0].get_lines())
+            )
+        finally:
+            import matplotlib.pyplot as plt
+
+            plt.close(fig)
 
     def test_completeness_note_flags_missing_weeks(self):
         ctx = load_annual_report_data(self.db_path, 2026)

@@ -136,6 +136,50 @@ def _metrics_for_weeks(
     return result
 
 
+# KPI tile label (with or without an "Avg " prefix) -> KpiThreshold metric name.
+# Tiles not listed here (Day Fill, Training Events, ...) carry no status.
+KPI_TILE_METRICS = {
+    "Staffing Rate": "Staffing Rate",
+    "OT Dependency": "OT Dependency",
+    "Shift Exception %": "Shift Exception %",
+    "System RW %": "System RW Coverage %",
+    "System GR %": "System GR Coverage %",
+}
+
+# Status colors for KPI tiles, computed in code (spec: never Excel
+# conditional formatting). Paired with the status words, never shown alone.
+STATUS_COLORS = {"Green": "#2F7D4F", "Yellow": "#B7791F", "Red": "#C12126"}
+
+
+def kpi_tile_statuses(
+    session: Session, values: dict[str, float]
+) -> dict[str, tuple[str, str]]:
+    """Tile label -> (status line, hex color) for KPIs that have a target.
+
+    ``values`` maps tile labels to fractions. The line reads e.g.
+    "Monitor · ≥ 95%" using the spec wording (On target / Monitor / Action
+    needed); a KPI with no threshold row, or no usable bound, is left out so
+    its tile shows the number alone rather than a made-up status.
+    """
+    thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}
+    out: dict[str, tuple[str, str]] = {}
+    for label, value in values.items():
+        metric = KPI_TILE_METRICS.get(label.removeprefix("Avg "))
+        t = thresholds.get(metric) if metric else None
+        if t is None or value is None:
+            continue
+        rag = evaluate_rag(value, t)
+        bound = green_boundary(t)
+        if rag not in STATUS_COLORS or bound is None:
+            continue
+        op = "≥" if (t.higher_is_better or 0) != 0 else "≤"
+        out[label] = (
+            f"{_status_display(rag)} · {op} {100.0 * bound:.0f}%",
+            STATUS_COLORS[rag],
+        )
+    return out
+
+
 # KPIs the PDF trend charts draw a target line for.
 TREND_TARGET_METRICS = ("Staffing Rate", "Shift Exception %", "OT Dependency")
 

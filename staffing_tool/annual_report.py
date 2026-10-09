@@ -71,6 +71,19 @@ class AnnualReportContext:
     # (label, staffing %, OT %, exception %) per month, 0-100 scale
     monthly_trend: list[tuple[str, float, float, float]] = field(default_factory=list)
     monthly_detail: list[tuple[str, ...]] = field(default_factory=list)
+    # Fiscal-month position of each monthly_trend row (0 = the FY's first
+    # month), so a prior year lines up month for month even when it is
+    # missing months.
+    month_keys: list[int] = field(default_factory=list)
+    prior: AnnualReportContext | None = None
+
+    def prior_trend_aligned(self) -> list[tuple[str, float, float, float]]:
+        """Prior FY's monthly trend in this FY's month slots (NaN where absent)."""
+        if self.prior is None:
+            return []
+        nan = float("nan")
+        by_key = dict(zip(self.prior.month_keys, self.prior.monthly_trend, strict=True))
+        return [by_key.get(k, ("", nan, nan, nan)) for k in self.month_keys]
 
     @property
     def weeks_count(self) -> int:
@@ -119,8 +132,8 @@ def list_fiscal_years(db_path: str) -> list[dict[str, Any]]:
 
 
 def _monthly_rows(
-    metrics: list[WeekMetrics],
-) -> tuple[list[tuple[str, float, float, float]], list[tuple[str, ...]]]:
+    metrics: list[WeekMetrics], fy_start: date
+) -> tuple[list[tuple[str, float, float, float]], list[tuple[str, ...]], list[int]]:
     by_month: dict[tuple[int, int], list[WeekMetrics]] = {}
     for wm in metrics:
         d = datetime.strptime(wm.week_start, "%Y-%m-%d").date()
@@ -128,11 +141,13 @@ def _monthly_rows(
 
     trend: list[tuple[str, float, float, float]] = []
     detail: list[tuple[str, ...]] = []
+    keys: list[int] = []
     for (year, month), weeks in sorted(by_month.items()):
         r = compute_period_rollups(weeks)
         if r is None:
             continue
         label = date(year, month, 1).strftime("%b %Y")
+        keys.append((year * 12 + month) - (fy_start.year * 12 + fy_start.month))
         trend.append(
             (
                 date(year, month, 1).strftime("%b %y"),
@@ -152,16 +167,25 @@ def _monthly_rows(
                 style.pct(r.avg_system_gr_pct),
             )
         )
-    return trend, detail
+    return trend, detail, keys
 
 
-def load_annual_report_data(db_path: str, fy: int) -> AnnualReportContext:
+def load_annual_report_data(
+    db_path: str, fy: int, *, include_prior: bool = True
+) -> AnnualReportContext:
+    """Full-FY context; ``prior`` holds the previous FY when it has any data."""
     start, end = _fy_window(fy)
     period = f"FY{fy}"
     window = load_window_report_data(
         db_path, start, end, period=period, fy_label_year=fy, quarter=0
     )
-    trend, detail = _monthly_rows(window.week_metrics)
+    trend, detail, keys = _monthly_rows(window.week_metrics, start)
+    prior = None
+    if include_prior:
+        try:
+            prior = load_annual_report_data(db_path, fy - 1, include_prior=False)
+        except ValueError:
+            pass  # first FY with data: nothing to compare against
     return AnnualReportContext(
         fy_label_year=fy,
         period=period,
@@ -170,18 +194,18 @@ def load_annual_report_data(db_path: str, fy: int) -> AnnualReportContext:
         window=window,
         monthly_trend=trend,
         monthly_detail=detail,
+        month_keys=keys,
+        prior=prior,
     )
 
 
 def _build_trend_fig(ctx: AnnualReportContext):
     return style.trend_fig(
         ctx.monthly_trend,
-        height_in=3.6,
-        exception_label="Shift Exception %",
-        xtick_fontsize=7,
-        xtick_rotation=30,
-        xtick_ha="right",
         targets=ctx.window.trend_targets,
+        prior=ctx.prior_trend_aligned(),
+        current_label=ctx.period,
+        prior_label=ctx.prior.period if ctx.prior else "",
     )
 
 
@@ -231,7 +255,7 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
         ),
         Spacer(1, 10),
         style.section_bar("KEY PERFORMANCE INDICATORS — FISCAL YEAR AVERAGES"),
-        style.kpi_row(w.kpi_data),
+        style.kpi_row(w.kpi_data, w.kpi_status),
         Spacer(1, 4),
         Paragraph(ctx.completeness_note, note_style),
         Spacer(1, 10),
@@ -281,7 +305,10 @@ def build_html(
         )
     body = rh.section_bar("KEY PERFORMANCE INDICATORS — FISCAL YEAR AVERAGES")
     body += rh.body_cell(
-        rh.kpi_strip(_kpis_with_deltas(w, prior_ctx.window if prior_ctx else None))
+        rh.kpi_strip(
+            _kpis_with_deltas(w, prior_ctx.window if prior_ctx else None),
+            w.kpi_status,
+        )
         + kpi_note
     )
 
@@ -315,7 +342,7 @@ def build_html(
         )
         + '<div style="height:12px;"></div>'
         + rh.exception_mix_table(w.leave_breakdown, top2)
-        + rh.note(f"Top drivers (red in chart): {top2_note or 'n/a'}.")
+        + rh.note(f"Top drivers: {top2_note or 'n/a'}.")
     )
 
     body += rh.section_bar("ANNUAL VOLUMES BY ROLE")
@@ -364,9 +391,4 @@ def export_annual_staffing_pdf(db_path: str, fy: int, output_dir: str) -> str:
 
 def export_annual_staffing_html(db_path: str, fy: int, output_dir: str) -> str:
     ctx = load_annual_report_data(db_path, fy)
-    prior_ctx = None
-    try:
-        prior_ctx = load_annual_report_data(db_path, fy - 1)
-    except ValueError:
-        pass  # first FY with data — no comparison to show
-    return build_html(ctx, _output_path(output_dir, ctx, "html"), prior_ctx)
+    return build_html(ctx, _output_path(output_dir, ctx, "html"), ctx.prior)
