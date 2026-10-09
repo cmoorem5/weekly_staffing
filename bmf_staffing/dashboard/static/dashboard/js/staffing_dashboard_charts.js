@@ -138,7 +138,9 @@
           },
         },
         scales: {
-          y: { ticks: { callback: (v) => v + "%" } },
+          // Round tick values: Chart.js steps by fractions on a tight axis,
+          // and the raw float printed as "93.800000000000001%".
+          y: { ticks: { callback: (v) => Number(v.toFixed(1)) + "%" } },
         },
       },
     });
