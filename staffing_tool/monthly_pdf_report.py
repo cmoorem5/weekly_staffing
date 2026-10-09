@@ -154,24 +154,7 @@ def _note(text: str) -> Paragraph:
 
 
 def _role_fill_table(data: MonthlyBoardData) -> Table:
-    headers = ["Role", "Worked", "Capacity", "Fill Rate"]
-    col_w = style.full_width_col_widths([2.0, 1.5, 1.5, 1.5])
-    rows = [headers] + [
-        [rf.label, str(rf.worked), str(rf.capacity), style.pct(rf.rate)]
-        for rf in data.role_fill
-    ]
-    t = Table(rows, colWidths=col_w)
-    t.setStyle(
-        TableStyle(
-            style.data_table_style()
-            + [
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [style.WHITE, style.LGRAY]),
-                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-            ]
-            + style.num_style_cells([1, 2, 3])
-        )
-    )
-    return t
+    return style.role_fill_table(data.role_fill)
 
 
 def _ot_table(data: MonthlyBoardData) -> Table:
@@ -294,8 +277,6 @@ def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
                 style.chart_to_image(
                     _build_exception_bar_fig(data), style.USABLE_W, 1.8 * inch
                 ),
-                Spacer(1, 8),
-                style.exception_table(data.leave_breakdown),
             ]
         ),
         section_gap,

@@ -34,8 +34,10 @@ from staffing_tool.metrics import (
     ROLE_CAPACITY_PER_WEEK,
     ROLE_FILL_LABELS,
     TOTAL_PERSON_SHIFTS,
+    RoleFill,
     WeekMetrics,
     compute_period_rollups,
+    compute_role_fill,
     compute_week_metrics,
     coverages_by_week,
     role_ot_totals,
@@ -46,6 +48,7 @@ from staffing_tool.models import (
     WeeklyStaffing,
 )
 from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
+from staffing_tool.report_summary import summary_lines
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -76,6 +79,10 @@ class QuarterlyReportContext:
     week_metrics: list[WeekMetrics] = field(default_factory=list)
     # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
     kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # Pooled fill by role over the window (worked vs seat capacity)
+    role_fill: list[RoleFill] = field(default_factory=list)
+    # Plain-language lines for the top of the report (report_summary)
+    summary: list[str] = field(default_factory=list)
 
 
 def _pct(v: float) -> str:
@@ -356,6 +363,15 @@ def load_window_report_data(
             weekly_detail=weekly_detail,
             trend_targets=load_trend_targets(session),
             week_metrics=metrics_list,
+            role_fill=compute_role_fill(session, week_starts),
+            summary=summary_lines(
+                unit="week",
+                buckets=weekly_trend,
+                avg_staffing=rollups.avg_staffing_rate,
+                avg_ot=rollups.avg_ot_dependency,
+                targets=load_trend_targets(session),
+                base_coverage=base_coverage,
+            ),
             kpi_status=kpi_tile_statuses(
                 session,
                 {
@@ -439,10 +455,6 @@ def _build_base_coverage_fig(ctx):
     )
 
 
-def _exceptions_table(ctx: QuarterlyReportContext):
-    return style.exception_table(ctx.leave_breakdown)
-
-
 def _weekly_detail_table(ctx: QuarterlyReportContext):
     headers = ["Week", "Staffing Rate", "OT Dependency", "Shift Exception %"]
     col_w = style.full_width_col_widths([1.5, 2.0, 2.0, 2.0])
@@ -484,6 +496,54 @@ def _build_exception_bar_fig(ctx: QuarterlyReportContext):
     return style.exception_bar_fig(ctx.leave_breakdown)
 
 
+def _summary_flowables(ctx) -> list:
+    """SUMMARY section (a bar plus bullets), or nothing when there are no lines."""
+    if not ctx.summary:
+        return []
+    return [
+        KeepTogether([style.section_bar("SUMMARY"), style.summary_block(ctx.summary)]),
+        Spacer(1, 10),
+    ]
+
+
+def _role_fill_flowables(ctx) -> list:
+    """FILL RATE BY ROLE, skipped when no week in the window has per-person rows."""
+    if not any(rf.worked for rf in ctx.role_fill):
+        return []
+    return [
+        KeepTogether(
+            [
+                style.section_bar("FILL RATE BY ROLE"),
+                style.role_fill_table(ctx.role_fill),
+            ]
+        ),
+        Spacer(1, 10),
+    ]
+
+
+def _summary_html(ctx) -> str:
+    from staffing_tool import report_html as rh
+
+    if not ctx.summary:
+        return ""
+    return rh.section_bar("SUMMARY") + rh.body_cell(rh.summary_list(ctx.summary))
+
+
+def _role_fill_html(ctx) -> str:
+    from staffing_tool import report_html as rh
+
+    if not any(rf.worked for rf in ctx.role_fill):
+        return ""
+    return rh.section_bar("FILL RATE BY ROLE") + rh.body_cell(
+        rh.data_table(
+            style.ROLE_FILL_HEADERS,
+            style.role_fill_rows(ctx.role_fill),
+            right_cols={1, 2, 3},
+        )
+        + rh.note(style.ROLE_FILL_NOTE)
+    )
+
+
 def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
     style.register_fonts()
     running_header = f"Quarterly Staffing Report \u2014 {ctx.period}"
@@ -508,17 +568,12 @@ def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
             meta_line=f"Prepared {ctx.prepared_date} \u00b7 CONFIDENTIAL",
         ),
         Spacer(1, 10),
+        *_summary_flowables(ctx),
         style.section_bar("KEY PERFORMANCE INDICATORS"),
         style.kpi_row(ctx.kpi_data, ctx.kpi_status),
         Spacer(1, 10),
         style.section_bar("WEEKLY TREND"),
         style.chart_to_image(_build_trend_fig(ctx), style.USABLE_W),
-        Spacer(1, 10),
-        style.section_bar("EXCEPTION BREAKDOWN"),
-        style.chart_to_image(_build_exception_bar_fig(ctx), style.USABLE_W, 1.8 * inch),
-        Spacer(1, 10),
-        style.section_bar("PERIOD VOLUMES"),
-        _period_volumes_table(ctx),
         Spacer(1, 10),
         KeepTogether(
             [
@@ -529,8 +584,17 @@ def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
             ]
         ),
         Spacer(1, 10),
-        style.section_bar("SCHEDULE EXCEPTIONS"),
-        _exceptions_table(ctx),
+        KeepTogether(
+            [
+                style.section_bar("EXCEPTION BREAKDOWN"),
+                style.chart_to_image(
+                    _build_exception_bar_fig(ctx), style.USABLE_W, 1.8 * inch
+                ),
+            ]
+        ),
+        Spacer(1, 10),
+        *_role_fill_flowables(ctx),
+        KeepTogether([style.section_bar("PERIOD VOLUMES"), _period_volumes_table(ctx)]),
         Spacer(1, 10),
         style.section_bar("WEEKLY DETAIL"),
         _weekly_detail_table(ctx),
@@ -621,7 +685,8 @@ def build_html(
         if prior_ctx
         else ""
     )
-    body = rh.section_bar("KEY PERFORMANCE INDICATORS — QUARTER AVERAGES")
+    body = _summary_html(ctx)
+    body += rh.section_bar("KEY PERFORMANCE INDICATORS — QUARTER AVERAGES")
     body += rh.body_cell(
         rh.kpi_strip(_kpis_with_deltas(ctx, prior_ctx), ctx.kpi_status) + kpi_note
     )
@@ -629,6 +694,19 @@ def build_html(
     if trend_b64:
         body += rh.section_bar("WEEKLY TREND THIS QUARTER")
         body += rh.body_cell(rh.chart_img(trend_b64, "Weekly staffing trend"))
+
+    body += rh.section_bar("COVERAGE BY BASE")
+    body += rh.body_cell(
+        rh.chart_img(
+            rh.fig_to_png_base64(_build_base_coverage_fig(ctx)), "Coverage by base"
+        )
+        + '<div style="height:12px;"></div>'
+        + rh.data_table(
+            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+            [list(r) for r in ctx.base_coverage],
+            right_cols={1, 2, 3, 4},
+        )
+    )
 
     top2_note = ", ".join(
         f"{code} ({count})"
@@ -643,6 +721,8 @@ def build_html(
         + rh.exception_mix_table(ctx.leave_breakdown, top2)
         + rh.note(f"Top drivers: {top2_note or 'n/a'}.")
     )
+
+    body += _role_fill_html(ctx)
 
     body += rh.section_bar("PERIOD VOLUMES BY ROLE")
     vol_rows = [list(r) for r in ctx.period_volumes] + [list(ctx.period_vol_total)]
@@ -660,19 +740,6 @@ def build_html(
             vol_rows,
             right_cols={1, 2, 3, 4, 5, 6},
             total_row=True,
-        )
-    )
-
-    body += rh.section_bar("COVERAGE BY BASE")
-    body += rh.body_cell(
-        rh.chart_img(
-            rh.fig_to_png_base64(_build_base_coverage_fig(ctx)), "Coverage by base"
-        )
-        + '<div style="height:12px;"></div>'
-        + rh.data_table(
-            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
-            [list(r) for r in ctx.base_coverage],
-            right_cols={1, 2, 3, 4},
         )
     )
 

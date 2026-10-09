@@ -47,9 +47,14 @@ from staffing_tool.quarterly_pdf_report import (
     _build_base_coverage_fig,
     _kpis_with_deltas,
     _period_volumes_table,
+    _role_fill_flowables,
+    _role_fill_html,
+    _summary_flowables,
+    _summary_html,
     load_window_report_data,
 )
-from staffing_tool.report_data import STATUS_TINTS, kpi_grader
+from staffing_tool.report_data import STATUS_TINTS, kpi_grader, load_trend_targets
+from staffing_tool.report_summary import summary_lines
 
 # monthly_detail column index -> KPI label it is graded against.
 MONTHLY_GRADED_COLUMNS = {
@@ -102,6 +107,7 @@ class AnnualReportContext:
     # graded column, keyed by column index (MONTHLY_GRADED_COLUMNS).
     monthly_status: list[dict[int, str]] = field(default_factory=list)
     prior: AnnualReportContext | None = None
+    summary: list[str] = field(default_factory=list)
 
     def prior_trend_aligned(self) -> list[tuple[str, float, float, float]]:
         """Prior FY's monthly trend in this FY's month slots (NaN where absent)."""
@@ -234,8 +240,27 @@ def load_annual_report_data(
             prior = load_annual_report_data(db_path, fy - 1, include_prior=False)
         except ValueError:
             pass  # first FY with data: nothing to compare against
+    rollups = compute_period_rollups(window.week_metrics)
+    with session_scope(db_path) as session:
+        targets = load_trend_targets(session)
+    # Month buckets labeled "Feb 2026" (not the chart's "Feb 26", which reads
+    # like a date in a sentence).
+    buckets = [(row[0], *t[1:]) for row, t in zip(detail, trend, strict=True)]
+    summary = (
+        summary_lines(
+            unit="month",
+            buckets=buckets,
+            avg_staffing=rollups.avg_staffing_rate,
+            avg_ot=rollups.avg_ot_dependency,
+            targets=targets,
+            base_coverage=window.base_coverage,
+        )
+        if rollups
+        else []
+    )
     return AnnualReportContext(
         fy_label_year=fy,
+        summary=summary,
         period=period,
         dates=window.dates,
         weeks_expected=((end - start).days + 1) // 7,
@@ -322,6 +347,7 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
             meta_line=f"Prepared {w.prepared_date} · CONFIDENTIAL",
         ),
         Spacer(1, 10),
+        *_summary_flowables(ctx),
         style.section_bar("KEY PERFORMANCE INDICATORS — FISCAL YEAR AVERAGES"),
         style.kpi_row(w.kpi_data, w.kpi_status),
         Spacer(1, 4),
@@ -335,17 +361,6 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
         Spacer(1, 4),
         Paragraph(SHADING_NOTE, note_style),
         Spacer(1, 10),
-        style.section_bar("EXCEPTION BREAKDOWN"),
-        style.chart_to_image(
-            style.exception_bar_fig(w.leave_breakdown), style.USABLE_W, 1.8 * inch
-        ),
-        Spacer(1, 10),
-        style.section_bar("SCHEDULE EXCEPTIONS"),
-        style.exception_table(w.leave_breakdown),
-        Spacer(1, 10),
-        style.section_bar("ANNUAL VOLUMES"),
-        _period_volumes_table(w),
-        Spacer(1, 10),
         KeepTogether(
             [
                 style.section_bar("COVERAGE BY BASE"),
@@ -354,6 +369,20 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
                 style.base_coverage_table(w.base_coverage, [1.8, 1.3, 1.3, 1.3, 1.8]),
             ]
         ),
+        Spacer(1, 10),
+        KeepTogether(
+            [
+                style.section_bar("EXCEPTION BREAKDOWN"),
+                style.chart_to_image(
+                    style.exception_bar_fig(w.leave_breakdown),
+                    style.USABLE_W,
+                    1.8 * inch,
+                ),
+            ]
+        ),
+        Spacer(1, 10),
+        *_role_fill_flowables(w),
+        KeepTogether([style.section_bar("ANNUAL VOLUMES"), _period_volumes_table(w)]),
         Spacer(1, 10),
     ]
     doc.build(
@@ -379,7 +408,8 @@ def build_html(
             f"Change shown vs {prior_ctx.period} (percentage points; "
             f"{prior_ctx.weeks_count} weeks of data)."
         )
-    body = rh.section_bar("KEY PERFORMANCE INDICATORS — FISCAL YEAR AVERAGES")
+    body = _summary_html(ctx)
+    body += rh.section_bar("KEY PERFORMANCE INDICATORS — FISCAL YEAR AVERAGES")
     body += rh.body_cell(
         rh.kpi_strip(
             _kpis_with_deltas(w, prior_ctx.window if prior_ctx else None),
@@ -405,6 +435,19 @@ def build_html(
         + rh.note(SHADING_NOTE)
     )
 
+    body += rh.section_bar("COVERAGE BY BASE")
+    body += rh.body_cell(
+        rh.chart_img(
+            rh.fig_to_png_base64(_build_base_coverage_fig(w)), "Coverage by base"
+        )
+        + '<div style="height:12px;"></div>'
+        + rh.data_table(
+            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+            [list(r) for r in w.base_coverage],
+            right_cols={1, 2, 3, 4},
+        )
+    )
+
     top2 = style.leave_top2(w.leave_breakdown)
     top2_note = ", ".join(
         f"{code} ({count})"
@@ -423,6 +466,8 @@ def build_html(
         + rh.note(f"Top drivers: {top2_note or 'n/a'}.")
     )
 
+    body += _role_fill_html(w)
+
     body += rh.section_bar("ANNUAL VOLUMES BY ROLE")
     body += rh.body_cell(
         rh.data_table(
@@ -430,19 +475,6 @@ def build_html(
             [list(r) for r in w.period_volumes] + [list(w.period_vol_total)],
             right_cols={1, 2, 3, 4, 5, 6},
             total_row=True,
-        )
-    )
-
-    body += rh.section_bar("COVERAGE BY BASE")
-    body += rh.body_cell(
-        rh.chart_img(
-            rh.fig_to_png_base64(_build_base_coverage_fig(w)), "Coverage by base"
-        )
-        + '<div style="height:12px;"></div>'
-        + rh.data_table(
-            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
-            [list(r) for r in w.base_coverage],
-            right_cols={1, 2, 3, 4},
         )
     )
 
