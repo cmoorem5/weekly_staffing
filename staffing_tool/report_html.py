@@ -235,21 +235,23 @@ def share_bar_rows(
 ) -> tuple[str, int]:
     """<tr> rows for an exception-mix table with inline share bars.
 
-    Returns (rows_html, total). ``highlight`` codes get the red bar.
+    Returns (rows_html, total). Every bar is one color, matching the
+    exception chart; ``highlight`` codes (the top drivers) get bold figures
+    instead of a red bar, which read as "this code is bad".
     """
     total = sum(c for _, c in breakdown)
     max_count = max((c for _, c in breakdown), default=1) or 1
     rows = ""
     for code, count in breakdown:
         pct = f"{100 * count / total:.0f}%" if total else EM
-        color = RED if code in highlight else BLUE
+        weight = "font-weight:bold;" if code in highlight else ""
         bar_w = int(100 * count / max_count) if count else 0
         rows += (
             f'<tr><td style="padding:6px 8px;font-weight:bold;border:1px solid {MGRAY};">{code}</td>'
-            f'<td style="padding:6px 4px;text-align:right;border:1px solid {MGRAY};">{count}</td>'
-            f'<td style="padding:6px 4px;text-align:right;border:1px solid {MGRAY};">{pct}</td>'
+            f'<td style="padding:6px 4px;text-align:right;border:1px solid {MGRAY};{weight}">{count}</td>'
+            f'<td style="padding:6px 4px;text-align:right;border:1px solid {MGRAY};{weight}">{pct}</td>'
             f'<td style="padding:6px 8px;border:1px solid {MGRAY};">'
-            f"{share_bar(bar_w, color)}</td></tr>"
+            f"{share_bar(bar_w, BLUE)}</td></tr>"
         )
     return rows, total
 
@@ -271,6 +273,12 @@ def exception_mix_table(breakdown: list[tuple[str, int]], highlight: set[str]) -
         f'<td align="right" style="padding:6px 4px;border:1px solid {MGRAY};">{"100%" if total else EM}</td>'
         f'<td style="border:1px solid {MGRAY};"></td></tr></table>'
     )
+
+
+def summary_list(lines: list[str]) -> str:
+    """Bulleted summary lines; plain <ul> renders in Outlook's Word engine."""
+    items = "".join(f'<li style="margin:0 0 4px;">{line}</li>' for line in lines)
+    return f'<ul style="margin:0;padding-left:18px;font-size:13px;color:#222;">{items}</ul>'
 
 
 def note(text: str) -> str:

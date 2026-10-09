@@ -16,9 +16,12 @@ from pathlib import Path
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     KeepTogether,
+    Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
@@ -97,6 +100,33 @@ class WeeklyReportContext:
     trend_targets: dict[str, float] = field(default_factory=dict)
     # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
     kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
+
+    @property
+    def has_daily_detail(self) -> bool:
+        """Per-day rows exist (weeks imported without them show "— / 12")."""
+        return any(not row[1].startswith(EM) for row in self.daily_data)
+
+    @property
+    def has_role_exceptions(self) -> bool:
+        """Per-role exception counts exist, or the week truly had none.
+
+        A week imported without per-role leave detail has exceptions in its
+        totals but zeros by role; printing those zeros reads as real data.
+        """
+        return any(self.exception_col_totals) or not any(
+            count for _code, count in self.leave_breakdown
+        )
+
+
+# Shown in place of a section whose data the week was imported without.
+NO_DAILY_DETAIL_NOTE = (
+    "Per-day detail isn't available for this week. It fills in when the "
+    "week's schedule workbook is imported (Import schedule)."
+)
+NO_ROLE_EXCEPTIONS_NOTE = (
+    "Exceptions by role aren't available for this week: it was imported "
+    "without per-role detail. Week totals are in the exception breakdown above."
+)
 
 
 def _pct(v: float) -> str:
@@ -519,10 +549,6 @@ def _build_base_coverage_fig(ctx: WeeklyReportContext):
     return style.base_coverage_fig(ctx.base_coverage, ctx.trend_targets)
 
 
-def _exception_table(ctx: WeeklyReportContext):
-    return style.exception_table(ctx.leave_breakdown)
-
-
 def _ot_rows(ctx: WeeklyReportContext) -> list[list[str]]:
     """OT-by-role body rows plus a Total row; unknown day/night show an em dash."""
 
@@ -585,6 +611,20 @@ def _ot_by_role_table(ctx: WeeklyReportContext):
         )
     )
     return t
+
+
+def _missing_note(text: str) -> Paragraph:
+    return Paragraph(
+        text,
+        ParagraphStyle(
+            "MissingSection",
+            fontName=style.F("BarlowRegular"),
+            fontSize=8.5,
+            leading=11,
+            textColor=colors.HexColor("#555555"),
+            spaceBefore=4,
+        ),
+    )
 
 
 def _exception_by_role_table(ctx: WeeklyReportContext):
@@ -697,10 +737,21 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
 
     for title, flowable, gap in (
         ("EXCEPTION BREAKDOWN THIS WEEK", _exception_bar_chart(ctx), 8),
-        ("SCHEDULE EXCEPTIONS", _exception_table(ctx), 10),
         ("OVERTIME BY ROLE", _ot_by_role_table(ctx), 10),
-        ("SCHEDULE EXCEPTIONS BY ROLE", _exception_by_role_table(ctx), 10),
-        ("DAILY DETAIL", _daily_table(ctx), 10),
+        (
+            "SCHEDULE EXCEPTIONS BY ROLE",
+            _exception_by_role_table(ctx)
+            if ctx.has_role_exceptions
+            else _missing_note(NO_ROLE_EXCEPTIONS_NOTE),
+            10,
+        ),
+        (
+            "DAILY DETAIL",
+            _daily_table(ctx)
+            if ctx.has_daily_detail
+            else _missing_note(NO_DAILY_DETAIL_NOTE),
+            10,
+        ),
         (
             "COVERAGE BY BASE",
             [
@@ -750,10 +801,9 @@ def _html_data_table(
 def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     leave_rows, total = _leave_rows(ctx)
     top2 = _leave_top2(ctx)
-    navy, blue, red, lgray, mgray = (
+    navy, blue, lgray, mgray = (
         "#052C47",
         "#2A4492",
-        "#C12126",
         "#E6E6E6",
         "#CBC7D1",
     )
@@ -766,14 +816,15 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     max_count = max((c for _, c in ctx.leave_breakdown), default=1) or 1
     exc_rows = ""
     for code, count, pct in leave_rows:
-        color = red if code in top2 else blue
+        # One bar color, matching the exception chart; top drivers in bold.
+        weight = "font-weight:bold;" if code in top2 else ""
         bar_w = int(100 * count / max_count) if count else 0
         exc_rows += (
             f'<tr><td style="padding:6px 8px;font-weight:bold;border:1px solid {mgray};">{code}</td>'
-            f'<td style="padding:6px 4px;text-align:right;border:1px solid {mgray};">{count}</td>'
-            f'<td style="padding:6px 4px;text-align:right;border:1px solid {mgray};">{pct}</td>'
+            f'<td style="padding:6px 4px;text-align:right;border:1px solid {mgray};{weight}">{count}</td>'
+            f'<td style="padding:6px 4px;text-align:right;border:1px solid {mgray};{weight}">{pct}</td>'
             f'<td style="padding:6px 8px;border:1px solid {mgray};">'
-            f"{rh.share_bar(bar_w, color)}</td></tr>"
+            f"{rh.share_bar(bar_w, blue)}</td></tr>"
         )
 
     banner = rh.title_banner(
@@ -787,17 +838,6 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     daily_rows = [list(r) for r in ctx.daily_data]
     ft, rw, gr, exc = ctx.daily_totals
     daily_rows.append(["Week Total", ft, rw, gr, exc])
-    has_daily_detail = any(not row[1].startswith(EM) for row in ctx.daily_data)
-    daily_detail_note = (
-        ""
-        if has_daily_detail
-        else (
-            '<p style="font-size:11px;color:#555;margin:10px 0 0;">'
-            "Per-day detail is filled when you import the schedule for this week. "
-            "Re-import from <strong>Import schedule</strong> if daily rows are blank."
-            "</p>"
-        )
-    )
     daily_table = _html_data_table(
         ["Day", "Filled / Target", "RW", "GR", "Exceptions"],
         daily_rows,
@@ -840,6 +880,18 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
         mgray=mgray,
         right_cols=set(range(1, len(EXCEPTION_GRID_COLS) + 1)),
         total_row=True,
+    )
+    # Sections the week was imported without show one line, not zeros.
+    exc_role_section = (
+        exc_role_table
+        + '<p style="font-size:11px;color:#555;margin:10px 0 0;">Shift counts by '
+        "role and exception type (AT &middot; LT &middot; SICK &middot; LOA "
+        "&middot; JURY &middot; BREV).</p>"
+        if ctx.has_role_exceptions
+        else rh.note(NO_ROLE_EXCEPTIONS_NOTE)
+    )
+    daily_section = (
+        daily_table if ctx.has_daily_detail else rh.note(NO_DAILY_DETAIL_NOTE)
     )
 
     top2_note = ", ".join(
@@ -945,13 +997,11 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 </td></tr>
 
 {_html_section_bar("SCHEDULE EXCEPTIONS BY ROLE", navy)}
-<tr><td style="padding:12px 16px;">{exc_role_table}
-<p style="font-size:11px;color:#555;margin:10px 0 0;">Shift counts by role and exception type (AT &middot; LT &middot; SICK &middot; LOA &middot; JURY &middot; BREV).</p>
+<tr><td style="padding:12px 16px;">{exc_role_section}
 </td></tr>
 
 {_html_section_bar("DAILY DETAIL", navy)}
-<tr><td style="padding:12px 16px;">{daily_table}
-{daily_detail_note}
+<tr><td style="padding:12px 16px;">{daily_section}
 </td></tr>
 
 {_html_section_bar("COVERAGE BY BASE", navy)}

@@ -232,6 +232,57 @@ def title_banner(title_text, subtitle_text, meta_line=None):
     return outer
 
 
+ROLE_FILL_HEADERS = ["Role", "Worked", "Capacity", "Fill Rate"]
+ROLE_FILL_NOTE = (
+    "Worked = staffed + OT person-shifts from the imported schedules; "
+    "capacity is the weekly plan per role × weeks."
+)
+
+
+def role_fill_rows(role_fill) -> list[list[str]]:
+    return [
+        [rf.label, str(rf.worked), str(rf.capacity), pct(rf.rate)] for rf in role_fill
+    ]
+
+
+def role_fill_table(role_fill) -> Table:
+    """Fill rate by role (RN / Paramedic / EMT); shared by monthly, quarterly, annual."""
+    col_w = full_width_col_widths([2.0, 1.5, 1.5, 1.5])
+    t = Table([ROLE_FILL_HEADERS] + role_fill_rows(role_fill), colWidths=col_w)
+    t.setStyle(
+        TableStyle(
+            data_table_style()
+            + [
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + num_style_cells([1, 2, 3])
+        )
+    )
+    return t
+
+
+def summary_block(lines: list[str]):
+    """Bulleted plain-language summary under a section bar (PDF)."""
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import ListFlowable, ListItem, Paragraph
+
+    para = ParagraphStyle(
+        "SummaryLine",
+        fontName=F("BarlowRegular"),
+        fontSize=9.5,
+        leading=13,
+        textColor=BLACK,
+    )
+    return ListFlowable(
+        [ListItem(Paragraph(line, para), leftIndent=12) for line in lines],
+        bulletType="bullet",
+        bulletFontSize=8,
+        leftIndent=12,
+        spaceBefore=4,
+    )
+
+
 def kpi_row(kpi_list, statuses: dict[str, tuple[str, str]] | None = None):
     """KPI tiles: value over label, plus a status line when ``statuses`` has one.
 
@@ -477,44 +528,6 @@ def data_table_style() -> list:
     ]
 
 
-def exception_table(
-    leave_breakdown: list[tuple[str, int]],
-    col_ratios: list[float] | None = None,
-) -> Table:
-    """Exception-type table with a totals row and the top two codes in red."""
-    headers = ["Exception Type", "Count", "% of Total"]
-    col_w = full_width_col_widths(col_ratios or [4.0, 1.5, 2.0])
-    rows_data, total = leave_rows(leave_breakdown)
-    rows = [headers] + [[code, str(count), share] for code, count, share in rows_data]
-    rows.append(["Total", str(total), "100%" if total else EM_DASH])
-    total_row = len(rows) - 1
-
-    top2 = leave_top2(leave_breakdown)
-    red_rules = []
-    for i, (code, _count, _share) in enumerate(rows_data, start=1):
-        if code in top2:
-            red_rules += [
-                ("TEXTCOLOR", (1, i), (2, i), RED),
-                ("FONTNAME", (1, i), (2, i), F("IBMPlexMonoBold")),
-            ]
-
-    t = Table(rows, colWidths=col_w)
-    t.setStyle(
-        TableStyle(
-            data_table_style()
-            + [
-                ("ROWBACKGROUNDS", (0, 1), (-1, total_row - 1), [WHITE, LGRAY]),
-                ("ALIGN", (1, 0), (2, -1), "CENTER"),
-                ("BACKGROUND", (0, total_row), (-1, total_row), MGRAY),
-                ("FONTNAME", (0, total_row), (-1, total_row), F("IBMPlexMonoBold")),
-            ]
-            + num_style_cells([1, 2])
-            + red_rules
-        )
-    )
-    return t
-
-
 def base_coverage_table(
     base_coverage: list[tuple[str, str, str, str, str]],
     col_ratios: list[float],
@@ -716,7 +729,7 @@ def trend_fig(
     return fig
 
 
-def _pct_value(cell: str) -> float | None:
+def pct_value(cell: str) -> float | None:
     """'95.2%' -> 95.2; an em dash (base has no plan for that vehicle) -> None."""
     try:
         return float(cell.rstrip("%"))
@@ -742,13 +755,13 @@ def base_coverage_fig(
         ("Ground (GR) availability", 4, "System GR Coverage %"),
     )
     n_rows = max(
-        (sum(1 for r in base_coverage if _pct_value(r[idx]) is not None))
+        (sum(1 for r in base_coverage if pct_value(r[idx]) is not None))
         for _t, idx, _m in panels
     )
     fig, axes = plt.subplots(1, 2, figsize=(7.5, 0.5 + 0.32 * max(n_rows, 2)))
     fig.patch.set_facecolor("white")
     for ax, (title, idx, metric) in zip(axes, panels, strict=True):
-        rows = [(r[0], _pct_value(r[idx])) for r in base_coverage]
+        rows = [(r[0], pct_value(r[idx])) for r in base_coverage]
         rows = [(b, v) for b, v in rows if v is not None]
         names = [b for b, _v in rows]
         vals = [v for _b, v in rows]

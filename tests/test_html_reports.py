@@ -222,7 +222,9 @@ class HtmlReportExportTests(TempDbTestCase):
         # have to be table cells carrying the bgcolor attribute.
         path = export_weekly_staffing_html(self.db_path, "2025-12-07", self.out_dir)
         html = Path(path).read_text(encoding="utf-8")
-        self.assertIn(f'<td bgcolor="{rh.RED}"', html)  # AT/SICK are the top 2
+        # One bar color, matching the exception chart; no red "bad" bars.
+        self.assertIn(f'<td bgcolor="{rh.BLUE}"', html)
+        self.assertNotIn(f'<td bgcolor="{rh.RED}"', html)
         self.assertIn(f'<td bgcolor="{rh.LGRAY}"', html)  # unfilled track
         self.assertNotIn('<div style="background:#E6E6E6;height:14px', html)
 

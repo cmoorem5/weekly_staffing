@@ -127,53 +127,6 @@ class LeaveHelperTests(unittest.TestCase):
         self.assertEqual(W._short_label("2025-12-07"), Q._short_label("2025-12-07"))
 
 
-class ExceptionTableTests(unittest.TestCase):
-    def setUp(self):
-        self.weekly = W._exception_table(weekly_ctx())
-        self.quarterly = Q._exceptions_table(quarterly_ctx())
-
-    def test_rows_carry_the_breakdown_plus_a_total_row(self):
-        self.assertEqual(
-            self.weekly._cellvalues,
-            [
-                ["Exception Type", "Count", "% of Total"],
-                ["AT", "10", "50.0%"],
-                ["LT", "6", "30.0%"],
-                ["SICK", "3", "15.0%"],
-                ["JURY", "1", "5.0%"],
-                ["Total", "20", "100%"],
-            ],
-        )
-
-    def test_top_two_exception_codes_are_highlighted_red(self):
-        # Rows 1 (AT) and 2 (LT) are the top two; count/percent go red+bold.
-        styles = cell_styles(self.weekly)
-        red = "Color(.756863,.129412,.14902,1)"
-        for row in (1, 2):
-            for col in (1, 2):
-                self.assertEqual(styles[row][col]["color"], red, f"row {row} col {col}")
-        for row in (3, 4):
-            self.assertNotEqual(styles[row][1]["color"], red)
-
-    def test_weekly_and_quarterly_render_identically(self):
-        """The two builders' copies must stay the same table."""
-        self.assertEqual(self.weekly._cellvalues, self.quarterly._cellvalues)
-        self.assertEqual(cell_styles(self.weekly), cell_styles(self.quarterly))
-        self.assertEqual(col_widths(self.weekly), col_widths(self.quarterly))
-
-    def test_column_widths_fill_the_usable_page_width(self):
-        self.assertEqual(col_widths(self.weekly), [288.0, 108.0, 144.0])
-
-    def test_empty_breakdown_still_renders_a_total_row(self):
-        ctx = weekly_ctx()
-        ctx.leave_breakdown = []
-        table = W._exception_table(ctx)
-        self.assertEqual(
-            table._cellvalues,
-            [["Exception Type", "Count", "% of Total"], ["Total", "0", "—"]],
-        )
-
-
 class BaseCoverageTableTests(unittest.TestCase):
     def setUp(self):
         self.weekly = W._base_coverage_table(weekly_ctx())
