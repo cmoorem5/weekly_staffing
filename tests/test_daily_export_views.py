@@ -4,6 +4,7 @@ import io
 import os
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -64,28 +65,42 @@ class DailyExportViewTests(TempDbTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Daily data export", resp.content.decode())
 
-    def test_csv_datasets(self):
-        for dataset, first in (
-            ("daily", "date"),
-            ("by_base", "date"),
-            ("shifts", "staff_id"),
-        ):
-            resp = self.client.get(
-                reverse("daily_export_csv"), {**QS, "dataset": dataset}
-            )
-            self.assertEqual(resp.status_code, 200)
-            self.assertTrue(resp.content.decode("utf-8-sig").startswith(first))
-        shifts = self.client.get(
-            reverse("daily_export_csv"), {**QS, "dataset": "shifts"}
-        )
-        self.assertNotIn("Doe", shifts.content.decode("utf-8-sig"))
-
-    def test_xlsx_has_all_sheets(self):
-        resp = self.client.get(reverse("daily_export_xlsx"), QS)
+    def _zip(self, url_name):
+        resp = self.client.get(reverse(url_name), QS)
         self.assertEqual(resp.status_code, 200)
-        wb = load_workbook(io.BytesIO(resp.content))
+        self.assertEqual(resp["Content-Type"], "application/zip")
+        return zipfile.ZipFile(io.BytesIO(resp.content))
+
+    def test_csv_zip_has_data_and_separate_key(self):
+        zf = self._zip("daily_export_csv")
+        self.assertEqual(
+            sorted(zf.namelist()),
+            sorted(
+                [
+                    "daily.csv",
+                    "by_base.csv",
+                    "shift_detail.csv",
+                    "README.txt",
+                    daily_export.KEY_FILENAME,
+                ]
+            ),
+        )
+        shifts = zf.read("shift_detail.csv").decode("utf-8-sig")
+        self.assertTrue(shifts.startswith("staff_id"))
+        self.assertNotIn("Doe", shifts)
+        key = zf.read(daily_export.KEY_FILENAME).decode("utf-8-sig")
+        self.assertIn("Doe, Jane", key)
+        staff_id = shifts.splitlines()[1].split(",")[0]
+        self.assertIn(staff_id, key)
+
+    def test_xlsx_zip_has_all_sheets(self):
+        zf = self._zip("daily_export_xlsx")
+        self.assertIn(daily_export.KEY_FILENAME, zf.namelist())
+        wb = load_workbook(io.BytesIO(zf.read("daily_staffing.xlsx")))
         self.assertEqual(wb.sheetnames, ["Daily", "By base", "Shift detail", "Notes"])
         self.assertEqual(wb["Daily"].max_row, 8)  # header + 7 days
+        cells = {str(c.value) for ws in wb for row in ws.iter_rows() for c in row}
+        self.assertNotIn("Doe, Jane", cells)
 
     def test_bad_dates_fall_back(self):
         resp = self.client.get(
