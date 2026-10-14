@@ -99,7 +99,7 @@ Things that look like they should be simple but aren't, because real schedule wo
 - **Seat counts use the same dedupe and exclusions as `metrics.compute_role_fill`** (cell-level dedupe, `EXTRA_UNIT_CODES` out of totals, `included_in_aggregates == 1`). Extra units still appear in Shift detail, flagged `extra_unit`.
 - **Weeks with no `WeeklyPersonShift` rows export blank, never zero**, with `has_person_detail` empty; same rule as the shift mix report.
 - **De-identified by default.** `staff_id` is `S####` from `staff_member_id` (else `X` + name hash); names only appear when `include_names=1`. Keep any new column free of names unless that flag is set.
-- Shift start/end come from `BASE_SHIFT_TIMES` by base and day/night (Bedford/Plymouth 0700/1900, Lawrence 0900/2100, Mansfield/Manchester 1100/2300 day only), mirroring `crew_hub/shifts.py`; `G9B` is left blank rather than guessed. `ends_next_day` is derived from end < start. Keep the two tables in step if a base's hours change.
+- Shift start/end come from `BASE_SHIFT_TIMES` by base and day/night (Bedford/Plymouth 0700/1900, Lawrence 0900/2100, Mansfield/Manchester 1100/2300 day only), mirroring `crew_hub/shifts.py`; `UNIT_SHIFT_TIMES` overrides by unit (`G9B` 0900-2100; `GR2`/`NG2` follow Bedford). `ends_next_day` is derived from end < start. Keep the two tables in step if a base's hours change.
 
 ### crew_hub: person-first schedulers (Comm Center + duty officers)
 

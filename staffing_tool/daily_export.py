@@ -39,14 +39,15 @@ BASE_SHIFT_TIMES = {
     "Mansfield": {"D": ("11:00", "23:00")},
     "Manchester": {"D": ("11:00", "23:00")},
 }
-# Units whose real hours are not in the skeleton: left blank, not guessed.
-UNKNOWN_TIME_UNITS = frozenset({"G9B"})
+# Units that keep their own hours instead of the base default. GR2/NG2 follow
+# Bedford (0700/1900); G9B is a 0900-2100 day ground unit.
+UNIT_SHIFT_TIMES = {"G9B": ("09:00", "21:00")}
 
 
 def shift_window(base: str, day_night: str, unit_code: str = "") -> tuple[str, str]:
     """(start, end) for a shift, or blanks when the hours are not known."""
-    if unit_code in UNKNOWN_TIME_UNITS:
-        return "", ""
+    if unit_code in UNIT_SHIFT_TIMES:
+        return UNIT_SHIFT_TIMES[unit_code]
     return BASE_SHIFT_TIMES.get(base, {}).get(day_night, ("", ""))
 
 
@@ -321,7 +322,7 @@ NOTES = (
     "shift_start/shift_end follow the base: Bedford and Plymouth 07:00-19:00 and "
     "19:00-07:00, Lawrence 09:00-21:00 and 21:00-09:00, Mansfield and Manchester "
     "11:00-23:00 (day only). Hours come from the scheduled base and day/night code, "
-    "not from an individual's actual clock-in. Blank = hours not known (unit G9B).",
+    "not from an individual's actual clock-in. Unit G9B runs 09:00-21:00.",
     "worked = scheduled line seats that are not overtime; ot = overtime seats. "
     "Pair-staffed EMT seats count once. Opportunistic extra units (GR2, NG2, G9B) "
     "are excluded from the seat counts and flagged in the shift detail.",

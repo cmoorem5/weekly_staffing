@@ -99,7 +99,9 @@ class DailyExportTests(TempDbTestCase):
         self.assertEqual(shift_window("Lawrence", "N"), ("21:00", "09:00"))
         self.assertEqual(shift_window("Mansfield", "D"), ("11:00", "23:00"))
         self.assertEqual(shift_window("Manchester", "N"), ("", ""))
-        self.assertEqual(shift_window("Bedford", "D", "G9B"), ("", ""))
+        self.assertEqual(shift_window("Bedford", "D", "G9B"), ("09:00", "21:00"))
+        self.assertEqual(shift_window("Bedford", "D", "GR2"), ("07:00", "19:00"))
+        self.assertEqual(shift_window("Bedford", "N", "NG2"), ("19:00", "07:00"))
 
     def test_deidentified_by_default(self):
         e = load_daily_export(self.db_path, date(2026, 7, 5), date(2026, 7, 11))
