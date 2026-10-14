@@ -3,9 +3,9 @@
 {% block content %}
 <h1 class="bmf-page-title">Daily data export</h1>
 <p class="bmf-page-subtitle">
-  Day-by-day staffing for any date range: seats worked and overtime by role and day/night,
-  leave, training, base coverage, and every individual shift with its start and end time.
-  Built for research use, so staff are shown as pseudonymous IDs unless you choose otherwise.
+  Day-by-day staffing for research: required, worked, overtime, and open seats by role and day/night,
+  leave and training, base coverage, and every individual shift with its scheduled hours and rest gap.
+  Managers and pilots are not included.
 </p>
 
 <form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Daily export filters">
@@ -25,12 +25,6 @@
       {% endfor %}
     </select>
   </div>
-  <div class="col-auto">
-    <div class="form-check mb-2">
-      <input class="form-check-input" type="checkbox" name="include_names" value="1" id="id_names"{% if include_names %} checked{% endif %}>
-      <label class="form-check-label" for="id_names">Include staff names in shift detail</label>
-    </div>
-  </div>
   <div class="col-auto"><button type="submit" class="btn btn-primary">Update</button></div>
   <div class="col-12">
     <div class="small text-muted mb-1">Presets</div>
@@ -44,20 +38,24 @@
 </form>
 
 <div class="d-flex flex-wrap gap-2 mt-3 no-print">
-  <a class="btn btn-primary btn-sm" href="{% url 'daily_export_xlsx' %}?{{ xlsx_qs }}">Download Excel (all sheets)</a>
-  {% for label, qs in csv_links %}
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'daily_export_csv' %}?{{ qs }}">CSV: {{ label }}</a>
-  {% endfor %}
+  <a class="btn btn-primary btn-sm" href="{% url 'daily_export_xlsx' %}?{{ download_qs }}">Download Excel (.zip)</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'daily_export_csv' %}?{{ download_qs }}">Download CSV files (.zip)</a>
 </div>
 
-<p class="small text-muted mt-3 mb-2">
-  {{ days }} days, {{ shift_count }} shift rows.
-  {{ export.weeks_with_detail }} of {{ export.weeks_in_range }} weeks in range have schedule detail
+<div class="alert alert-warning py-2 mt-3 small" role="note">
+  Each download contains <strong>{{ key_filename }}</strong>, which links the random staff IDs to names.
+  Keep that file inside BMF and send the researchers everything else.
+  IDs are new on every download, so keep the key from the same zip you send.
+</div>
+
+<p class="small text-muted mb-2">
+  {{ days }} days, {{ shift_count }} shift rows, {{ staff_count }} staff.
+  <strong>{{ export.weeks_with_detail }} of {{ export.weeks_in_range }}</strong> weeks in range have per-person detail
   {% if db_date_min %}(database spans {{ db_date_min }} to {{ db_date_max }}){% endif %}.
   Days in weeks without detail are exported blank, not zero.
 </p>
 
-<h2 class="h6 mt-3">Preview (first 14 days of the daily sheet)</h2>
+<h2 class="h6 mt-3">Preview (first {{ preview_days }} days of the Daily sheet)</h2>
 <div class="table-responsive">
   <table class="table table-sm table-striped small">
     <thead><tr>{% for h in daily_header %}<th>{{ h }}</th>{% endfor %}</tr></thead>

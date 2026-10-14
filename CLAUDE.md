@@ -94,11 +94,14 @@ Things that look like they should be simple but aren't, because real schedule wo
 
 ### Daily export (research data)
 
-`staffing_tool/daily_export.py` (pure, no Django) backs `dashboard/views/daily_export.py` and `daily_export.html` (Reports sidebar -> Daily export; XLSX with Daily / By base / Shift detail / Notes sheets, or one CSV per `dataset`). One row per calendar day, built from `WeeklyPersonShift`, `WeeklyOpsViewDay`, and `WeeklyDailyDetail`.
+`staffing_tool/daily_export.py` (pure, no Django) backs `dashboard/views/daily_export.py` and `daily_export.html` (Reports sidebar -> Daily export). Built for an outside (IRB) research study, so every download is a **zip**: the data (one XLSX with Daily / By base / Shift detail / Notes sheets, or the same as CSVs plus README) and a separate `KEY_staff_ids_KEEP_INTERNAL.csv`. Built from `WeeklyPersonShift` and `WeeklyOpsViewDay`.
 
-- **Seat counts use the same dedupe and exclusions as `metrics.compute_role_fill`** (cell-level dedupe, `EXTRA_UNIT_CODES` out of totals, `included_in_aggregates == 1`). Extra units still appear in Shift detail, flagged `extra_unit`.
-- **Weeks with no `WeeklyPersonShift` rows export blank, never zero**, with `has_person_detail` empty; same rule as the shift mix report.
-- **De-identified by default.** `staff_id` is `S####` from `staff_member_id` (else `X` + name hash); names only appear when `include_names=1`. Keep any new column free of names unless that flag is set.
+- **Staff IDs are random per download.** `Pseudonymizer` HMACs the roster ID (or name) with a fresh `secrets.token_bytes` salt that is never stored, so IDs are stable within one file but never match across downloads and can't be rebuilt from a staff list. The key in the same zip is the only way back to names. Don't derive IDs from `SECRET_KEY` (its default is public in this repo) and don't add a names-in-data option.
+- **Daily columns per role:** `required` (`REQUIRED_SEATS_PER_DAY`: RN/Medic 8 day + 4 night, EMT 4 + 3, asserted equal to `ROLE_CAPACITY_PER_WEEK` / 7), `worked`, `ot`, `open` (required minus filled, floored at 0), plus `{role}_leave`. A role filter drops the other roles' columns rather than writing zeros.
+- **Seat counts use the same dedupe and exclusions as `metrics.compute_role_fill`** (cell-level dedupe, `EXTRA_UNIT_CODES` out of totals, `included_in_aggregates == 1`). Leave and training count people, not seats. Extra units still appear in Shift detail, flagged `extra_unit`.
+- **Managers are excluded from every sheet** (`is_manager_row == 0` in the query), including their leave and training. Pilots aren't in `WeeklyPersonShift`.
+- **Weeks with no `WeeklyPersonShift` rows export blank, never zero**, with `has_person_detail` empty, and `weeks_with_detail` counts only those weeks (not OPS-View-only weeks).
+- **Fatigue columns** (`hours_since_prev_shift`, `consecutive_days`) come from `_fatigue_by_row`, which walks each person's worked shifts in start-time order (not row order) and reads `FATIGUE_LOOKBACK_DAYS` (7) before the range.
 - Shift start/end come from `BASE_SHIFT_TIMES` by base and day/night (Bedford/Plymouth 0700/1900, Lawrence 0900/2100, Mansfield/Manchester 1100/2300 day only), mirroring `crew_hub/shifts.py`; `UNIT_SHIFT_TIMES` overrides by unit (`G9B` 0900-2100; `GR2`/`NG2` follow Bedford). `ends_next_day` is derived from end < start. Keep the two tables in step if a base's hours change.
 
 ### crew_hub: person-first schedulers (Comm Center + duty officers)
