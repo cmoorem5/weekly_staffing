@@ -92,6 +92,15 @@ class DailyExportTests(TempDbTestCase):
         self.assertEqual(night[9:12], ["19:00", "07:00", "Y"])
         self.assertEqual(sum(1 for r in e.shifts if r[-1] == "Y"), 1)
 
+    def test_start_times_follow_base(self):
+        from staffing_tool.daily_export import shift_window
+
+        self.assertEqual(shift_window("Lawrence", "D"), ("09:00", "21:00"))
+        self.assertEqual(shift_window("Lawrence", "N"), ("21:00", "09:00"))
+        self.assertEqual(shift_window("Mansfield", "D"), ("11:00", "23:00"))
+        self.assertEqual(shift_window("Manchester", "N"), ("", ""))
+        self.assertEqual(shift_window("Bedford", "D", "G9B"), ("", ""))
+
     def test_deidentified_by_default(self):
         e = load_daily_export(self.db_path, date(2026, 7, 5), date(2026, 7, 11))
         flat = {str(v) for r in e.shifts for v in r}

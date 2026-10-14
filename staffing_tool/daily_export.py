@@ -30,7 +30,26 @@ from .models import (
 )
 
 EXPORT_ROLES = ("RN", "MEDIC", "EMT")
-SHIFT_TIMES = {"D": ("07:00", "19:00"), "N": ("19:00", "07:00")}
+# Start/end by base and day/night (12-hour shifts; Manchester is day only).
+# Matches the crew_hub shift skeleton (bmf_staffing/crew_hub/shifts.py).
+BASE_SHIFT_TIMES = {
+    "Bedford": {"D": ("07:00", "19:00"), "N": ("19:00", "07:00")},
+    "Plymouth": {"D": ("07:00", "19:00"), "N": ("19:00", "07:00")},
+    "Lawrence": {"D": ("09:00", "21:00"), "N": ("21:00", "09:00")},
+    "Mansfield": {"D": ("11:00", "23:00")},
+    "Manchester": {"D": ("11:00", "23:00")},
+}
+# Units whose real hours are not in the skeleton: left blank, not guessed.
+UNKNOWN_TIME_UNITS = frozenset({"G9B"})
+
+
+def shift_window(base: str, day_night: str, unit_code: str = "") -> tuple[str, str]:
+    """(start, end) for a shift, or blanks when the hours are not known."""
+    if unit_code in UNKNOWN_TIME_UNITS:
+        return "", ""
+    return BASE_SHIFT_TIMES.get(base, {}).get(day_night, ("", ""))
+
+
 LEAVE_COLUMNS = ("AT", "LT", "SICK", "LOA", "JURY", "BREV", "OTHER")
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
@@ -227,7 +246,7 @@ def load_daily_export(
         elif event == "training":
             d["training"] += 1
 
-        start_t, end_t = SHIFT_TIMES.get(dn, ("", ""))
+        start_t, end_t = shift_window(base, dn, unit)
         label = event
         if event == "leave":
             label = "leave"
@@ -243,7 +262,7 @@ def load_daily_export(
             dn,
             start_t,
             end_t,
-            "Y" if dn == "N" else "",
+            "Y" if end_t and end_t < start_t else "",
             unit,
             leave_type or "",
             "Y" if overtime or event == "ot" else "",
@@ -299,7 +318,10 @@ def load_daily_export(
 
 NOTES = (
     "One row per calendar day in the selected range; weeks run Sunday to Saturday.",
-    "Day shifts run 07:00-19:00 and night shifts 19:00-07:00 (ends the next day).",
+    "shift_start/shift_end follow the base: Bedford and Plymouth 07:00-19:00 and "
+    "19:00-07:00, Lawrence 09:00-21:00 and 21:00-09:00, Mansfield and Manchester "
+    "11:00-23:00 (day only). Hours come from the scheduled base and day/night code, "
+    "not from an individual's actual clock-in. Blank = hours not known (unit G9B).",
     "worked = scheduled line seats that are not overtime; ot = overtime seats. "
     "Pair-staffed EMT seats count once. Opportunistic extra units (GR2, NG2, G9B) "
     "are excluded from the seat counts and flagged in the shift detail.",
