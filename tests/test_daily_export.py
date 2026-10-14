@@ -83,7 +83,7 @@ class DailyExportTests(TempDbTestCase):
         self.assertEqual(self._row(e, "rn_worked_day"), 0)
         self.assertEqual(self._row(e, "leave_lt"), 1)
         self.assertEqual(self._row(e, "leave_total"), 1)
-        self.assertEqual(self._row(e, "rw_seats_worked"), 2)
+        self.assertNotIn("rw_seats_worked", DAILY_HEADER)
 
     def test_shift_rows_keep_every_person_and_times(self):
         e = load_daily_export(self.db_path, date(2026, 7, 5), date(2026, 7, 11))

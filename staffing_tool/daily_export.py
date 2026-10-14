@@ -62,7 +62,6 @@ DAILY_HEADER = (
         for kind in ("worked", "ot")
         for dn in ("day", "night")
     ]
-    + ["rw_seats_worked", "gr_seats_worked"]
     + [f"leave_{lt.lower()}" for lt in LEAVE_COLUMNS]
     + [
         "leave_total",
@@ -239,8 +238,6 @@ def load_daily_export(
                 kind = "ot" if is_ot else "worked"
                 slot = "night" if dn == "N" else "day"
                 d[f"{role}_{kind}_{slot}"] += 1
-                if not is_ot and service in ("RW", "GR"):
-                    d[f"{service.lower()}_seats_worked"] += 1
         elif event == "leave":
             d[f"leave_{_leave_bucket(leave_type, raw).lower()}"] += 1
             d["leave_total"] += 1
@@ -300,10 +297,6 @@ def load_daily_export(
                     row.append(
                         d.get(f"{role}_{kind}_{slot}", 0) if ws in detail_weeks else ""
                     )
-        row += [
-            d.get("rw_seats_worked", 0) if ws in detail_weeks else "",
-            d.get("gr_seats_worked", 0) if ws in detail_weeks else "",
-        ]
         for lt in LEAVE_COLUMNS:
             row.append(d.get(f"leave_{lt.lower()}", 0) if ws in detail_weeks else "")
         row.append(d.get("leave_total", 0) if ws in detail_weeks else "")
