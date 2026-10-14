@@ -2,6 +2,7 @@
 
 from .admin_tools import backup_db, database_backups, restore_db
 from .coverage_heatmap import coverage_heatmap
+from .daily_export import daily_export_csv, daily_export_page, daily_export_xlsx
 from .home import home
 from .import_review import import_review
 from .import_schedule import import_schedule, import_schedule_manager_export_xlsx
@@ -49,6 +50,9 @@ __all__ = [
     "database_backups",
     "base_totals",
     "coverage_heatmap",
+    "daily_export_csv",
+    "daily_export_page",
+    "daily_export_xlsx",
     "export_excel",
     "home",
     "import_review",
