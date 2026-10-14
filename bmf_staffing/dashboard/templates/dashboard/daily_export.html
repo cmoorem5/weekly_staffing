@@ -1,0 +1,76 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Daily data export{% endblock %}
+{% block content %}
+<h1 class="bmf-page-title">Daily data export</h1>
+<p class="bmf-page-subtitle">
+  Day-by-day staffing for any date range: seats worked and overtime by role and day/night,
+  leave, training, base coverage, and every individual shift with its start and end time.
+  Built for research use, so staff are shown as pseudonymous IDs unless you choose otherwise.
+</p>
+
+<form method="get" class="bmf-toolbar row g-3 align-items-end flex-wrap mt-3 no-print" autocomplete="off" aria-label="Daily export filters">
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_start">Start date</label>
+    <input type="date" name="date_start" id="id_date_start" class="form-control" value="{{ date_start }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_date_end">End date</label>
+    <input type="date" name="date_end" id="id_date_end" class="form-control" value="{{ date_end }}">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-0" for="id_role">Role</label>
+    <select name="role" id="id_role" class="form-select">
+      {% for value, label in role_choices %}
+      <option value="{{ value }}"{% if value == role_filter %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox" name="include_names" value="1" id="id_names"{% if include_names %} checked{% endif %}>
+      <label class="form-check-label" for="id_names">Include staff names in shift detail</label>
+    </div>
+  </div>
+  <div class="col-auto"><button type="submit" class="btn btn-primary">Update</button></div>
+  <div class="col-12">
+    <div class="small text-muted mb-1">Presets</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?date_start={{ fy_start }}&amp;date_end={{ fy_end }}">FY{{ fy_label }}</a>
+      {% if db_date_min and db_date_max %}
+      <a class="btn btn-outline-secondary btn-sm" href="?date_start={{ db_date_min }}&amp;date_end={{ db_date_max }}">All data</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+<div class="d-flex flex-wrap gap-2 mt-3 no-print">
+  <a class="btn btn-primary btn-sm" href="{% url 'daily_export_xlsx' %}?{{ xlsx_qs }}">Download Excel (all sheets)</a>
+  {% for label, qs in csv_links %}
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'daily_export_csv' %}?{{ qs }}">CSV: {{ label }}</a>
+  {% endfor %}
+</div>
+
+<p class="small text-muted mt-3 mb-2">
+  {{ days }} days, {{ shift_count }} shift rows.
+  {{ export.weeks_with_detail }} of {{ export.weeks_in_range }} weeks in range have schedule detail
+  {% if db_date_min %}(database spans {{ db_date_min }} to {{ db_date_max }}){% endif %}.
+  Days in weeks without detail are exported blank, not zero.
+</p>
+
+<h2 class="h6 mt-3">Preview (first 14 days of the daily sheet)</h2>
+<div class="table-responsive">
+  <table class="table table-sm table-striped small">
+    <thead><tr>{% for h in daily_header %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in preview_rows %}
+      <tr>{% for v in row %}<td>{{ v }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="h6 mt-4">Data notes</h2>
+<ul class="small text-muted">
+  {% for n in notes %}<li>{{ n }}</li>{% endfor %}
+</ul>
+{% endblock %}

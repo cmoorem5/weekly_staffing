@@ -92,6 +92,15 @@ Things that look like they should be simple but aren't, because real schedule wo
 - **Night requirement** comes from `NIGHT_REQUIREMENT_TIERS` (years of service on the block start date, lower bound inclusive). **Weekend shifts** are Fri N, Sat D/N, Sun D/N (`is_weekend_shift`), 5 per block.
 - **Date of hire lives on `StaffRosterEntry.hire_date`** (ISO text; `migrate_staff_roster_hire_date`, mirrored on the Django model). Settings -> Staff roster takes a CSV upload (`staffing_tool/hire_dates.py`) and per-person edits. No hire date means the night requirement is not scored; weekends still are.
 
+### Daily export (research data)
+
+`staffing_tool/daily_export.py` (pure, no Django) backs `dashboard/views/daily_export.py` and `daily_export.html` (Reports sidebar -> Daily export; XLSX with Daily / By base / Shift detail / Notes sheets, or one CSV per `dataset`). One row per calendar day, built from `WeeklyPersonShift`, `WeeklyOpsViewDay`, and `WeeklyDailyDetail`.
+
+- **Seat counts use the same dedupe and exclusions as `metrics.compute_role_fill`** (cell-level dedupe, `EXTRA_UNIT_CODES` out of totals, `included_in_aggregates == 1`). Extra units still appear in Shift detail, flagged `extra_unit`.
+- **Weeks with no `WeeklyPersonShift` rows export blank, never zero**, with `has_person_detail` empty; same rule as the shift mix report.
+- **De-identified by default.** `staff_id` is `S####` from `staff_member_id` (else `X` + name hash); names only appear when `include_names=1`. Keep any new column free of names unless that flag is set.
+- Shift start/end come from `BASE_SHIFT_TIMES` by base and day/night (Bedford/Plymouth 0700/1900, Lawrence 0900/2100, Mansfield/Manchester 1100/2300 day only), mirroring `crew_hub/shifts.py`; `UNIT_SHIFT_TIMES` overrides by unit (`G9B` 0900-2100; `GR2`/`NG2` follow Bedford). `ends_next_day` is derived from end < start. Keep the two tables in step if a base's hours change.
+
 ### crew_hub: person-first schedulers (Comm Center + duty officers)
 
 Both living schedulers share one shape, so a change to one almost always belongs in the other. A day is **a pool of people, not a grid of slots**: `CommShiftAssignment` and `DutyAssignment` each hold one person on one date, and the slot (`seat` / `role`) is an *editable attribute* of that row rather than the key rows are created against.
