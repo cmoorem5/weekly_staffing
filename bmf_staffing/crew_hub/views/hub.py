@@ -3,9 +3,8 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
-from .. import shifts
+from .. import shifts, weather
 from ..models import CommShiftAssignment, DailyReport, DutyAssignment, Vehicle
-from ..weather import get_base_weather
 from .helpers import local_today
 
 
@@ -48,6 +47,7 @@ def hub_home(request):
     ]
 
     report = DailyReport.objects.filter(report_date=today).first()
+    weather_ready = weather.is_cached()
 
     return render(
         request,
@@ -61,6 +61,19 @@ def hub_home(request):
             "vehicle_exceptions": exceptions,
             "vehicle_count": len(vehicles),
             "report": report,
-            "base_weather": get_base_weather(),
+            # Never wait on the weather API while the page renders: with a
+            # cold cache (every fresh launch) the cards load after paint.
+            "base_weather": weather.get_base_weather() if weather_ready else [],
+            "weather_pending": not weather_ready,
         },
+    )
+
+
+@login_required
+def hub_weather(request):
+    """Weather cards as an HTML fragment, fetched after the page paints."""
+    return render(
+        request,
+        "crew_hub/base_weather_cards.html",
+        {"base_weather": weather.get_base_weather()},
     )

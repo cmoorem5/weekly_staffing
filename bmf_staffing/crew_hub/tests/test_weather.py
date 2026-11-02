@@ -91,10 +91,55 @@ class BaseWeatherTests(TestCase):
         self.assertEqual(rows[0]["category"], "N/A")
         self.assertIn("unavailable", rows[0]["summary"])
 
-    def test_today_board_shows_weather_strip(self):
+    def test_cold_cache_page_does_not_wait_on_the_api(self):
+        User.objects.create_user("staffer", password="pw")
+        self.client.login(username="staffer", password="pw")
+        with patch.object(weather, "_fetch_metars") as fetch:
+            response = self.client.get(reverse("crew_hub:hub_home"))
+        fetch.assert_not_called()
+        self.assertContains(response, "Loading weather")
+        self.assertContains(response, reverse("crew_hub:hub_weather"))
+
+    def test_weather_fragment_endpoint_returns_cards(self):
         User.objects.create_user("staffer", password="pw")
         self.client.login(username="staffer", password="pw")
         with patch.object(weather, "_fetch_metars", return_value={"KBED": SAMPLE}):
+            response = self.client.get(reverse("crew_hub:hub_weather"))
+        self.assertContains(response, "Light rain, mist")
+        self.assertNotContains(response, "Loading weather")
+
+    def test_weather_fragment_requires_login(self):
+        response = self.client.get(reverse("crew_hub:hub_weather"))
+        self.assertEqual(response.status_code, 302)
+
+    def test_concurrent_requests_share_one_fetch(self):
+        import threading
+
+        calls = []
+
+        def slow_fetch(_stations):
+            calls.append(1)
+            import time
+
+            time.sleep(0.2)
+            return {"KBED": SAMPLE}
+
+        with patch.object(weather, "_fetch_metars", side_effect=slow_fetch):
+            threads = [
+                threading.Thread(target=weather.get_base_weather) for _ in range(4)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        self.assertEqual(len(calls), 1)
+
+    def test_today_board_shows_weather_strip(self):
+        User.objects.create_user("staffer", password="pw")
+        self.client.login(username="staffer", password="pw")
+        weather._cache.clear()
+        with patch.object(weather, "_fetch_metars", return_value={"KBED": SAMPLE}):
+            weather.get_base_weather()  # warm cache, as the startup prefetch does
             response = self.client.get(reverse("crew_hub:hub_home"))
         self.assertContains(response, "Base weather")
         self.assertContains(response, "Light rain, mist")
@@ -106,6 +151,7 @@ class BaseWeatherTests(TestCase):
         self.client.login(username="staffer", password="pw")
         today = timezone.localdate()
         with patch.object(weather, "_fetch_metars", return_value={"KBED": SAMPLE}):
+            weather.get_base_weather()
             response = self.client.get(
                 reverse(
                     "crew_hub:report_detail", kwargs={"date_str": today.isoformat()}

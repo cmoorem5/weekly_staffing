@@ -26,6 +26,7 @@ from .views import (
     hours_report,
     hours_report_csv,
     hub_home,
+    hub_weather,
     my_schedule,
     notifications,
     notifications_read,
@@ -49,6 +50,7 @@ app_name = "crew_hub"
 
 urlpatterns = [
     path("", hub_home, name="hub_home"),
+    path("weather/", hub_weather, name="hub_weather"),
     # Comm Center scheduler
     path("comm/", comm_month, name="comm_month"),
     path("comm/staff/", comm_staff, name="comm_staff"),

@@ -1,5 +1,5 @@
 from .accounts import user_admin
-from .hub import hub_home
+from .hub import hub_home, hub_weather
 from .me import (
     calendar_feed,
     calendar_feed_reset,
@@ -76,6 +76,7 @@ __all__ = [
     "duty_month",
     "duty_roster",
     "hub_home",
+    "hub_weather",
     "report_detail",
     "report_html",
     "report_list",

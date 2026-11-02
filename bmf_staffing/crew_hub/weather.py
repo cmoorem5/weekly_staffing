@@ -77,6 +77,9 @@ _COMPASS = [
 ]
 
 _cache_lock = threading.Lock()
+# Serializes the network fetch so a pre-warm thread and a page request that
+# arrive together make one API call, not two.
+_fetch_lock = threading.Lock()
 _cache: dict[str, tuple[float, dict]] = {}
 
 
@@ -258,29 +261,58 @@ def _fetch_metars(stations: list[str]) -> dict[str, dict]:
     return latest
 
 
+def _cache_key(stations: dict[str, str]) -> str:
+    return ",".join(sorted(stations.values()))
+
+
+def _fresh_records(key: str) -> dict | None:
+    with _cache_lock:
+        cached = _cache.get(key)
+        if cached and time.monotonic() - cached[0] < CACHE_SECONDS:
+            return cached[1]
+    return None
+
+
+def is_cached() -> bool:
+    """True when weather can be rendered without a network call.
+
+    Also true when weather is switched off (no stations): there is nothing to
+    wait for. Pages use this to decide between rendering the cards inline and
+    loading them after the page paints.
+    """
+    stations = station_map()
+    return not stations or _fresh_records(_cache_key(stations)) is not None
+
+
+def prefetch() -> None:
+    """Warm the cache from a background thread; never raises, never blocks."""
+    threading.Thread(
+        target=get_base_weather, name="weather-prefetch", daemon=True
+    ).start()
+
+
 def get_base_weather() -> list[dict]:
     """Decoded weather per base for the Today board (cached, never raises)."""
     stations = station_map()
     if not stations:
         return []
-    key = ",".join(sorted(stations.values()))
+    key = _cache_key(stations)
 
-    with _cache_lock:
-        cached = _cache.get(key)
-        if cached and time.monotonic() - cached[0] < CACHE_SECONDS:
-            records = cached[1]
-        else:
-            records = None
+    records = _fresh_records(key)
     if records is None:
-        try:
-            records = _fetch_metars(sorted(set(stations.values())))
-        except Exception:  # noqa: BLE001 - weather must never break the board
-            logger.warning("Base weather fetch failed", exc_info=True)
-            records = {}
-        # Cache failures too, so an outage costs one attempt per TTL window
-        # instead of a slow fetch on every page view.
-        with _cache_lock:
-            _cache[key] = (time.monotonic(), records)
+        with _fetch_lock:
+            # Someone else may have filled the cache while we waited.
+            records = _fresh_records(key)
+            if records is None:
+                try:
+                    records = _fetch_metars(sorted(set(stations.values())))
+                except Exception:  # noqa: BLE001 - weather must never break the board
+                    logger.warning("Base weather fetch failed", exc_info=True)
+                    records = {}
+                # Cache failures too, so an outage costs one attempt per TTL
+                # window instead of a slow fetch on every page view.
+                with _cache_lock:
+                    _cache[key] = (time.monotonic(), records)
 
     rows = []
     for base, station in stations.items():
