@@ -2,7 +2,7 @@
 # Pins reflect the versions the test suite is verified against.
 SQLAlchemy==2.0.46
 openpyxl==3.1.5
-Pillow==12.3.0
+Pillow==13.0.0
 Django==6.0.8
 reportlab==4.5.1
 matplotlib==3.10.9
