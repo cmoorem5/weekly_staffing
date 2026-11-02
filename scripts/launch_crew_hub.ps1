@@ -65,7 +65,7 @@ if (-not (Test-Port8000)) {
 
     $deadline = (Get-Date).AddSeconds(90)
     while (-not (Test-Port8000) -and (Get-Date) -lt $deadline) {
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 100
     }
 }
 

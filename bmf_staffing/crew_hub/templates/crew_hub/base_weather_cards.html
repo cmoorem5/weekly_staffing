@@ -19,3 +19,20 @@
   </div>
 </div>
 {% endif %}
+{% if weather_pending %}
+<div class="ch-card" id="ch-weather-pending">
+  <div class="ch-card-header light">Base weather</div>
+  <div class="ch-card-body"><span class="ch-note">Loading weather…</span></div>
+</div>
+<script>
+(function () {
+  var slot = document.getElementById("ch-weather-pending");
+  fetch("{% url 'crew_hub:hub_weather' %}", {credentials: "same-origin"})
+    .then(function (r) { return r.ok ? r.text() : ""; })
+    .then(function (html) {
+      if (html.trim()) { slot.outerHTML = html; } else { slot.remove(); }
+    })
+    .catch(function () { slot.remove(); });
+})();
+</script>
+{% endif %}
