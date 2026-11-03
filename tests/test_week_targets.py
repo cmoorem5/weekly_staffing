@@ -15,6 +15,7 @@ from staffing_tool.models import (
     WeeklyVehicleOutage,
 )
 from staffing_tool.schedule_import import UNIT_MAP
+from staffing_tool.shortfall import reconcile_week
 from staffing_tool.week_targets import recompute_all_weeks, recompute_week_targets
 from tests._temp_db import TempDbTestCase
 
@@ -186,6 +187,41 @@ class WeekTargetTests(TempDbTestCase):
         self.assertAlmostEqual(shares["Bedford"], 14 / 24)
         self.assertAlmostEqual(shares["Lawrence"], 7 / 24)
         self.assertAlmostEqual(sum(shares.values()), 1.0)
+
+    def _reconcile(self):
+        with session_scope(self.db) as session:
+            return reconcile_week(session, WEEK)
+
+    def test_reconcile_flags_a_hand_corrected_base(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS)
+        # The schedule implies 14/14/14/7/7 aircraft-days; Lawrence was corrected by hand.
+        self._cover(
+            Bedford=(14, 0, 0),
+            Lawrence=(13, 0, 0),
+            Mansfield=(7, 0, 0),
+            Manchester=(7, 0, 0),
+            Plymouth=(14, 0, 0),
+        )
+        differing = [r for r in self._reconcile() if r.diff]
+        self.assertEqual(
+            [(r.scope, r.stored, r.from_schedule) for r in differing],
+            [("Lawrence", 13, 14)],
+        )
+
+    def test_reconcile_compares_ground_as_one_system_total(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        # 28 ground shifts on the schedule; the stored count was corrected down to 25.
+        self._cover(Bedford=(14, 7, 7), Lawrence=(14, 4, 0), Mansfield=(7, 7, 0))
+        ground = [r for r in self._reconcile() if r.service_type == "GR"]
+        self.assertEqual(
+            [(r.scope, r.stored, r.from_schedule) for r in ground],
+            [("Ground (system)", 25, 28)],
+        )
+
+    def test_reconcile_skips_a_week_without_detail(self):
+        self.assertEqual(self._reconcile(), [])
 
     def test_recompute_all_weeks_covers_each_week_with_detail(self):
         self._staff(0, NORMAL_UNITS)
