@@ -245,6 +245,32 @@ class WeeklyOpsViewAssignment(Base):
     is_staffed = Column(Integer, nullable=False, default=0)
 
 
+class WeeklyVehicleOutage(Base):
+    """A vehicle (aircraft or truck) out of service for one day.
+
+    Entered by hand after a schedule import. Not a staffing problem, so the
+    shortfall report lists it separately and never counts it against staffing.
+    Not cleared by a schedule re-import (the import only replaces parsed detail).
+    """
+
+    __tablename__ = "weekly_vehicle_outages"
+    __table_args__ = (
+        UniqueConstraint("day_date", "unit_code", name="uq_vehicle_outage_day_unit"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(
+        String(10),
+        ForeignKey("weekly_staffing.week_start", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    day_date = Column(String(10), nullable=False, index=True)
+    unit_code = Column(String(32), nullable=False)
+    note = Column(String(200), nullable=True)
+    created_at = Column(String(32), nullable=False, default="")
+
+
 class UnitCodeMapping(Base):
     """Persisted raw unit cell text -> replacement (dashboard Apply, bulk backfill)."""
 

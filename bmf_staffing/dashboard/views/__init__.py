@@ -43,6 +43,7 @@ from .weeks import (
     week_delete,
     week_edit,
     week_list,
+    week_outages,
 )
 
 __all__ = [
@@ -89,5 +90,6 @@ __all__ = [
     "week_add",
     "week_delete",
     "week_edit",
+    "week_outages",
     "week_list",
 ]

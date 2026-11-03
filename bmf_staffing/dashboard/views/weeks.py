@@ -2,7 +2,7 @@
 
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import cast
 
 from django.contrib import messages
@@ -17,7 +17,11 @@ from staffing_tool.leave_grid import (
     EXCEPTION_GRID_ROLES,
     LEAVE_TYPE_TO_FIELD,
 )
-from staffing_tool.metrics import REQUIRED_TOTAL, compute_week_metrics
+from staffing_tool.metrics import (
+    EXTRA_UNIT_CODES,
+    REQUIRED_TOTAL,
+    compute_week_metrics,
+)
 from staffing_tool.models import (
     BaseConfig,
     KpiThreshold,
@@ -25,9 +29,11 @@ from staffing_tool.models import (
     WeeklyLeaveDetail,
     WeeklyPersonShift,
     WeeklyStaffing,
+    WeeklyVehicleOutage,
 )
 from staffing_tool.rag import NO_TARGET, evaluate_rag
 from staffing_tool.report import export_board_pack
+from staffing_tool.schedule_import import UNIT_MAP
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 from staffing_tool.validation import notes_required, notes_required_message
 
@@ -281,8 +287,123 @@ def week_edit(request, week_start):
             "leave_types_order": EXCEPTION_GRID_COLS,
             "leave_grid_rows": leave_grid_rows,
             "training_breakdown": training_breakdown,
+            **_outage_context(week_start),
         },
     )
+
+
+_OUTAGE_NOTE_MAX = 200
+
+
+def _outage_unit_choices() -> list[tuple[str, str]]:
+    """(unit code, label) for every planned vehicle, rotor wing first."""
+    names = {"D": "day", "N": "night"}
+    rows = [
+        (code, f"{code} ({base} {service} {names.get(dn, dn)})")
+        for code, (base, service, dn) in UNIT_MAP.items()
+        if code not in EXTRA_UNIT_CODES
+    ]
+    return sorted(rows, key=lambda r: (UNIT_MAP[r[0]][1] != "RW", r[1]))
+
+
+def _week_day_choices(week_start: str) -> list[tuple[str, str]]:
+    """(ISO date, label) for the seven days of a week; empty if not a date."""
+    try:
+        start = datetime.strptime(week_start, "%Y-%m-%d").date()
+    except ValueError:
+        return []
+    return [
+        (d.isoformat(), d.strftime("%a %b %d"))
+        for d in (start + timedelta(days=i) for i in range(7))
+    ]
+
+
+def _outage_context(week_start: str) -> dict[str, object]:
+    """Vehicles-out-of-service card data for the week edit page."""
+    days = _week_day_choices(week_start)
+    with session_scope(DB_PATH) as session:
+        rows = (
+            session.query(WeeklyVehicleOutage)
+            .filter(WeeklyVehicleOutage.week_start == week_start)
+            .order_by(WeeklyVehicleOutage.day_date, WeeklyVehicleOutage.unit_code)
+            .all()
+        )
+        outages = [
+            {
+                "id": r.id,
+                "day_date": r.day_date,
+                "unit_code": r.unit_code,
+                "note": r.note or "",
+            }
+            for r in rows
+        ]
+    return {
+        "outages": outages,
+        "outage_days": days,
+        "outage_units": _outage_unit_choices(),
+    }
+
+
+def week_outages(request, week_start):
+    """Add or remove "no vehicle" marks (aircraft or truck out of service).
+
+    Not a staffing problem, so these never count against staffing; the
+    shortfall report lists them in their own section.
+    """
+    _ensure_db()
+    if request.method != "POST":
+        return redirect("week_edit", week_start=week_start)
+    action = request.POST.get("action", "")
+    with session_scope(DB_PATH) as session:
+        week = (
+            session.query(WeeklyStaffing)
+            .filter(WeeklyStaffing.week_start == week_start)
+            .first()
+        )
+        if week is None:
+            messages.error(request, f"No data for week {week_start}.")
+            return redirect("week_list")
+        if action == "add":
+            day_date = (request.POST.get("day_date") or "").strip()
+            unit_code = (request.POST.get("unit_code") or "").strip()
+            note = _short_note(request.POST.get("note"), _OUTAGE_NOTE_MAX)
+            valid_days = {d for d, _label in _week_day_choices(week_start)}
+            valid_units = {c for c, _label in _outage_unit_choices()}
+            if day_date not in valid_days or unit_code not in valid_units:
+                messages.error(request, "Pick a day in this week and a vehicle.")
+            else:
+                existing = (
+                    session.query(WeeklyVehicleOutage)
+                    .filter(
+                        WeeklyVehicleOutage.day_date == day_date,
+                        WeeklyVehicleOutage.unit_code == unit_code,
+                    )
+                    .first()
+                )
+                if existing:
+                    existing.note = note
+                else:
+                    session.add(
+                        WeeklyVehicleOutage(
+                            week_start=week_start,
+                            day_date=day_date,
+                            unit_code=unit_code,
+                            note=note,
+                            created_at=_utc_now_iso(),
+                        )
+                    )
+                messages.success(
+                    request, f"{unit_code} marked no vehicle on {day_date}."
+                )
+        elif action == "remove":
+            ids = [int(i) for i in request.POST.getlist("remove_ids") if i.isdigit()]
+            if ids:
+                session.query(WeeklyVehicleOutage).filter(
+                    WeeklyVehicleOutage.week_start == week_start,
+                    WeeklyVehicleOutage.id.in_(ids),
+                ).delete(synchronize_session=False)
+                messages.success(request, "Removed.")
+    return redirect("week_edit", week_start=week_start)
 
 
 def week_add(request):

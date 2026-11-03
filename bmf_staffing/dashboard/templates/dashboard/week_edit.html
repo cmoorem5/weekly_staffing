@@ -31,6 +31,59 @@
     </div>
   </div>
   {% endif %}
+  <div class="card mb-4" id="vehicles-out-of-service">
+    <div class="card-body py-3">
+      <h2 class="h6 card-title mb-1">Vehicles out of service (no vehicle)</h2>
+      <p class="text-muted small mb-3">
+        An aircraft or truck that could not fly. This is not a staffing problem, so it never
+        counts against staffing. With a full crew on shift the day stays counted as staffed;
+        with no crew it comes off the plan. The shortfall report lists these separately.
+      </p>
+      {% if outages %}
+      <form method="post" action="{% url 'week_outages' week_start %}" class="mb-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="remove">
+        <table class="table table-sm align-middle mb-2">
+          <thead><tr><th>Remove</th><th>Day</th><th>Vehicle</th><th>Note</th></tr></thead>
+          <tbody>
+            {% for o in outages %}
+            <tr>
+              <td><input type="checkbox" name="remove_ids" value="{{ o.id }}" aria-label="Remove {{ o.unit_code }} on {{ o.day_date }}"></td>
+              <td>{{ o.day_date }}</td>
+              <td>{{ o.unit_code }}</td>
+              <td>{{ o.note }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="submit" class="btn btn-outline-danger btn-sm">Remove checked</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{% url 'week_outages' week_start %}" class="row g-2 align-items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add">
+        <div class="col-auto">
+          <label class="form-label small mb-1" for="outage-day">Day</label>
+          <select class="form-select form-select-sm" id="outage-day" name="day_date" required>
+            {% for value, label in outage_days %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1" for="outage-unit">Vehicle</label>
+          <select class="form-select form-select-sm" id="outage-unit" name="unit_code" required>
+            {% for value, label in outage_units %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col">
+          <label class="form-label small mb-1" for="outage-note">Note (optional)</label>
+          <input class="form-control form-control-sm" id="outage-note" name="note" maxlength="200" placeholder="e.g. aircraft in maintenance">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-sm">Mark no vehicle</button>
+        </div>
+      </form>
+    </div>
+  </div>
 {% endif %}
 
 <form method="post" autocomplete="off">
