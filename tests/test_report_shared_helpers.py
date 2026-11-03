@@ -136,7 +136,7 @@ class BaseCoverageTableTests(unittest.TestCase):
         self.assertEqual(
             self.weekly._cellvalues,
             [
-                ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+                ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Share %"],
                 ["Bedford", "20", "95.2%", "14", "100.0%"],
                 ["Plymouth", "14", "88.0%", "7", "50.0%"],
             ],

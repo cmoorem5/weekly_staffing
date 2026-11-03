@@ -20,7 +20,7 @@ from .person_names import normalize_legacy_person_display, person_sort_key
 from .staff_roster import canonical_display
 
 # Leave codes folded to the same display buckets used by the weekly/quarterly
-# board reports' exception breakdown (aggregate_week_from_records), so this
+# leadership reports' exception breakdown (aggregate_week_from_records), so this
 # report's columns read the same way as those.
 _LEAVE_DISPLAY = {
     "AT": "AT",

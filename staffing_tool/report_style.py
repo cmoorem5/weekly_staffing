@@ -12,6 +12,7 @@ import matplotlib
 from staffing_tool.paths import FONT_DIR as _FONT_DIR
 from staffing_tool.paths import OUTPUT_DIR as _OUTPUT_DIR
 from staffing_tool.paths import resolve_logo_path
+from staffing_tool.shortfall import REASON_TABLE_HEADERS
 
 matplotlib.use("Agg")
 from io import BytesIO
@@ -528,13 +529,49 @@ def data_table_style() -> list:
     ]
 
 
+# Ground is a system target (3 day + 1 night truck a day, any base), so its
+# per-base column is each base's share of the ground shifts staffed, not a % of
+# a per-base plan. Rotor wing keeps its availability % against the base plan.
+BASE_COVERAGE_HEADERS = ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Share %"]
+
+
+def reasons_flowables(rows: list[list[str]]) -> list:
+    """Section bar plus the "why coverage fell short" table; [] when no detail."""
+    if not rows:
+        return []
+    t = Table(
+        [list(REASON_TABLE_HEADERS)] + [list(r) for r in rows],
+        colWidths=full_width_col_widths([2.6, 1.4, 1.4]),
+    )
+    t.setStyle(
+        TableStyle(
+            data_table_style()
+            + [
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + num_style_cells([1, 2])
+        )
+    )
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, Spacer
+
+    note = Paragraph(
+        "Vehicle-days short a seat, from the schedule detail. A vehicle missing two "
+        "seats is counted under each. Ground is 3 day + 1 night truck a day from any "
+        "base. No-vehicle days (aircraft or truck out of service) are shown for "
+        "information and never counted against staffing.",
+        ParagraphStyle("reasons_note", fontSize=7, leading=9, textColor=colors.grey),
+    )
+    return [section_bar("WHY COVERAGE FELL SHORT"), t, Spacer(1, 3), note]
+
+
 def base_coverage_table(
     base_coverage: list[tuple[str, str, str, str, str]],
     col_ratios: list[float],
 ) -> Table:
     """Per-base RW/GR shift counts and availability percentages."""
-    headers = ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"]
-    rows = [headers] + [list(r) for r in base_coverage]
+    rows = [list(BASE_COVERAGE_HEADERS)] + [list(r) for r in base_coverage]
     t = Table(rows, colWidths=full_width_col_widths(col_ratios))
     t.setStyle(
         TableStyle(
@@ -743,7 +780,7 @@ def base_coverage_fig(
 ):
     """Coverage by base as two bar panels, rotor wing beside ground.
 
-    Rows are the coverage table's (base, RW shifts, RW %, GR shifts, GR %).
+    Rows are the coverage table's (base, RW shifts, RW %, GR shifts, GR share).
     A base with no plan for a vehicle type (an em dash) is left off that
     panel rather than drawn as a zero. Bars are one color, labeled with the
     value; the system coverage target is named in the subtitle and drawn as
@@ -752,7 +789,7 @@ def base_coverage_fig(
     targets = targets or {}
     panels = (
         ("Rotor wing (RW) availability", 2, "System RW Coverage %"),
-        ("Ground (GR) availability", 4, "System GR Coverage %"),
+        ("Ground (GR) share of staffed shifts", 4, None),
     )
     n_rows = max(
         (sum(1 for r in base_coverage if pct_value(r[idx]) is not None))
@@ -788,7 +825,7 @@ def base_coverage_fig(
                 )
             else:
                 ax.text(v + 1.5, i, f"{v:.1f}%", va="center", fontsize=7, color=C_INK)
-        target = targets.get(metric)
+        target = targets.get(metric) if metric else None
         ax.set_title(
             title, fontsize=8, color=C_INK, loc="left", fontweight="bold", pad=10
         )

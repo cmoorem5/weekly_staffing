@@ -370,6 +370,11 @@ def build_pdf(ctx: AnnualReportContext, output_path: str) -> str:
             ]
         ),
         Spacer(1, 10),
+        *(
+            [KeepTogether(style.reasons_flowables(w.reasons)), Spacer(1, 10)]
+            if w.reasons
+            else []
+        ),
         KeepTogether(
             [
                 style.section_bar("EXCEPTION BREAKDOWN"),
@@ -442,11 +447,12 @@ def build_html(
         )
         + '<div style="height:12px;"></div>'
         + rh.data_table(
-            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+            style.BASE_COVERAGE_HEADERS,
             [list(r) for r in w.base_coverage],
             right_cols={1, 2, 3, 4},
         )
     )
+    body += rh.reasons_block(w.reasons)
 
     top2 = style.leave_top2(w.leave_breakdown)
     top2_note = ", ".join(

@@ -1,6 +1,6 @@
-"""End-to-end tests for the Excel builders: weekly board pack + monthly report.
+"""End-to-end tests for the Excel builders: weekly staffing workbook + monthly report.
 
-These drive export_board_pack / export_monthly_report against a seeded
+These drive export_staffing_workbook / export_monthly_report against a seeded
 temporary database and assert the workbook structure plus the non-negotiable
 constraints from docs/report-generator-spec.md (no formulas, no Excel
 conditional formatting, no Green/Yellow/Red words in cells).
@@ -17,7 +17,7 @@ from openpyxl import load_workbook
 from staffing_tool.db import init_db, session_scope
 from staffing_tool.models import KpiThreshold, WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_report import export_monthly_report
-from staffing_tool.report import export_board_pack
+from staffing_tool.report import export_staffing_workbook
 from tests._temp_db import TempDbTestCase
 
 RAG_WORDS = {"Green", "Yellow", "Red"}
@@ -40,7 +40,7 @@ def _spec_violations(path: str) -> list[tuple]:
     return bad
 
 
-class BoardPackExcelTests(TempDbTestCase):
+class StaffingWorkbookExcelTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.tmp.name, "test.db")
@@ -76,21 +76,27 @@ class BoardPackExcelTests(TempDbTestCase):
                 )
             session.commit()
 
-    def test_weekly_board_pack_structure(self):
-        path = export_board_pack(self.db_path, "2026-05-10", output_dir=self.out_dir)
+    def test_weekly_workbook_structure(self):
+        path = export_staffing_workbook(
+            self.db_path, "2026-05-10", output_dir=self.out_dir
+        )
         self.assertTrue(os.path.isfile(path))
         self.assertIn("Weekly_staffing_summary_2026-05-10_to_2026-05-16", path)
         wb = load_workbook(path)
         self.assertEqual(
             wb.sheetnames,
-            ["Board_Summary", "Weekly_Detail", "Trend_12_Weeks", "Data_Dump"],
+            ["Executive_Summary", "Weekly_Detail", "Trend_12_Weeks", "Data_Dump"],
         )
-        summary_labels = [wb["Board_Summary"].cell(r, 1).value for r in range(1, 30)]
+        summary_labels = [
+            wb["Executive_Summary"].cell(r, 1).value for r in range(1, 30)
+        ]
         for label in ("Staffing Rate", "System RW Coverage %", "System GR Coverage %"):
             self.assertIn(label, summary_labels)
 
-    def test_weekly_board_pack_spec_constraints(self):
-        path = export_board_pack(self.db_path, "2026-05-10", output_dir=self.out_dir)
+    def test_weekly_workbook_spec_constraints(self):
+        path = export_staffing_workbook(
+            self.db_path, "2026-05-10", output_dir=self.out_dir
+        )
         self.assertEqual(_spec_violations(path), [])
 
     def test_blank_threshold_reports_no_target_not_on_target(self):
@@ -106,8 +112,10 @@ class BoardPackExcelTests(TempDbTestCase):
             ):
                 setattr(t, f, None)
             session.commit()
-        path = export_board_pack(self.db_path, "2026-05-10", output_dir=self.out_dir)
-        ws = load_workbook(path)["Board_Summary"]
+        path = export_staffing_workbook(
+            self.db_path, "2026-05-10", output_dir=self.out_dir
+        )
+        ws = load_workbook(path)["Executive_Summary"]
         header_row = next(r for r in range(1, 40) if ws.cell(r, 1).value == "Metric")
         status_col = next(
             c for c in range(1, 12) if ws.cell(header_row, c).value == "Status"
@@ -122,9 +130,11 @@ class BoardPackExcelTests(TempDbTestCase):
         self.assertEqual(status.fill.start_color.rgb[-6:], "E6E6E6")
         self.assertEqual(_spec_violations(path), [])
 
-    def test_weekly_board_pack_unknown_week_raises(self):
+    def test_weekly_workbook_unknown_week_raises(self):
         with self.assertRaises(ValueError):
-            export_board_pack(self.db_path, "2001-01-07", output_dir=self.out_dir)
+            export_staffing_workbook(
+                self.db_path, "2001-01-07", output_dir=self.out_dir
+            )
 
     def test_monthly_report_structure_and_spec(self):
         path = export_monthly_report(

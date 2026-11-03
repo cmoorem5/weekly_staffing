@@ -1,7 +1,7 @@
 """
-Monthly staffing board report — polished HTML export.
+Monthly staffing report — polished HTML export.
 
-Board-level summary for a date range (usually one calendar month): core
+Leadership-level summary for a date range (usually one calendar month): core
 staffing KPIs averaged over the period with change vs the prior period,
 weekly trend and exception-mix charts, OT by role, base coverage, and a
 week-by-week detail table. Same visual family as the weekly and quarterly
@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from staffing_tool import report_html as rh
+from staffing_tool import report_style as style
 from staffing_tool.db import session_scope
 from staffing_tool.leave_grid import EXCEPTION_GRID_COLS
 from staffing_tool.metrics import (
@@ -32,6 +33,7 @@ from staffing_tool.metrics import (
 )
 from staffing_tool.models import BaseConfig, WeeklyStaffing
 from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
+from staffing_tool.shortfall import analyze_range, reason_table_rows
 
 EM = rh.EM
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -47,7 +49,7 @@ def _short_label(iso: str) -> str:
 
 
 @dataclass
-class MonthlyBoardData:
+class MonthlyReportData:
     date_start: str
     date_end: str
     weeks_count: int
@@ -64,6 +66,8 @@ class MonthlyBoardData:
     trend_targets: dict[str, float] = field(default_factory=dict)
     # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
     kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # "Why coverage fell short" rows (shortfall.reason_table_rows); [] = no detail
+    reasons: list[list[str]] = field(default_factory=list)
 
 
 def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
@@ -86,9 +90,9 @@ def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
     return compute_period_rollups(metrics)
 
 
-def load_monthly_board_data(
+def load_monthly_report_data(
     db_path: str, date_start: str, date_end: str
-) -> MonthlyBoardData:
+) -> MonthlyReportData:
     try:
         ds = datetime.strptime(date_start, "%Y-%m-%d").date()
         de = datetime.strptime(date_end, "%Y-%m-%d").date()
@@ -174,10 +178,13 @@ def load_monthly_board_data(
 
         n = rollups.n_weeks
         base_coverage: list[tuple[str, str, str, str, str]] = []
+        # Ground is a system target (crews move between bases), so each base
+        # shows its share of the ground shifts actually staffed, not a % of a
+        # per-base plan.
+        gr_total = sum(base_gr.get(b, 0) for b in BASE_ORDER)
         for base in BASE_ORDER:
             cfg = cfg_by_name.get(base)
             rw_cap = int(cfg.rw_total_unit_days) * n if cfg else 0
-            gr_cap = int(cfg.gr_total_unit_days) * n if cfg else 0
             rw_n = base_rw.get(base, 0)
             gr_n = base_gr.get(base, 0)
             base_coverage.append(
@@ -188,13 +195,11 @@ def load_monthly_board_data(
                     if rw_cap and rw_n
                     else (EM if not rw_cap else "0.0%"),
                     str(gr_n) if gr_n else EM,
-                    _pct(gr_n / gr_cap)
-                    if gr_cap and gr_n
-                    else (EM if not gr_cap else "0.0%"),
+                    _pct(gr_n / gr_total) if gr_n and gr_total else EM,
                 )
             )
 
-        return MonthlyBoardData(
+        return MonthlyReportData(
             date_start=date_start,
             date_end=date_end,
             weeks_count=n,
@@ -208,6 +213,14 @@ def load_monthly_board_data(
             ],
             ot_by_role=[("RN", ot_rn), ("Paramedic", ot_medic), ("EMT", ot_emt)],
             base_coverage=base_coverage,
+            reasons=reason_table_rows(
+                analyze_range(
+                    session,
+                    date.fromisoformat(str(week_rows[0].week_start)),
+                    date.fromisoformat(str(week_rows[-1].week_start))
+                    + timedelta(days=6),
+                )
+            ),
             role_fill=compute_role_fill(
                 session, [str(row.week_start) for row in week_rows]
             ),
@@ -225,7 +238,7 @@ def load_monthly_board_data(
         )
 
 
-def _board_kpis(data: MonthlyBoardData) -> list[tuple]:
+def _headline_kpis(data: MonthlyReportData) -> list[tuple]:
     """KPI cells with change vs the prior period when it has data."""
     r, p = data.rollups, data.prior_rollups
     spec = [
@@ -254,7 +267,7 @@ def _board_kpis(data: MonthlyBoardData) -> list[tuple]:
     return kpis
 
 
-def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
+def build_monthly_html(data: MonthlyReportData, output_path: str) -> str:
     # Chart builders are shared with the quarterly report; they only read
     # .weekly_trend / .leave_breakdown, so a namespace stand-in works.
     from staffing_tool.quarterly_pdf_report import (
@@ -280,7 +293,7 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
         if data.prior_rollups
         else rh.note("No prior-period data available for comparison.")
     )
-    body += rh.body_cell(rh.kpi_strip(_board_kpis(data), data.kpi_status) + kpi_note)
+    body += rh.body_cell(rh.kpi_strip(_headline_kpis(data), data.kpi_status) + kpi_note)
 
     if trend_b64:
         body += rh.section_bar("WEEKLY TREND THIS PERIOD")
@@ -328,11 +341,12 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
         )
         + '<div style="height:12px;"></div>'
         + rh.data_table(
-            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+            style.BASE_COVERAGE_HEADERS,
             [list(r) for r in data.base_coverage],
             right_cols={1, 2, 3, 4},
         )
     )
+    body += rh.reasons_block(data.reasons)
 
     body += rh.section_bar("WEEK-BY-WEEK DETAIL")
     body += rh.body_cell(
@@ -364,11 +378,11 @@ def export_monthly_report_html(
     date_end: str,
     output_dir: str,
 ) -> str:
-    data = load_monthly_board_data(db_path, date_start, date_end)
+    data = load_monthly_report_data(db_path, date_start, date_end)
     os.makedirs(output_dir, exist_ok=True)
     safe_start = date_start.replace("-", "")
     safe_end = date_end.replace("-", "")
     out_path = os.path.join(
         output_dir, f"Monthly_staffing_{safe_start}_to_{safe_end}.html"
     )
-    return build_monthly_board_html(data, out_path)
+    return build_monthly_html(data, out_path)

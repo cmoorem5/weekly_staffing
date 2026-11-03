@@ -1,6 +1,6 @@
 # Weekly staffing (BMF)
 
-Board-level staffing KPI tooling: a **`staffing_tool`** Python package (CLI + Excel reports) and an optional **Django dashboard** under **`bmf_staffing/`**. Data is stored in a local SQLite file **`staffing.db`** next to this README.
+Senior-leadership staffing KPI tooling: a **`staffing_tool`** Python package (CLI + Excel reports) and an optional **Django dashboard** under **`bmf_staffing/`**. Data is stored in a local SQLite file **`staffing.db`** next to this README.
 
 **Python:** 3.12+ (Django 6.0)
 
@@ -58,7 +58,7 @@ which itself backs up the current DB before overwriting.
 
 ## Command line
 
-Initialize or migrate the database, then use subcommands such as `upsert-week`, `export-board-pack`:
+Initialize or migrate the database, then use subcommands such as `upsert-week`, `export-workbook`:
 
 ```bash
 python -m staffing_tool init-db
@@ -79,7 +79,7 @@ python scripts/build_quarterly_report.py --fy 2026 --quarter 2
 python scripts/build_quarterly_report.py
 ```
 
-In the app: **Weekly staffing report**, **Monthly board report**, and
+In the app: **Weekly staffing report**, **Monthly report**, and
 **Quarterly report** in the sidebar. All three offer a **polished HTML
 export** in the same visual family (navy banner, KPI strip, embedded trend
 and exception charts) — ready to attach to email or open in a browser:
@@ -88,7 +88,7 @@ and exception charts) — ready to attach to email or open in a browser:
   staffing rate into **day vs night fill** (56 day / 28 night required)
   and shows **fill rate by role** (RN / Paramedic / EMT worked
   person-shifts vs the weekly plan).
-- **Monthly board report** — pick any date range; the HTML is a board-level
+- **Monthly report** — pick any date range; the HTML is a leadership-level
   summary: staffing rate, OT dependency, shift exception %, and system
   RW/GR availability averaged over the period, each with **change vs the
   prior period** (▲/▼ in percentage points), plus weekly trend, exception

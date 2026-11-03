@@ -19,7 +19,7 @@ from staffing_tool.metrics import (
     weekly_leave_total,
 )
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
-from staffing_tool.monthly_html_report import load_monthly_board_data
+from staffing_tool.monthly_html_report import load_monthly_report_data
 from staffing_tool.monthly_report import export_monthly_report
 from staffing_tool.report_style import _panel_range
 from tests._temp_db import TempDbTestCase
@@ -154,7 +154,7 @@ class ReportPathConsistencyTests(TempDbTestCase):
             session.commit()
 
     def test_monthly_html_per_role_ot_includes_legacy_week(self):
-        data = load_monthly_board_data(self.db_path, "2025-12-01", "2025-12-31")
+        data = load_monthly_report_data(self.db_path, "2025-12-01", "2025-12-31")
         self.assertEqual(dict(data.ot_by_role), {"RN": 6, "Paramedic": 4, "EMT": 2})
 
     def test_weekly_ot_by_role_falls_back_on_legacy_week(self):

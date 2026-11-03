@@ -49,6 +49,7 @@ from staffing_tool.models import (
 )
 from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
 from staffing_tool.report_summary import summary_lines
+from staffing_tool.shortfall import analyze_range, reason_table_rows
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -79,6 +80,8 @@ class QuarterlyReportContext:
     week_metrics: list[WeekMetrics] = field(default_factory=list)
     # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
     kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # "Why coverage fell short" rows (shortfall.reason_table_rows); [] = no detail
+    reasons: list[list[str]] = field(default_factory=list)
     # Pooled fill by role over the window (worked vs seat capacity)
     role_fill: list[RoleFill] = field(default_factory=list)
     # Plain-language lines for the top of the report (report_summary)
@@ -320,10 +323,13 @@ def load_window_report_data(
         )
 
         base_coverage: list[tuple[str, str, str, str, str]] = []
+        # Ground is a system target (crews move between bases), so each base
+        # shows its share of the ground shifts actually staffed, not a % of a
+        # per-base plan.
+        gr_total = sum(base_gr.get(b, 0) for b in BASE_ORDER)
         for base in BASE_ORDER:
             cfg = cfg_by_name.get(base)
             rw_cap = int(cfg.rw_total_unit_days) * n if cfg else 0
-            gr_cap = int(cfg.gr_total_unit_days) * n if cfg else 0
             rw_n = base_rw.get(base, 0)
             gr_n = base_gr.get(base, 0)
             base_coverage.append(
@@ -334,9 +340,7 @@ def load_window_report_data(
                     if rw_cap and rw_n
                     else (EM if not rw_cap else "0.0%"),
                     str(gr_n) if gr_n else EM,
-                    _pct(gr_n / gr_cap)
-                    if gr_cap and gr_n
-                    else (EM if not gr_cap else "0.0%"),
+                    _pct(gr_n / gr_total) if gr_n and gr_total else EM,
                 )
             )
 
@@ -360,6 +364,13 @@ def load_window_report_data(
             period_volumes=period_volumes,
             period_vol_total=period_vol_total,
             base_coverage=base_coverage,
+            reasons=reason_table_rows(
+                analyze_range(
+                    session,
+                    date.fromisoformat(week_starts[0]),
+                    date.fromisoformat(week_starts[-1]) + timedelta(days=6),
+                )
+            ),
             weekly_detail=weekly_detail,
             trend_targets=load_trend_targets(session),
             week_metrics=metrics_list,
@@ -449,7 +460,7 @@ def _base_coverage_table(ctx: QuarterlyReportContext):
 
 
 def _build_base_coverage_fig(ctx):
-    # Also called with MonthlyBoardData by the monthly reports.
+    # Also called with MonthlyReportData by the monthly reports.
     return style.base_coverage_fig(
         ctx.base_coverage, getattr(ctx, "trend_targets", None)
     )
@@ -487,7 +498,7 @@ def _weekly_detail_table(ctx: QuarterlyReportContext):
 def _build_trend_fig(ctx: QuarterlyReportContext):
     return style.trend_fig(
         ctx.weekly_trend,
-        # Also called with MonthlyBoardData by the monthly PDF.
+        # Also called with MonthlyReportData by the monthly PDF.
         targets=getattr(ctx, "trend_targets", None),
     )
 
@@ -584,6 +595,11 @@ def build_pdf(ctx: QuarterlyReportContext, output_path: str) -> str:
             ]
         ),
         Spacer(1, 10),
+        *(
+            [KeepTogether(style.reasons_flowables(ctx.reasons)), Spacer(1, 10)]
+            if ctx.reasons
+            else []
+        ),
         KeepTogether(
             [
                 style.section_bar("EXCEPTION BREAKDOWN"),
@@ -629,7 +645,7 @@ def export_quarterly_staffing_pdf(
 
 
 # --------------------------------------------------------------------
-# HTML export (board-ready, same visual family as the weekly report)
+# HTML export (leadership-ready, same visual family as the weekly report)
 # --------------------------------------------------------------------
 
 # KPI label -> whether a higher value is better (for prior-quarter deltas).
@@ -702,11 +718,12 @@ def build_html(
         )
         + '<div style="height:12px;"></div>'
         + rh.data_table(
-            ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+            style.BASE_COVERAGE_HEADERS,
             [list(r) for r in ctx.base_coverage],
             right_cols={1, 2, 3, 4},
         )
     )
+    body += rh.reasons_block(ctx.reasons)
 
     top2_note = ", ".join(
         f"{code} ({count})"

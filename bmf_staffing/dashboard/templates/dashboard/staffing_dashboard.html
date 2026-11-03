@@ -436,9 +436,39 @@
     </div>
   </div>
 
+  {% if reasons_rows %}
+  <div class="card bmf-card shadow-sm mt-3" id="why-coverage-fell-short">
+    <div class="card-header bmf-card-header">Why coverage fell short — vehicle-days short a seat (selected dates)</div>
+    <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col" class="text-end">Rotor wing</th>
+            <th scope="col" class="text-end">Ground</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in reasons_rows %}
+          <tr>
+            <th scope="row" class="fw-normal">{{ r.0 }}</th>
+            <td class="text-end bmf-numeric">{{ r.1 }}</td>
+            <td class="text-end bmf-numeric">{{ r.2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer small text-muted">
+      From the schedule detail; weeks imported without it are left out. A vehicle missing two seats counts under each.
+      Ground is 3 day + 1 night truck a day from any base. No-vehicle days are never counted against staffing.
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card bmf-card shadow-sm mt-3">
     <div class="card-header bmf-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <span>Vehicle / base coverage — RW % / GR % (avg across weeks)</span>
+      <span>Vehicle / base coverage — RW % (avg across weeks) / GR share of ground shifts</span>
       <button
         class="btn btn-outline-secondary btn-sm"
         type="button"
@@ -459,7 +489,7 @@
             <th scope="col">{% if granularity == "pay_period" %}Pay period window{% else %}Period{% endif %}</th>
             {% for b in base_coverage_breakdown_order %}
               <th scope="col" class="text-end">{{ b }} RW %</th>
-              <th scope="col" class="text-end">{{ b }} GR %</th>
+              <th scope="col" class="text-end">{{ b }} GR share %</th>
             {% endfor %}
           </tr>
         </thead>
@@ -469,7 +499,7 @@
             <td>{{ r.label }}</td>
             {% for entry in r.base_coverage_list %}
               <td class="text-end">{{ entry.rw_pct }}</td>
-              <td class="text-end">{{ entry.gr_pct }}</td>
+              <td class="text-end">{{ entry.gr_share }}</td>
             {% endfor %}
           </tr>
           {% endfor %}

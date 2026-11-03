@@ -214,12 +214,15 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         self.assertIn(WEEK_2, summary_rows)
 
         base_rows, next_idx = _section(
-            next_idx, "Vehicle / base coverage (RW % / GR %, avg across weeks)"
+            next_idx,
+            "Vehicle / base coverage (RW % avg across weeks; GR = share of ground shifts)",
         )
-        # Columns after Period/start/end: <Base> RW (%), <Base> GR (%) pairs in
+        # Columns after Period/start/end: <Base> RW (%), <Base> GR share (%) pairs in
         # BASE_DISPLAY_ORDER (Bedford, Lawrence, Manchester, Mansfield, Plymouth).
         self.assertEqual(base_rows[WEEK_1][3], "50.0")  # Bedford RW %
-        self.assertEqual(base_rows[WEEK_1][4], "0.0")  # Bedford GR %
+        self.assertEqual(
+            base_rows[WEEK_1][4], "0.0"
+        )  # Bedford GR share (no ground shifts)
         self.assertEqual(base_rows[WEEK_1][5], "0.0")  # Lawrence RW % (no coverage row)
         self.assertEqual(base_rows[WEEK_2][3], "100.0")  # Bedford RW %
 

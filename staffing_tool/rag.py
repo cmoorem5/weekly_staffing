@@ -11,7 +11,7 @@ RAG = Literal["Green", "Yellow", "Red", "NoData", "NoTarget"]
 
 # Neutral states: never graded, never colored as good or bad. NO_DATA when the
 # KPI has no value for the period; NO_TARGET when no KpiThreshold row exists.
-# Defaulting either to "Green" showed the board "On target" for a KPI nobody
+# Defaulting either to "Green" showed leadership "On target" for a KPI nobody
 # had measured or set a target for.
 NO_DATA: RAG = "NoData"
 NO_TARGET: RAG = "NoTarget"

@@ -59,7 +59,8 @@ class SummaryLineTests(unittest.TestCase):
     def test_coverage_line_lists_bases_below_target_and_skips_unplanned(self):
         self.assertEqual(
             _lines()[2],
-            "Below the availability target: Bedford GR 50.0%, Manchester RW 85.7%.",
+            # Ground columns are shares of a system target, not graded per base.
+            "Below the availability target: Manchester RW 85.7%.",
         )
         many = _lines(
             base_coverage=[(f"B{i}", "1", f"{60 + i}.0%", "—", "—") for i in range(5)]
@@ -70,7 +71,7 @@ class SummaryLineTests(unittest.TestCase):
             "and 2 more.",
         )
         ok = _lines(base_coverage=[("Bedford", "7", "100.0%", "7", "100.0%")])
-        self.assertEqual(ok[2], "Every base met its RW and GR availability targets.")
+        self.assertEqual(ok[2], "Every base met its rotor wing availability target.")
 
     def test_no_targets_states_facts_without_grading(self):
         lines = _lines(targets={})

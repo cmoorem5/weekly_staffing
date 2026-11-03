@@ -1,15 +1,15 @@
 """
-Weekly staffing summary Excel export: Board_Summary, Weekly_Detail, Trend_12_Weeks, Data_Dump.
+Weekly staffing summary Excel export: Executive_Summary, Weekly_Detail, Trend_12_Weeks, Data_Dump.
 Uses openpyxl; status fills are computed in Python (not Excel conditional formatting).
 
-This module is the public façade: it keeps ``export_board_pack`` /
+This module is the public façade: it keeps ``export_staffing_workbook`` /
 ``export_week_excel`` and the Trend/Data_Dump sheet writers, and re-exports
 every name from the modules the generator was split into — import from
 here, not the submodules:
 
 - ``report_excel_style``   brand fills/fonts/borders + shared cell writers
 - ``report_data``          week loading, metric prep, status text, config checks
-- ``report_board_summary`` Board_Summary sheet writer + narrative
+- ``report_executive_summary`` Executive_Summary sheet writer + narrative
 - ``report_weekly_detail`` Weekly_Detail sheet writer + §7 self-checks
 """
 
@@ -30,10 +30,6 @@ from .models import (
     KpiThreshold,
     WeeklyLeaveDetail,
     WeeklyStaffing,
-)
-from .report_board_summary import (  # noqa: F401
-    _generate_narrative,
-    _write_board_summary,
 )
 from .report_data import (  # noqa: F401
     BASE_UNIT_CELL_CONFIGURED,
@@ -123,6 +119,10 @@ from .report_excel_style import (  # noqa: F401
     _write_pct_cell,
     _write_pct_or_num,
 )
+from .report_executive_summary import (  # noqa: F401
+    _generate_narrative,
+    _write_executive_summary,
+)
 from .report_weekly_detail import (  # noqa: F401
     _verify_weekly_detail_checks,
     _write_weekly_detail,
@@ -208,7 +208,7 @@ def _write_data_dump(wb: Workbook, session: Session) -> None:
     ws.freeze_panes = "A2"
 
 
-def export_board_pack(
+def export_staffing_workbook(
     db_path: str | None,
     week_start: str,
     trend_weeks: int = 12,
@@ -280,7 +280,7 @@ def export_board_pack(
         wb = _new_workbook_from_template_or_empty()
 
         trend_data = [(ws, m) for (ws, m, _) in trend_list]
-        _write_board_summary(
+        _write_executive_summary(
             wb,
             week_start,
             week_end,
@@ -325,5 +325,7 @@ def export_week_excel(
     week_start: str,
     output_dir: str = "output",
 ) -> str:
-    """Single-week export (simplified one-sheet or same structure). Reuse board pack with 1 week trend."""
-    return export_board_pack(db_path, week_start, trend_weeks=1, output_dir=output_dir)
+    """Single-week export (simplified one-sheet or same structure). Reuse the staffing workbook with a 1-week trend."""
+    return export_staffing_workbook(
+        db_path, week_start, trend_weeks=1, output_dir=output_dir
+    )

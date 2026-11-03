@@ -1,9 +1,9 @@
 """
-CLI for Boston MedFlight Board-Level Staffing KPI Tool.
+CLI for Boston MedFlight Staffing KPI Tool.
 
 Commands: init-db, set-base-totals, show-base-totals, set-threshold,
 show-thresholds, upsert-week, upsert-base-coverage, list-weeks, export-week,
-export-latest, export-board-pack.
+export-latest, export-workbook.
 """
 
 import argparse
@@ -19,6 +19,7 @@ from .db import (
     migrate_leave_exposure_to_shift_exception_metric,
     migrate_system_gr_kpi_thresholds,
     migrate_unpartnered_note_columns,
+    migrate_week_target_columns,
     migrate_weekly_staffing_columns,
     session_scope,
 )
@@ -33,7 +34,7 @@ from .models import (
     WeeklyStaffingDetail,
 )
 from .rag import NO_TARGET, evaluate_rag
-from .report import export_board_pack, export_week_excel
+from .report import export_staffing_workbook, export_week_excel
 from .validation import notes_required, notes_required_message
 
 DB_PATH_DEFAULT = "staffing.db"
@@ -67,6 +68,7 @@ def _cmd_migrate(args: argparse.Namespace, db_path: str) -> None:
     migrate_weekly_staffing_columns(engine)
     migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
+    migrate_week_target_columns(engine)
     migrate_leave_exposure_to_shift_exception_metric(engine)
     migrate_system_gr_kpi_thresholds(engine)
     with session_scope(db_path) as session:
@@ -495,7 +497,7 @@ def _cmd_export_latest(args: argparse.Namespace, db_path: str) -> None:
     print(f"Exported latest week {week_start}: {path}")
 
 
-def _cmd_export_board_pack(args: argparse.Namespace, db_path: str) -> None:
+def _cmd_export_workbook(args: argparse.Namespace, db_path: str) -> None:
     week_start = getattr(args, "week_start", None)
     if not week_start:
         with session_scope(db_path) as session:
@@ -512,10 +514,10 @@ def _cmd_export_board_pack(args: argparse.Namespace, db_path: str) -> None:
     _ensure_sunday(week_start)
     weeks = getattr(args, "weeks", 12) or 12
     output_dir = getattr(args, "output_dir", None) or "output"
-    path = export_board_pack(
+    path = export_staffing_workbook(
         db_path, week_start, trend_weeks=weeks, output_dir=output_dir
     )
-    print(f"Board pack exported: {path}")
+    print(f"Staffing workbook exported: {path}")
 
 
 def main() -> None:
@@ -528,7 +530,7 @@ def main() -> None:
     )
 
     parser = argparse.ArgumentParser(
-        description="BMF Board-Level Staffing KPI Tool (CLI)",
+        description="BMF Staffing KPI Tool (CLI)",
         epilog=(
             "Example: python -m staffing_tool init-db   or   "
             'python -m staffing_tool init-db --db "C:\\path\\staffing.db"'
@@ -645,8 +647,8 @@ def main() -> None:
     p = sub.add_parser("export-latest", parents=[db_parent])
     p.add_argument("--output-dir", dest="output_dir", default="output")
 
-    # export-board-pack
-    p = sub.add_parser("export-board-pack", parents=[db_parent])
+    # export-workbook
+    p = sub.add_parser("export-workbook", parents=[db_parent])
     p.add_argument("--week-start", dest="week_start", default=None)
     p.add_argument("--weeks", type=int, default=12)
     p.add_argument("--output-dir", dest="output_dir", default="output")
@@ -667,7 +669,7 @@ def main() -> None:
         "list-weeks": _cmd_list_weeks,
         "export-week": _cmd_export_week,
         "export-latest": _cmd_export_latest,
-        "export-board-pack": _cmd_export_board_pack,
+        "export-workbook": _cmd_export_workbook,
     }
     fn = commands[args.command]
     try:

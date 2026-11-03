@@ -4,7 +4,7 @@ Weeks imported/backfilled before the day/night OT split store overtime only
 in the legacy ot_rn/ot_medic/ot_emt/ot_shifts totals. The edit form only
 shows the day/night columns (all zero for such weeks), so saving the form
 untouched used to overwrite the legacy totals with zeros — wiping the
-week's OT out of OT dependency, the board pack, and the trend charts.
+week's OT out of OT dependency, the staffing workbook, and the trend charts.
 """
 
 import os

@@ -65,10 +65,9 @@ def summary_lines(
     # (value, text) for every base/vehicle under its target, worst first; the
     # line names the three worst so it stays one line in a CEO summary.
     short: list[tuple[float, str]] = []
-    for label, idx, metric in (
-        ("RW", 2, "System RW Coverage %"),
-        ("GR", 4, "System GR Coverage %"),
-    ):
+    # Ground is a system target with crews moving between bases, so a base's
+    # share of ground shifts is not graded against an availability target.
+    for label, idx, metric in (("RW", 2, "System RW Coverage %"),):
         target = targets.get(metric)
         if target is None:
             continue
@@ -81,9 +80,6 @@ def summary_lines(
         named = ", ".join(text for _v, text in short[:3])
         more = f", and {len(short) - 3} more" if len(short) > 3 else ""
         lines.append(f"Below the availability target: {named}{more}.")
-    elif any(
-        targets.get(m) is not None
-        for m in ("System RW Coverage %", "System GR Coverage %")
-    ):
-        lines.append("Every base met its RW and GR availability targets.")
+    elif targets.get("System RW Coverage %") is not None:
+        lines.append("Every base met its rotor wing availability target.")
     return lines
