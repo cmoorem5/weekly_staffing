@@ -104,6 +104,16 @@ Things that look like they should be simple but aren't, because real schedule wo
 - **Fatigue columns** (`hours_since_prev_shift`, `consecutive_days`) come from `_fatigue_by_row`, which walks each person's worked shifts in start-time order (not row order) and reads `FATIGUE_LOOKBACK_DAYS` (7) before the range.
 - Shift start/end come from `BASE_SHIFT_TIMES` by base and day/night (Bedford/Plymouth 0700/1900, Lawrence 0900/2100, Mansfield/Manchester 1100/2300 day only), mirroring `crew_hub/shifts.py`; `UNIT_SHIFT_TIMES` overrides by unit (`G9B` 0900-2100; `GR2`/`NG2` follow Bedford). `ends_next_day` is derived from end < start. Keep the two tables in step if a base's hours change.
 
+### Shortfall causes (why a vehicle was not staffed)
+
+`staffing_tool/shortfall.py` (pure calculation plus one DB read, no Django) backs `scripts/shortfall_causes.py`. For every planned RW/GR vehicle-day that was not staffed it says **No crew** (RN and/or Medic missing), **No operator** (Pilot on RW, EMT on GR), or both. It reads only the stored `WeeklyOpsViewAssignment` rows, so it needs no schema change or re-import and covers every imported week.
+
+- **A blank cell is the only gap signal.** Crew and pilot cells in the workbook hold a name or nothing: no `OPEN` text, no leave code. Pilots come from the `Pilot Staffing` sheet through the OPS View `PIC` rows; pilot leave is not in the workbook and is tracked elsewhere, so a blank pilot means "no pilot scheduled", never "pilot on leave". The stored assignments omit blank cells, so a gap is a required role with no `is_staffed` row for that unit-day.
+- **The operator rule mirrors coverage.** RW needs `PIC` or `EMT`, GR needs `EMT` (`_ops_staffed_for_column`). Keep the two in step or the shortfall counts stop reconciling with `WeeklyBaseCoverage`.
+- **Planned = the weekly caps / 7.** `slots_per_day` divides `MAX_RW/GR_UNIT_DAYS_PER_WEEK` by 7, so Plymouth ground has one slot a day and a staffed night unit (NP) stands in for a missing day unit (PG), as the capped coverage count does. `EXTRA_UNIT_CODES` are never planned. When a base has fewer staffed units than slots, the gap is blamed on the vehicle closest to being staffed.
+- **Weeks with no name-level OPS View rows are listed and left out**, never counted as fully short.
+- Verified against a real workbook: summed shortfall-implied staffed counts matched `weekly_base_coverage` per base. Tests: `tests/test_shortfall.py`.
+
 ### crew_hub: person-first schedulers (Comm Center + duty officers)
 
 Both living schedulers share one shape, so a change to one almost always belongs in the other. A day is **a pool of people, not a grid of slots**: `CommShiftAssignment` and `DutyAssignment` each hold one person on one date, and the slot (`seat` / `role`) is an *editable attribute* of that row rather than the key rows are created against.
