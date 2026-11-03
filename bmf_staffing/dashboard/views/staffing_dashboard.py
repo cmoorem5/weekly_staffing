@@ -38,7 +38,11 @@ from staffing_tool.models import (
     WeeklyStaffing,
 )
 from staffing_tool.rag import green_boundary
-from staffing_tool.shortfall import analyze_range, reason_table_rows
+from staffing_tool.shortfall import (
+    analyze_range,
+    hand_corrections,
+    reason_table_rows,
+)
 from staffing_tool.time_buckets import bucket_label, buckets_for_range
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
@@ -448,7 +452,17 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         exc_total_by_week: dict[str, int] = defaultdict(int)
         # Why coverage fell short over the selected dates (nurse / paramedic /
         # pilot / EMT), from the stored schedule detail.
-        reasons_rows = reason_table_rows(analyze_range(session, date_start, date_end))
+        window_weeks = [
+            w
+            for (w,) in session.query(WeeklyStaffing.week_start)
+            .filter(WeeklyStaffing.week_start >= date_start.isoformat())
+            .filter(WeeklyStaffing.week_start <= date_end.isoformat())
+            .all()
+        ]
+        reasons_rows = reason_table_rows(
+            analyze_range(session, date_start, date_end),
+            hand_corrections(session, window_weeks),
+        )
         exc_q = (
             session.query(
                 WeeklyLeaveDetail.week_start,

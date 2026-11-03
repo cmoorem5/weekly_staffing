@@ -61,7 +61,15 @@
         <thead><tr>{% for r in coverage.reasons %}<th class="text-end">Short a {{ r.label|lower }}</th>{% endfor %}</tr></thead>
         <tbody><tr>{% for r in coverage.reasons %}<td class="text-end bmf-numeric">{{ r.count }}</td>{% endfor %}</tr></tbody>
       </table>
-      <p class="text-muted small">A vehicle missing two seats is counted under each.</p>
+      <p class="text-muted small mb-1">A vehicle missing two seats is counted under each.</p>
+      {% if coverage.corrected_rw or coverage.corrected_gr %}
+      <p class="small mb-3">
+        <strong>Corrected by hand:</strong>
+        {% if coverage.corrected_rw %}{{ coverage.corrected_rw }} rotor wing{% endif %}{% if coverage.corrected_rw and coverage.corrected_gr %}, {% endif %}{% if coverage.corrected_gr %}{{ coverage.corrected_gr }} ground{% endif %}
+        short day{{ coverage.corrected_rw|add:coverage.corrected_gr|pluralize }} above were fixed with a coverage count correction (cause not recorded).
+        To keep the cause, mark an out-of-service aircraft or truck below instead of raising the count.
+      </p>
+      {% else %}<div class="mb-3"></div>{% endif %}
 
       <div class="row g-3">
         <div class="col-lg-6">

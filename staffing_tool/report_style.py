@@ -560,7 +560,8 @@ def reasons_flowables(rows: list[list[str]]) -> list:
         "Vehicle-days short a seat, from the schedule detail. A vehicle missing two "
         "seats is counted under each. Ground is 3 day + 1 night truck a day from any "
         "base. No-vehicle days (aircraft or truck out of service) are shown for "
-        "information and never counted against staffing.",
+        "information and never counted against staffing."
+        + " A short day corrected by hand on the week edit page stays in the counts and is shown on its own line; its cause was not recorded.",
         ParagraphStyle("reasons_note", fontSize=7, leading=9, textColor=colors.grey),
     )
     return [section_bar("WHY COVERAGE FELL SHORT"), t, Spacer(1, 3), note]

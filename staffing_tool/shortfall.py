@@ -418,13 +418,21 @@ def analyze_week(session, week_start: str) -> ShortfallResult | None:
 REASON_TABLE_HEADERS: list[str] = ["", "Rotor wing", "Ground"]
 
 
-def reason_table_rows(result: ShortfallResult | None) -> list[list[str]]:
+def reason_table_rows(
+    result: ShortfallResult | None,
+    corrected: tuple[int, int] | None = None,
+) -> list[list[str]]:
     """Report rows: why planned vehicles were short, by vehicle type.
 
     Pilot applies to rotor wing only and EMT to ground only; a seat that does
     not exist on a vehicle type shows an em dash. Returns [] when there is no
     schedule detail to analyze, so a report leaves the block off rather than
     printing zeros it can't back up.
+
+    ``corrected`` is (rotor wing, ground) short days that were later corrected
+    by hand on the week edit page (``hand_corrections``). They stay in the
+    counts, since the schedule shows them short, and get their own line so the
+    block ties to the stored percentage; their cause was not recorded.
     """
     if result is None or not result.days_analyzed:
         return []
@@ -438,6 +446,14 @@ def reason_table_rows(result: ShortfallResult | None) -> list[list[str]]:
         for svc in ("RW", "GR")
     }
     rows = [["Short vehicle-days", str(shorts["RW"]), str(shorts["GR"])]]
+    if corrected and any(corrected):
+        rows.append(
+            [
+                "Corrected by hand (cause not recorded)",
+                str(corrected[0]),
+                str(corrected[1]),
+            ]
+        )
     for role, label in (
         ("RN", "Short a nurse"),
         ("Medic", "Short a paramedic"),
@@ -525,3 +541,23 @@ def reconcile_week(session, week_start: str) -> list[ReconcileRow]:
         )
     )
     return rows
+
+
+def hand_corrections(session, week_starts: Iterable[str]) -> tuple[int, int]:
+    """(rotor wing, ground) short days corrected by hand across ``week_starts``.
+
+    A stored count above what the schedule supports means the schedule showed a
+    vehicle-day short and someone corrected it on the week edit page (a late
+    fill, an aircraft out of service, a pilot on leave). The cause is not
+    recorded, so this only counts them. A stored count below the schedule is
+    not a correction of a shortfall and is ignored.
+    """
+    rw = gr = 0
+    for week in week_starts:
+        for row in reconcile_week(session, week):
+            if row.diff > 0:
+                if row.service_type == "RW":
+                    rw += row.diff
+                else:
+                    gr += row.diff
+    return rw, gr

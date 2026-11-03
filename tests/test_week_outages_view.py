@@ -181,6 +181,21 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
         self.assertIn("Short a pilot", body)
         self.assertIn("D9L", body)
 
+    def test_card_reports_hand_corrected_days(self):
+        # Lawrence stored at 14 while the schedule supports 13 (a pilot gap Monday).
+        with session_scope(self.db_path) as session:
+            from staffing_tool.models import WeeklyBaseCoverage
+
+            cov = (
+                session.query(WeeklyBaseCoverage).filter_by(base_name="Lawrence").one()
+            )
+            cov.rw_staffed_day = 7
+            cov.rw_staffed_night = 7
+            cov.rw_staffed_unit_days = 14
+        body = self.client.get(reverse("week_edit", args=[WEEK_START])).content.decode()
+        self.assertIn("Corrected by hand:", body)
+        self.assertIn("1 rotor wing", body)
+
     def test_marking_no_vehicle_removes_it_from_the_rotor_plan(self):
         self._add(day_date="2026-10-26", unit_code="D9L", note="aircraft down")
         with session_scope(self.db_path) as session:

@@ -61,7 +61,7 @@ from staffing_tool.schedule_import import (
     parse_ops_view_daily,
     parse_schedule_workbook,
 )
-from staffing_tool.shortfall import analyze_week, reason_table_rows
+from staffing_tool.shortfall import analyze_week, hand_corrections, reason_table_rows
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -485,7 +485,10 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             exception_by_role=exception_by_role,
             exception_col_totals=exception_col_totals,
             trend_data=trend_data,
-            reasons=reason_table_rows(analyze_week(session, week_start)),
+            reasons=reason_table_rows(
+                analyze_week(session, week_start),
+                hand_corrections(session, [week_start]),
+            ),
         )
 
 

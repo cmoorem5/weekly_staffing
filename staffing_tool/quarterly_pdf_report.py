@@ -49,7 +49,11 @@ from staffing_tool.models import (
 )
 from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
 from staffing_tool.report_summary import summary_lines
-from staffing_tool.shortfall import analyze_range, reason_table_rows
+from staffing_tool.shortfall import (
+    analyze_range,
+    hand_corrections,
+    reason_table_rows,
+)
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -369,7 +373,8 @@ def load_window_report_data(
                     session,
                     date.fromisoformat(week_starts[0]),
                     date.fromisoformat(week_starts[-1]) + timedelta(days=6),
-                )
+                ),
+                hand_corrections(session, week_starts),
             ),
             weekly_detail=weekly_detail,
             trend_targets=load_trend_targets(session),

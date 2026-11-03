@@ -55,6 +55,21 @@ class ReasonRowTests(unittest.TestCase):
         self.assertEqual(by_label["Short an EMT"], ["—", "1"])
         self.assertEqual(by_label["Short a nurse"], ["0", "1"])
 
+    def test_corrected_by_hand_gets_its_own_line_and_stays_in_the_counts(self):
+        roles = _all_staffed(DAY)
+        roles[(DAY, "D9L")] = {"RN", "Medic"}  # one short rotor wing day
+        result = find_shortfalls(roles, [DAY])
+        rows = reason_table_rows(result, (1, 0))
+        by_label = {r[0]: r[1:] for r in rows}
+        self.assertEqual(by_label["Short vehicle-days"], ["1", "0"])
+        self.assertEqual(by_label["Corrected by hand (cause not recorded)"], ["1", "0"])
+        self.assertEqual(by_label["Short a pilot"], ["1", "\u2014"])
+        # No corrections: the line is left off rather than printing zeros.
+        self.assertNotIn(
+            "Corrected by hand (cause not recorded)",
+            [r[0] for r in reason_table_rows(result, (0, 0))],
+        )
+
     def test_html_block_has_the_headers_and_the_counting_note(self):
         rows = reason_table_rows(find_shortfalls(_all_staffed(DAY), [DAY]))
         html = rh.reasons_block(rows)
@@ -104,7 +119,9 @@ class WeeklyReportTests(TempDbTestCase):
                     WeeklyBaseCoverage(
                         week_start=WEEK,
                         base_name=base,
-                        rw_staffed_unit_days=0,
+                        rw_staffed_unit_days=14 if base == "Lawrence" else 0,
+                        rw_staffed_day=7 if base == "Lawrence" else 0,
+                        rw_staffed_night=7 if base == "Lawrence" else 0,
                         gr_staffed_unit_days=gr,
                         gr_staffed_day=gr,
                     )
@@ -114,6 +131,8 @@ class WeeklyReportTests(TempDbTestCase):
         ctx = load_week_report_data(self.db, WEEK)
         by_label = {r[0]: r[1:] for r in ctx.reasons}
         self.assertEqual(by_label["Short a pilot"][0], "1")
+        # Lawrence is stored at 14 but the schedule supports 13: one hand correction.
+        self.assertEqual(by_label["Corrected by hand (cause not recorded)"], ["1", "0"])
         shares = {r[0]: r[4] for r in ctx.base_coverage}
         # 24 ground shifts staffed: Bedford 14, Lawrence 4, Mansfield 6.
         self.assertEqual(shares["Bedford"], "58.3%")
