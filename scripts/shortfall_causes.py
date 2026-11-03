@@ -53,6 +53,7 @@ from staffing_tool.shortfall import (
     REASON_TABLE_HEADERS,
     SYSTEM_GROUND_PER_DAY,
     ShortfallResult,
+    analyze_week,
     load_shortfalls,
     operator_label,
     reason_table_rows,
@@ -330,7 +331,7 @@ def write_csvs(
     return [detail, summary]
 
 
-def reconcile(db_path: str, start: date, end: date) -> None:
+def reconcile(db_path: str, start: date, end: date, out_dir: Path) -> None:
     """List where stored coverage differs from the saved schedule detail."""
     from datetime import timedelta
 
@@ -369,6 +370,62 @@ def reconcile(db_path: str, start: date, end: date) -> None:
     )
     print(f"\n{len(differing)} of {len(rows)} comparisons differ.")
 
+    # The schedule-short rotor wing days behind each difference: stored counts
+    # that sit above the schedule mean these days were corrected by hand.
+    review: list[list[object]] = []
+    with session_scope(db_path) as session:
+        for week in sorted({r.week_start for r in differing if r.service_type == "RW"}):
+            result = analyze_week(session, week)
+            if result is None:
+                continue
+            for r in (
+                d for d in differing if d.week_start == week and d.service_type == "RW"
+            ):
+                for s in sorted(result.shortfalls, key=lambda s: (s.day, s.unit_code)):
+                    if s.service_type == "RW" and s.base == r.scope:
+                        review.append(
+                            [
+                                week,
+                                r.scope,
+                                s.day.isoformat(),
+                                s.unit_code,
+                                s.detail,
+                                f"{r.diff:+d}",
+                            ]
+                        )
+    if not review:
+        return
+    print("\nSchedule-short rotor wing days behind each difference")
+    print(
+        "(your stored count was higher, so some of these were corrected by hand; "
+        "if a base-week lists more days than its difference, only that many were)\n"
+    )
+    _print_table(
+        ["Week", "Base", "Date", "Aircraft", "Missing on schedule", "Base-week diff"],
+        review,
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"reconcile_review_{start}_{end}.csv"
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(
+            [
+                "week_start",
+                "base",
+                "date",
+                "aircraft",
+                "missing_on_schedule",
+                "base_week_diff",
+                "what_happened",
+            ]
+        )
+        for row in review:
+            w.writerow(row + [""])
+    print(
+        f"\nWrote {path}\nFill in the last column: filled late, out of service, or "
+        "schedule data problem."
+    )
+
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -393,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ensure_db_ready(args.db)
     if args.reconcile:
-        reconcile(args.db, start, end)
+        reconcile(args.db, start, end, Path(args.out_dir))
         return 0
     result = load_shortfalls(args.db, start, end)
     if not result.days_analyzed:
