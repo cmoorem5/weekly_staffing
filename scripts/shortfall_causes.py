@@ -21,6 +21,7 @@ Usage:
     python scripts/shortfall_causes.py                      # Oct 1 to today
     python scripts/shortfall_causes.py --start 2026-10-01 --end 2026-11-02
     python scripts/shortfall_causes.py --db path/to/staffing.db
+    python scripts/shortfall_causes.py --reconcile          # where stored != schedule
 """
 
 from __future__ import annotations
@@ -49,10 +50,13 @@ from staffing_tool.shortfall import (
     GROUND_DAY_SCOPE,
     GROUND_NIGHT_PER_DAY,
     GROUND_NIGHT_SCOPE,
+    REASON_TABLE_HEADERS,
     SYSTEM_GROUND_PER_DAY,
     ShortfallResult,
     load_shortfalls,
     operator_label,
+    reason_table_rows,
+    reconcile_week,
     summarize_by,
 )
 
@@ -182,6 +186,13 @@ def report(result: ShortfallResult, start: date, end: date) -> None:
                 "Short counts are the days a seat was missing; the weekly % above "
                 "adds up every ground shift staffed."
             )
+        print()
+
+    seat_rows = reason_table_rows(result)
+    if seat_rows:
+        print("== Short by seat (vehicle-days missing this seat) ==")
+        _print_table(REASON_TABLE_HEADERS, seat_rows)
+        print("A vehicle missing two seats is counted under each.")
         print()
 
     print("== By week (Sunday start) ==")
@@ -319,12 +330,57 @@ def write_csvs(
     return [detail, summary]
 
 
+def reconcile(db_path: str, start: date, end: date) -> None:
+    """List where stored coverage differs from the saved schedule detail."""
+    from datetime import timedelta
+
+    from staffing_tool.db import session_scope
+    from staffing_tool.models import WeeklyOpsViewAssignment
+
+    floor = (start - timedelta(days=6)).isoformat()
+    with session_scope(db_path) as session:
+        weeks = [
+            w
+            for (w,) in session.query(WeeklyOpsViewAssignment.week_start)
+            .filter(WeeklyOpsViewAssignment.week_start >= floor)
+            .filter(WeeklyOpsViewAssignment.week_start <= end.isoformat())
+            .distinct()
+            .order_by(WeeklyOpsViewAssignment.week_start)
+            .all()
+        ]
+        rows = [r for w in weeks for r in reconcile_week(session, w)]
+    differing = [r for r in rows if r.diff]
+    print(f"Stored coverage vs saved schedule detail, {start} to {end}")
+    print(
+        "Stored = what the dashboard and reports use (includes any hand corrections "
+        "on the week edit page).\nFrom schedule = what the saved schedule rows imply. "
+        "A difference means a hand correction\nor schedule detail that is out of date; "
+        "the reasons are built from the schedule only.\n"
+    )
+    if not differing:
+        print(f"All {len(rows)} comparisons match.")
+        return
+    _print_table(
+        ["Week", "Scope", "Stored", "From schedule", "Difference"],
+        [
+            [r.week_start, r.scope, r.stored, r.from_schedule, f"{r.diff:+d}"]
+            for r in differing
+        ],
+    )
+    print(f"\n{len(differing)} of {len(rows)} comparisons differ.")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--db", default=str(PROJECT_ROOT / "staffing.db"))
     p.add_argument("--start", type=date.fromisoformat, default=None)
     p.add_argument("--end", type=date.fromisoformat, default=None)
     p.add_argument("--out-dir", default=str(PROJECT_ROOT / "output"))
+    p.add_argument(
+        "--reconcile",
+        action="store_true",
+        help="List weeks where stored coverage differs from the saved schedule detail",
+    )
     args = p.parse_args(argv)
 
     today = date.today()
@@ -336,6 +392,9 @@ def main(argv: list[str] | None = None) -> int:
         p.error(f"database not found: {args.db}")
 
     ensure_db_ready(args.db)
+    if args.reconcile:
+        reconcile(args.db, start, end)
+        return 0
     result = load_shortfalls(args.db, start, end)
     if not result.days_analyzed:
         print("No weeks with name-level OPS View data in that range.")

@@ -49,7 +49,12 @@ from sqlalchemy import func
 
 from .db import session_scope
 from .metrics import EXTRA_UNIT_CODES, SYSTEM_GR_MAX_SHIFTS_PER_WEEK
-from .models import WeeklyOpsViewAssignment, WeeklyStaffing, WeeklyVehicleOutage
+from .models import (
+    WeeklyBaseCoverage,
+    WeeklyOpsViewAssignment,
+    WeeklyStaffing,
+    WeeklyVehicleOutage,
+)
 from .schedule_import import MAX_RW_UNIT_DAYS_PER_WEEK, UNIT_MAP
 
 CREW_ROLES: tuple[str, ...] = ("RN", "Medic")
@@ -450,4 +455,73 @@ def reason_table_rows(result: ShortfallResult | None) -> list[list[str]]:
                 str(sum(1 for n in result.no_vehicle if n.service_type == "GR")),
             ]
         )
+    return rows
+
+
+@dataclass(frozen=True)
+class ReconcileRow:
+    """Stored staffed count vs what the saved schedule detail implies."""
+
+    week_start: str
+    scope: str  # base name for rotor wing, "Ground (system)" for ground
+    service_type: str  # "RW" or "GR"
+    stored: int  # what the dashboard and reports use
+    from_schedule: int  # what the stored schedule detail implies
+
+    @property
+    def diff(self) -> int:
+        return self.stored - self.from_schedule
+
+
+def _stored_staffed(cov: WeeklyBaseCoverage | None, kind: str) -> int:
+    """Stored staffed unit-days for one vehicle type, as ``compute_week_metrics`` reads it."""
+    if cov is None:
+        return 0
+    day = int(getattr(cov, f"{kind}_staffed_day", 0) or 0)
+    night = int(getattr(cov, f"{kind}_staffed_night", 0) or 0)
+    total = int(getattr(cov, f"{kind}_staffed_unit_days", 0) or 0)
+    return day + night if day + night else total
+
+
+def reconcile_week(session, week_start: str) -> list[ReconcileRow]:
+    """Compare one week's stored coverage with its schedule detail.
+
+    The reasons and shortfall lists are built from the schedule as imported. The
+    dashboard percentages come from the stored base coverage, which can be
+    corrected by hand on the week edit page. A difference means a hand
+    correction (or detail that is out of date); this lists exactly where.
+    Returns [] for a week with no name-level detail.
+    """
+    result = analyze_week(session, week_start)
+    if result is None:
+        return []
+    covs = {
+        c.base_name: c
+        for c in session.query(WeeklyBaseCoverage).filter(
+            WeeklyBaseCoverage.week_start == week_start
+        )
+    }
+    rows = [
+        ReconcileRow(
+            week_start,
+            g.scope,
+            "RW",
+            _stored_staffed(covs.get(g.scope), "rw"),
+            result.staffed[(g.scope, "RW")],
+        )
+        for g in planned_groups()
+        if g.service_type == "RW"
+    ]
+    planned = sum(n for (_scope, svc), n in result.planned.items() if svc == "GR")
+    stored = sum(_stored_staffed(c, "gr") for c in covs.values())
+    derived = sum(n for (_scope, svc), n in result.staffed_all.items() if svc == "GR")
+    rows.append(
+        ReconcileRow(
+            week_start,
+            "Ground (system)",
+            "GR",
+            min(stored, planned),
+            min(derived, planned),
+        )
+    )
     return rows
