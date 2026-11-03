@@ -33,7 +33,11 @@ from staffing_tool.metrics import (
 )
 from staffing_tool.models import BaseConfig, WeeklyStaffing
 from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
-from staffing_tool.shortfall import analyze_range, reason_table_rows
+from staffing_tool.shortfall import (
+    analyze_range,
+    hand_corrections,
+    reason_table_rows,
+)
 
 EM = rh.EM
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -219,7 +223,8 @@ def load_monthly_report_data(
                     date.fromisoformat(str(week_rows[0].week_start)),
                     date.fromisoformat(str(week_rows[-1].week_start))
                     + timedelta(days=6),
-                )
+                ),
+                hand_corrections(session, [str(r.week_start) for r in week_rows]),
             ),
             role_fill=compute_role_fill(
                 session, [str(row.week_start) for row in week_rows]

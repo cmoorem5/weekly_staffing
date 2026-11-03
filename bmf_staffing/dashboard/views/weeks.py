@@ -42,6 +42,7 @@ from staffing_tool.shortfall import (
     REASON_LABELS,
     REASON_ROLES,
     analyze_week,
+    hand_corrections,
     reason_counts,
 )
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
@@ -392,6 +393,8 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         if base in base_metrics and base_metrics[base]["gr_staffed"]
     ]
     counts = reason_counts(result.shortfalls)
+    with session_scope(DB_PATH) as session:
+        corrected_rw, corrected_gr = hand_corrections(session, [week_start])
     short_rows = [
         {
             "day": s.day.strftime("%a %b %d"),
@@ -415,6 +418,8 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         "ground_by_base": by_base,
         "short_rows": short_rows,
         "no_vehicle_count": len(result.no_vehicle),
+        "corrected_rw": corrected_rw,
+        "corrected_gr": corrected_gr,
     }
 
 

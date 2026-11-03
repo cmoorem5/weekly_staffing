@@ -15,7 +15,7 @@ from staffing_tool.models import (
     WeeklyVehicleOutage,
 )
 from staffing_tool.schedule_import import UNIT_MAP
-from staffing_tool.shortfall import reconcile_week
+from staffing_tool.shortfall import hand_corrections, reconcile_week
 from staffing_tool.week_targets import recompute_all_weeks, recompute_week_targets
 from tests._temp_db import TempDbTestCase
 
@@ -219,6 +219,24 @@ class WeekTargetTests(TempDbTestCase):
             [(r.scope, r.stored, r.from_schedule) for r in ground],
             [("Ground (system)", 25, 28)],
         )
+
+    def test_hand_corrections_count_only_stored_above_schedule(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS)
+        # Lawrence stored one above the schedule (+1), Bedford one below (-1, ignored).
+        self._cover(
+            Bedford=(13, 0, 0),
+            Lawrence=(15, 0, 0),
+            Mansfield=(7, 0, 0),
+            Manchester=(7, 0, 0),
+            Plymouth=(14, 0, 0),
+        )
+        with session_scope(self.db) as session:
+            self.assertEqual(hand_corrections(session, [WEEK]), (1, 0))
+
+    def test_hand_corrections_ignore_a_week_without_detail(self):
+        with session_scope(self.db) as session:
+            self.assertEqual(hand_corrections(session, [WEEK]), (0, 0))
 
     def test_reconcile_skips_a_week_without_detail(self):
         self.assertEqual(self._reconcile(), [])
