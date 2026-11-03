@@ -34,6 +34,7 @@ from .schedule_import import (
 from .schedule_persistence import persist_schedule_import_detail
 from .timeutil import utc_now_iso as _utc_now_iso
 from .training_codes import training_codes_upper_from_session
+from .week_targets import recompute_week_targets
 
 BASES = [name for name, _rw, _gr in DEFAULT_BASES]
 
@@ -419,6 +420,11 @@ def apply_schedule_workbook(
         session.flush()
 
     wb.close()
+
+    # Derive the ground-target and no-vehicle figures from the detail just
+    # stored (and any no-vehicle marks that survived a re-import).
+    session.flush()
+    recompute_week_targets(session, week_start)
 
     return (
         ScheduleApplyResult(

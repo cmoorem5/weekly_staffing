@@ -31,6 +31,80 @@
     </div>
   </div>
   {% endif %}
+  {% if coverage %}
+  <div class="card mb-4" id="coverage-reasons">
+    <div class="card-body py-3">
+      <h2 class="h6 card-title mb-1">Coverage and why vehicles were short</h2>
+      <p class="text-muted small mb-3">
+        Built from the schedule you just uploaded. Check it here, mark any aircraft or truck that
+        was out of service below, then save. Ground is 3 day + 1 night truck a day from any base.
+      </p>
+      <div class="row g-3 mb-3">
+        <div class="col-sm-6">
+          <div class="border rounded p-2">
+            <div class="small text-muted">System rotor wing</div>
+            <div class="h4 mb-0 bmf-numeric">{{ coverage.system_rw }}</div>
+            <div class="small text-muted">{{ coverage.system_rw_counts }} planned aircraft-days staffed</div>
+          </div>
+        </div>
+        <div class="col-sm-6">
+          <div class="border rounded p-2">
+            <div class="small text-muted">System ground</div>
+            <div class="h4 mb-0 bmf-numeric">{{ coverage.system_gr }}</div>
+            <div class="small text-muted">{{ coverage.system_gr_counts }} planned truck-days staffed</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="h6">Short because (vehicle-days missing this seat)</h3>
+      <table class="table table-sm w-auto mb-1">
+        <thead><tr>{% for r in coverage.reasons %}<th class="text-end">Short a {{ r.label|lower }}</th>{% endfor %}</tr></thead>
+        <tbody><tr>{% for r in coverage.reasons %}<td class="text-end bmf-numeric">{{ r.count }}</td>{% endfor %}</tr></tbody>
+      </table>
+      <p class="text-muted small">A vehicle missing two seats is counted under each.</p>
+
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <h3 class="h6">Rotor wing by base</h3>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Base</th><th class="text-end">Planned</th><th class="text-end">Staffed</th><th class="text-end">%</th></tr></thead>
+            <tbody>
+              {% for r in coverage.rotor %}<tr><td>{{ r.base }}</td><td class="text-end bmf-numeric">{{ r.planned }}</td><td class="text-end bmf-numeric">{{ r.staffed }}</td><td class="text-end bmf-numeric">{{ r.pct }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="col-lg-6">
+          <h3 class="h6">Ground (system target)</h3>
+          <table class="table table-sm mb-2">
+            <thead><tr><th>Shift</th><th class="text-end">Planned</th><th class="text-end">Staffed</th></tr></thead>
+            <tbody>
+              {% for r in coverage.ground_shifts %}<tr><td>{{ r.shift }}</td><td class="text-end bmf-numeric">{{ r.planned }}</td><td class="text-end bmf-numeric">{{ r.staffed }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Truck staffed from</th><th class="text-end">Shifts</th><th class="text-end">Share</th></tr></thead>
+            <tbody>
+              {% for r in coverage.ground_by_base %}<tr><td>{{ r.base }}</td><td class="text-end bmf-numeric">{{ r.shifts }}</td><td class="text-end bmf-numeric">{{ r.share }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% if coverage.short_rows %}
+      <h3 class="h6 mt-3">Short vehicle-days</h3>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Day</th><th>Vehicle</th><th>Type</th><th>Missing</th></tr></thead>
+        <tbody>
+          {% for r in coverage.short_rows %}<tr><td>{{ r.day }}</td><td>{{ r.unit }}</td><td>{{ r.type }}</td><td>{{ r.missing }}</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      <p class="text-muted small mt-1 mb-0">For ground, the vehicle shown is the truck closest to being staffed, not a specific base's plan.</p>
+      {% else %}
+      <p class="mt-3 mb-0">Every planned vehicle-day was staffed.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
   <div class="card mb-4" id="vehicles-out-of-service">
     <div class="card-body py-3">
       <h2 class="h6 card-title mb-1">Vehicles out of service (no vehicle)</h2>

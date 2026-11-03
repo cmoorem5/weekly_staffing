@@ -108,6 +108,30 @@ def migrate_weekly_staffing_columns(engine: Engine) -> None:
         conn.commit()
 
 
+def migrate_week_target_columns(engine: Engine) -> None:
+    """Add the ground-target and no-vehicle columns (all additive, safe to rerun)."""
+    with engine.connect() as conn:
+        columns = _pragma_column_names(conn, "weekly_staffing")
+        for col in (
+            "gr_target_staffed_day",
+            "gr_target_staffed_night",
+            "gr_target_planned",
+        ):
+            if col not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE weekly_staffing ADD COLUMN {col} INTEGER")
+                )
+        columns = _pragma_column_names(conn, "weekly_base_coverage")
+        if "rw_planned_removed" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE weekly_base_coverage ADD COLUMN "
+                    "rw_planned_removed INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+        conn.commit()
+
+
 def migrate_staff_roster_hire_date(engine: Engine) -> None:
     """Add hire_date (ISO date text) to staff_roster_entry."""
     with engine.connect() as conn:
@@ -467,6 +491,7 @@ def init_db(db_path: str | None = None) -> None:
     migrate_weekly_staffing_columns(engine)
     migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
+    migrate_week_target_columns(engine)
     migrate_schedule_persistence_tables(engine)
     migrate_manager_shift_event_type(engine)
     migrate_manager_shift_leave_type(engine)

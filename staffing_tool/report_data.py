@@ -314,4 +314,5 @@ def _averages(metrics_list: list[WeekMetrics]) -> WeekMetrics | None:
         system_rw_pct=sum(m.system_rw_pct for m in metrics_list) / n,
         system_gr_pct=sum(m.system_gr_pct for m in metrics_list) / n,
         base_metrics=m0.base_metrics,
+        gr_planned_unit_days=_avg_int(m.gr_planned_unit_days for m in metrics_list),
     )

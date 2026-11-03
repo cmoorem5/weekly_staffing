@@ -91,6 +91,8 @@ class WeekMetrics:
     rw_total_unit_days: int  # sum across bases from base_config
     gr_total_unit_days: int
     rw_staffed_unit_days: int
+    # System ground trucks staffed, capped per day at the 3 day + 1 night target
+    # (not the sum of every base's trucks).
     gr_staffed_unit_days: int
     system_rw_pct: float
     system_gr_pct: float
@@ -101,6 +103,9 @@ class WeekMetrics:
     # Day/night split of the staffing rate.
     day_staffing_rate: float = 0.0
     night_staffing_rate: float = 0.0
+    # Ground plan for the week: 28 (4 trucks x 7 days), less any truck-days off
+    # the plan for "no vehicle". Denominator of ``system_gr_pct``.
+    gr_planned_unit_days: int = SYSTEM_GR_MAX_SHIFTS_PER_WEEK
 
 
 def role_ot_totals(row: WeeklyStaffing) -> dict[str, int]:
@@ -209,6 +214,7 @@ def compute_week_metrics(
     base_metrics: dict[str, dict[str, float]] = {}
     rw_staffed = 0
     gr_staffed = 0
+    rw_removed_total = 0
 
     for c in base_coverages:
         bc = cast(Any, c)
@@ -228,7 +234,10 @@ def compute_week_metrics(
             gr_d = gr_tot
         rw_sum = rw_d + rw_n
         gr_sum = gr_d + gr_n
-        rw_denom = int(cfg.rw_total_unit_days)
+        # Aircraft out of service with no crew come off the plan ("no vehicle").
+        rw_removed = int(getattr(bc, "rw_planned_removed", 0) or 0)
+        rw_removed_total += rw_removed
+        rw_denom = max(0, int(cfg.rw_total_unit_days) - rw_removed)
         gr_denom = int(cfg.gr_total_unit_days)
         rw_pct = float(rw_sum) / float(rw_denom) if rw_denom else 0.0
         gr_pct = float(gr_sum) / float(gr_denom) if gr_denom else 0.0
@@ -236,6 +245,7 @@ def compute_week_metrics(
             "rw_pct": rw_pct,
             "gr_pct": gr_pct,
             "rw_staffed": float(rw_sum),
+            "rw_planned": float(rw_denom),
             "gr_staffed": float(gr_sum),
             "rw_d": float(rw_d),
             "rw_n": float(rw_n),
@@ -245,14 +255,32 @@ def compute_week_metrics(
         rw_staffed += rw_sum
         gr_staffed += gr_sum
 
+    rw_total_unit_days = max(0, rw_total_unit_days - rw_removed_total)
     system_rw_pct = (
         float(rw_staffed) / float(rw_total_unit_days) if rw_total_unit_days else 0.0
     )
-    system_gr_pct = (
-        float(gr_staffed) / float(SYSTEM_GR_MAX_SHIFTS_PER_WEEK)
-        if SYSTEM_GR_MAX_SHIFTS_PER_WEEK > 0
-        else 0.0
-    )
+
+    # Ground is a system target (3 day + 1 night a day, any base), so crews can
+    # move between bases. Prefer the per-day-capped figure derived at import;
+    # without it (legacy or hand-edited coverage) cap the per-base sum at the
+    # weekly target so a fifth truck can't push the system past 100%.
+    tgt_day = getattr(ws, "gr_target_staffed_day", None)
+    tgt_night = getattr(ws, "gr_target_staffed_night", None)
+    tgt_planned = getattr(ws, "gr_target_planned", None)
+    if tgt_day is not None and tgt_night is not None:
+        gr_target_staffed = int(tgt_day) + int(tgt_night)
+        gr_planned = (
+            int(tgt_planned)
+            if tgt_planned is not None
+            else SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+        )
+    else:
+        gr_target_staffed = min(gr_staffed, SYSTEM_GR_MAX_SHIFTS_PER_WEEK)
+        gr_planned = SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+    system_gr_pct = float(gr_target_staffed) / float(gr_planned) if gr_planned else 0.0
+    # Each base's share of the ground shifts actually staffed (cost-center view).
+    for entry in base_metrics.values():
+        entry["gr_share"] = entry["gr_staffed"] / gr_staffed if gr_staffed else 0.0
 
     return WeekMetrics(
         week_start=str(ws.week_start),
@@ -273,7 +301,7 @@ def compute_week_metrics(
         rw_total_unit_days=rw_total_unit_days,
         gr_total_unit_days=gr_total_unit_days,
         rw_staffed_unit_days=rw_staffed,
-        gr_staffed_unit_days=gr_staffed,
+        gr_staffed_unit_days=gr_target_staffed,
         system_rw_pct=system_rw_pct,
         system_gr_pct=system_gr_pct,
         base_metrics=base_metrics or None,
@@ -283,6 +311,7 @@ def compute_week_metrics(
         night_staffing_rate=(
             float(filled_night) / float(required_night) if required_night else 0.0
         ),
+        gr_planned_unit_days=gr_planned,
     )
 
 
@@ -303,8 +332,8 @@ def compute_period_rollups(metrics_list: list[WeekMetrics]) -> PeriodRollups | N
     person_shifts = n * TOTAL_PERSON_SHIFTS
     rw_staffed = sum(m.rw_staffed_unit_days for m in metrics_list)
     gr_staffed = sum(m.gr_staffed_unit_days for m in metrics_list)
-    rw_denom = n * metrics_list[0].rw_total_unit_days
-    gr_denom = n * SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+    rw_denom = sum(m.rw_total_unit_days for m in metrics_list)
+    gr_denom = sum(m.gr_planned_unit_days for m in metrics_list)
     return PeriodRollups(
         n_weeks=n,
         filled_total=filled_total,

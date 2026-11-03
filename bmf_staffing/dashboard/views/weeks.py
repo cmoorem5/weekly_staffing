@@ -34,8 +34,19 @@ from staffing_tool.models import (
 from staffing_tool.rag import NO_TARGET, evaluate_rag
 from staffing_tool.report import export_board_pack
 from staffing_tool.schedule_import import UNIT_MAP
+from staffing_tool.shortfall import (
+    GROUND_DAY_PER_DAY,
+    GROUND_DAY_SCOPE,
+    GROUND_NIGHT_PER_DAY,
+    GROUND_NIGHT_SCOPE,
+    REASON_LABELS,
+    REASON_ROLES,
+    analyze_week,
+    reason_counts,
+)
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 from staffing_tool.validation import notes_required, notes_required_message
+from staffing_tool.week_targets import recompute_week_targets
 
 from ..forms import BaseCoverageFormSet, BaseTotalsFormSet, WeekForm
 from .helpers import (
@@ -288,6 +299,7 @@ def week_edit(request, week_start):
             "leave_grid_rows": leave_grid_rows,
             "training_breakdown": training_breakdown,
             **_outage_context(week_start),
+            "coverage": _coverage_context(week_start),
         },
     )
 
@@ -304,6 +316,97 @@ def _outage_unit_choices() -> list[tuple[str, str]]:
         if code not in EXTRA_UNIT_CODES
     ]
     return sorted(rows, key=lambda r: (UNIT_MAP[r[0]][1] != "RW", r[1]))
+
+
+def _coverage_context(week_start: str) -> dict[str, object] | None:
+    """Coverage figures and why vehicles were short, for review before saving.
+
+    None when the week has no name-level schedule rows (hand-entered or
+    aggregate-only weeks), so the card is simply left off.
+    """
+    with session_scope(DB_PATH) as session:
+        result = analyze_week(session, week_start)
+        if result is None:
+            return None
+        row = (
+            session.query(WeeklyStaffing)
+            .filter(WeeklyStaffing.week_start == week_start)
+            .first()
+        )
+        if row is None:
+            return None
+        covs = (
+            session.query(WeeklyBaseCoverage)
+            .filter(WeeklyBaseCoverage.week_start == week_start)
+            .all()
+        )
+        metrics = compute_week_metrics(row, covs, session.query(BaseConfig).all())
+    base_metrics = metrics.base_metrics or {}
+    rotor = []
+    for base in BASES:
+        m = base_metrics.get(base)
+        if m is None or not m.get("rw_planned"):
+            continue
+        rotor.append(
+            {
+                "base": base,
+                "planned": int(m["rw_planned"]),
+                "staffed": int(m["rw_staffed"]),
+                "pct": f"{m['rw_pct'] * 100:.1f}%",
+            }
+        )
+    ground_staffed = {
+        "Day": result.staffed[(GROUND_DAY_SCOPE, "GR")],
+        "Night": result.staffed[(GROUND_NIGHT_SCOPE, "GR")],
+    }
+    ground_planned = {
+        "Day": result.planned[(GROUND_DAY_SCOPE, "GR")],
+        "Night": result.planned[(GROUND_NIGHT_SCOPE, "GR")],
+    }
+    ground_shifts = [
+        {
+            "shift": f"{label} ({per_day} a day)",
+            "planned": ground_planned[label],
+            "staffed": ground_staffed[label],
+        }
+        for label, per_day in (
+            ("Day", GROUND_DAY_PER_DAY),
+            ("Night", GROUND_NIGHT_PER_DAY),
+        )
+    ]
+    by_base = [
+        {
+            "base": base,
+            "shifts": int(base_metrics[base]["gr_staffed"]),
+            "share": f"{base_metrics[base]['gr_share'] * 100:.1f}%",
+        }
+        for base in BASES
+        if base in base_metrics and base_metrics[base]["gr_staffed"]
+    ]
+    counts = reason_counts(result.shortfalls)
+    short_rows = [
+        {
+            "day": s.day.strftime("%a %b %d"),
+            "unit": s.unit_code,
+            "type": "Rotor wing" if s.service_type == "RW" else "Ground",
+            "missing": s.detail,
+        }
+        for s in sorted(result.shortfalls, key=lambda s: (s.day, s.unit_code))
+    ]
+    return {
+        "system_rw": f"{metrics.system_rw_pct * 100:.1f}%",
+        "system_rw_counts": f"{metrics.rw_staffed_unit_days} of {metrics.rw_total_unit_days}",
+        "system_gr": f"{metrics.system_gr_pct * 100:.1f}%",
+        "system_gr_counts": f"{metrics.gr_staffed_unit_days} of {metrics.gr_planned_unit_days}",
+        "reasons": [
+            {"label": REASON_LABELS[r], "count": counts[r]} for r in REASON_ROLES
+        ],
+        "rotor": rotor,
+        "ground_shifts": ground_shifts,
+        "ground_by_base": by_base,
+        "short_rows": short_rows,
+        "no_vehicle_count": len(result.no_vehicle),
+    }
 
 
 def _week_day_choices(week_start: str) -> list[tuple[str, str]]:
@@ -392,6 +495,8 @@ def week_outages(request, week_start):
                             created_at=_utc_now_iso(),
                         )
                     )
+                session.flush()
+                recompute_week_targets(session, week_start)
                 messages.success(
                     request, f"{unit_code} marked no vehicle on {day_date}."
                 )
@@ -402,6 +507,8 @@ def week_outages(request, week_start):
                     WeeklyVehicleOutage.week_start == week_start,
                     WeeklyVehicleOutage.id.in_(ids),
                 ).delete(synchronize_session=False)
+                session.flush()
+                recompute_week_targets(session, week_start)
                 messages.success(request, "Removed.")
     return redirect("week_edit", week_start=week_start)
 
@@ -702,6 +809,7 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
             )
             session.add(row)
         session.flush()
+        ground_edited = False
         for form in formset:
             if form.cleaned_data.get("base_name"):
                 base = form.cleaned_data["base_name"]
@@ -720,6 +828,8 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                     .first()
                 )
                 if rec:
+                    if (rec.gr_staffed_day, rec.gr_staffed_night) != (gr_d, gr_n):
+                        ground_edited = True
                     rec.rw_staffed_day = rw_d
                     rec.rw_staffed_night = rw_n
                     rec.gr_staffed_day = gr_d
@@ -727,6 +837,7 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                     rec.rw_staffed_unit_days = rw_s
                     rec.gr_staffed_unit_days = gr_s
                 else:
+                    ground_edited = True
                     session.add(
                         WeeklyBaseCoverage(
                             week_start=week_start,
@@ -739,6 +850,13 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                             gr_staffed_night=gr_n,
                         )
                     )
+        if ground_edited:
+            # Hand-edited ground counts no longer match the schedule detail the
+            # per-day target figure was derived from, so fall back to the
+            # per-base sum (capped at the weekly target).
+            row.gr_target_staffed_day = None
+            row.gr_target_staffed_night = None
+            row.gr_target_planned = None
         session.query(WeeklyLeaveDetail).filter(
             WeeklyLeaveDetail.week_start == week_start
         ).delete()

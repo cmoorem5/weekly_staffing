@@ -124,3 +124,101 @@ class WeekOutagesViewTests(TempDbTestCase):
         self.assertIn("aircraft in maintenance", body)
         self.assertIn("D9L (Lawrence RW day)", body)
         self.assertNotIn("G9B", body)
+
+
+class WeekCoverageCardTests(WeekOutagesViewTests):
+    """The reasons card and the recompute hooks, with real schedule detail."""
+
+    def setUp(self):
+        super().setUp()
+        from datetime import date, timedelta
+
+        from staffing_tool.models import WeeklyBaseCoverage, WeeklyOpsViewAssignment
+        from staffing_tool.schedule_import import UNIT_MAP
+
+        full_rw = ("RN", "Medic", "PIC")
+        full_gr = ("RN", "Medic", "EMT")
+        units = ("D7B", "N7B", "D7P", "N7P", "D9L", "N9L", "D11M", "D11H")
+        trucks = ("GR", "LG", "MG", "NG")
+        start = date.fromisoformat(WEEK_START)
+        with session_scope(self.db_path) as session:
+            for i in range(7):
+                day = (start + timedelta(days=i)).isoformat()
+                for unit in units + trucks:
+                    roles = full_rw if UNIT_MAP[unit][1] == "RW" else full_gr
+                    for role in roles:
+                        # Monday: Lawrence day aircraft has no pilot.
+                        if i == 1 and unit == "D9L" and role == "PIC":
+                            continue
+                        session.add(
+                            WeeklyOpsViewAssignment(
+                                week_start=WEEK_START,
+                                day_date=day,
+                                unit_code=unit,
+                                role=role,
+                                person_display="N",
+                                raw_value="N",
+                                is_staffed=1,
+                            )
+                        )
+            session.add(
+                WeeklyBaseCoverage(
+                    week_start=WEEK_START,
+                    base_name="Lawrence",
+                    rw_staffed_unit_days=13,
+                    rw_staffed_day=6,
+                    rw_staffed_night=7,
+                    gr_staffed_unit_days=7,
+                    gr_staffed_day=7,
+                )
+            )
+            week = session.query(WeeklyStaffing).one()
+            week.gr_target_staffed_day = 21
+            week.gr_target_staffed_night = 7
+            week.gr_target_planned = 28
+
+    def test_card_names_the_missing_pilot(self):
+        resp = self.client.get(reverse("week_edit", args=[WEEK_START]))
+        body = resp.content.decode()
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Coverage and why vehicles were short", body)
+        self.assertIn("Short a pilot", body)
+        self.assertIn("D9L", body)
+
+    def test_marking_no_vehicle_removes_it_from_the_rotor_plan(self):
+        self._add(day_date="2026-10-26", unit_code="D9L", note="aircraft down")
+        with session_scope(self.db_path) as session:
+            from staffing_tool.models import WeeklyBaseCoverage
+
+            lawrence = (
+                session.query(WeeklyBaseCoverage).filter_by(base_name="Lawrence").one()
+            )
+            self.assertEqual(lawrence.rw_planned_removed, 1)
+
+    def test_hand_editing_ground_counts_clears_the_derived_target(self):
+        from staffing_tool.db import DEFAULT_BASES
+
+        prefix = "cov"
+        data = {
+            "week-week_start": WEEK_START,
+            "week-filled_day": "52",
+            "week-filled_night": "30",
+            "week-training_shifts": "0",
+            "week-notes": "",
+            f"{prefix}-TOTAL_FORMS": str(len(DEFAULT_BASES)),
+            f"{prefix}-INITIAL_FORMS": str(len(DEFAULT_BASES)),
+            f"{prefix}-MIN_NUM_FORMS": "0",
+            f"{prefix}-MAX_NUM_FORMS": "1000",
+        }
+        for i, (base_name, _rw, _gr) in enumerate(DEFAULT_BASES):
+            gr_day = "6" if base_name == "Lawrence" else "0"  # was 7
+            data[f"{prefix}-{i}-base_name"] = base_name
+            data[f"{prefix}-{i}-rw_staffed_day"] = "0"
+            data[f"{prefix}-{i}-rw_staffed_night"] = "0"
+            data[f"{prefix}-{i}-gr_staffed_day"] = gr_day
+            data[f"{prefix}-{i}-gr_staffed_night"] = "0"
+        resp = self.client.post(reverse("week_edit", args=[WEEK_START]), data=data)
+        self.assertEqual(resp.status_code, 302)
+        with session_scope(self.db_path) as session:
+            week = session.query(WeeklyStaffing).one()
+            self.assertIsNone(week.gr_target_staffed_day)

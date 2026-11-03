@@ -331,3 +331,67 @@ def summarize_by(result: ShortfallResult, key) -> dict[object, dict[str, int]]:
     for s in result.shortfalls:
         out[key(s)][s.cause] += 1
     return out
+
+
+# The four seats a short vehicle can be missing, with the plain name the
+# reports use. RN and Medic are the crew; Pilot (RW) or EMT (GR) is the operator.
+REASON_ROLES: tuple[str, ...] = ("RN", "Medic", "Pilot", "EMT")
+REASON_LABELS: dict[str, str] = {
+    "RN": "Nurse",
+    "Medic": "Paramedic",
+    "Pilot": "Pilot",
+    "EMT": "EMT",
+}
+
+
+def reason_counts(shortfalls: Iterable[UnitDayShortfall]) -> dict[str, int]:
+    """Short vehicle-days by missing seat.
+
+    A vehicle missing two seats counts once under each, so the four counts can
+    add to more than the number of short vehicle-days.
+    """
+    out = dict.fromkeys(REASON_ROLES, 0)
+    for s in shortfalls:
+        for role in s.missing_crew:
+            out[role] += 1
+        if s.operator_missing:
+            out[s.operator] += 1
+    return out
+
+
+def analyze_week(session, week_start: str) -> ShortfallResult | None:
+    """Shortfalls for one stored week, or None if it has no name-level rows."""
+    has_rows = (
+        session.query(WeeklyOpsViewAssignment.id)
+        .filter(WeeklyOpsViewAssignment.week_start == week_start)
+        .first()
+    )
+    if has_rows is None:
+        return None
+    staffed_rows = (
+        session.query(
+            WeeklyOpsViewAssignment.day_date,
+            WeeklyOpsViewAssignment.unit_code,
+            WeeklyOpsViewAssignment.role,
+        )
+        .filter(WeeklyOpsViewAssignment.week_start == week_start)
+        .filter(WeeklyOpsViewAssignment.is_staffed == 1)
+        .all()
+    )
+    outage_rows = (
+        session.query(
+            WeeklyVehicleOutage.day_date,
+            WeeklyVehicleOutage.unit_code,
+            WeeklyVehicleOutage.note,
+        )
+        .filter(WeeklyVehicleOutage.week_start == week_start)
+        .all()
+    )
+    roles: dict[tuple[date, str], set[str]] = defaultdict(set)
+    for day_s, unit, role in staffed_rows:
+        roles[(datetime.strptime(day_s, "%Y-%m-%d").date(), unit)].add(role)
+    outages = {
+        (datetime.strptime(day_s, "%Y-%m-%d").date(), unit): note or ""
+        for day_s, unit, note in outage_rows
+    }
+    return find_shortfalls(roles, _week_days(week_start), outages)

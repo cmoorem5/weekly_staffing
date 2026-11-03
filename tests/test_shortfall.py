@@ -22,6 +22,7 @@ from staffing_tool.shortfall import (
     find_shortfalls,
     load_shortfalls,
     planned_groups,
+    reason_counts,
 )
 from tests._temp_db import TempDbTestCase
 
@@ -232,6 +233,23 @@ class NoVehicleTests(unittest.TestCase):
         result = find_shortfalls(roles, [DAY, other], {(DAY, "D9L"): ""})
         (s,) = result.shortfalls
         self.assertEqual(s.day, other)
+
+
+class ReasonCountTests(unittest.TestCase):
+    def test_counts_each_missing_seat_by_name(self):
+        roles = _all_staffed(DAY, without=("MG",))
+        roles[(DAY, "D9L")] = {"RN", "Medic"}  # no pilot
+        roles[(DAY, "N7B")] = {"Medic", "PIC"}  # no nurse
+        roles[(DAY, "D11M")] = {"RN", "PIC"}  # no paramedic
+        roles[(DAY, "LG")] = {"RN", "Medic"}  # no EMT (MG gone, so LG is blamed)
+        counts = reason_counts(find_shortfalls(roles, [DAY]).shortfalls)
+        self.assertEqual(counts, {"RN": 1, "Medic": 1, "Pilot": 1, "EMT": 1})
+
+    def test_a_vehicle_missing_two_seats_counts_under_both(self):
+        roles = _all_staffed(DAY)
+        roles[(DAY, "D11M")] = {"Medic"}
+        counts = reason_counts(find_shortfalls(roles, [DAY]).shortfalls)
+        self.assertEqual((counts["RN"], counts["Pilot"], counts["Medic"]), (1, 1, 0))
 
 
 class LoadShortfallsTests(TempDbTestCase):

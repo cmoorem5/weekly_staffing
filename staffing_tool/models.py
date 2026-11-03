@@ -402,6 +402,13 @@ class WeeklyStaffing(Base):
 
     overnights_below = Column(Integer, nullable=False, default=0)
     pilot_vacancies = Column(Integer, nullable=False, default=0)
+    # System ground target (3 day + 1 night trucks a day, any base), derived from
+    # the schedule's name-level OPS View rows by week_targets.recompute_week_targets.
+    # NULL = not derived (legacy week or hand-edited coverage): metrics then fall
+    # back to the per-base sum capped at the weekly target.
+    gr_target_staffed_day = Column(Integer, nullable=True)
+    gr_target_staffed_night = Column(Integer, nullable=True)
+    gr_target_planned = Column(Integer, nullable=True)
     # CEO report: manually entered unpartnered staff counts (not derived from schedule import).
     medic_unpartnered = Column(Integer, nullable=False, default=0)
     rn_unpartnered_staff = Column(Integer, nullable=False, default=0)
@@ -440,6 +447,9 @@ class WeeklyBaseCoverage(Base):
     rw_staffed_night = Column(Integer, nullable=False, default=0)
     gr_staffed_day = Column(Integer, nullable=False, default=0)
     gr_staffed_night = Column(Integer, nullable=False, default=0)
+    # Planned RW unit-days taken off this base's plan because the aircraft was
+    # out of service with no crew on shift ("no vehicle": not a staffing problem).
+    rw_planned_removed = Column(Integer, nullable=False, default=0)
 
     week = relationship("WeeklyStaffing", back_populates="base_coverages")
 

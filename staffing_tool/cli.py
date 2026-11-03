@@ -19,6 +19,7 @@ from .db import (
     migrate_leave_exposure_to_shift_exception_metric,
     migrate_system_gr_kpi_thresholds,
     migrate_unpartnered_note_columns,
+    migrate_week_target_columns,
     migrate_weekly_staffing_columns,
     session_scope,
 )
@@ -67,6 +68,7 @@ def _cmd_migrate(args: argparse.Namespace, db_path: str) -> None:
     migrate_weekly_staffing_columns(engine)
     migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
+    migrate_week_target_columns(engine)
     migrate_leave_exposure_to_shift_exception_metric(engine)
     migrate_system_gr_kpi_thresholds(engine)
     with session_scope(db_path) as session:
