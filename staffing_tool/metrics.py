@@ -91,8 +91,8 @@ class WeekMetrics:
     rw_total_unit_days: int  # sum across bases from base_config
     gr_total_unit_days: int
     rw_staffed_unit_days: int
-    # System ground trucks staffed, capped per day at the 3 day + 1 night target
-    # (not the sum of every base's trucks).
+    # System ground shifts staffed: the total across bases, capped at the week's
+    # ground plan (``gr_planned_unit_days``).
     gr_staffed_unit_days: int
     system_rw_pct: float
     system_gr_pct: float
@@ -260,23 +260,15 @@ def compute_week_metrics(
         float(rw_staffed) / float(rw_total_unit_days) if rw_total_unit_days else 0.0
     )
 
-    # Ground is a system target (3 day + 1 night a day, any base), so crews can
-    # move between bases. Prefer the per-day-capped figure derived at import;
-    # without it (legacy or hand-edited coverage) cap the per-base sum at the
-    # weekly target so a fifth truck can't push the system past 100%.
-    tgt_day = getattr(ws, "gr_target_staffed_day", None)
-    tgt_night = getattr(ws, "gr_target_staffed_night", None)
+    # Ground is a system target (3 day + 1 night a day = 28 a week, any base;
+    # crews move between bases). The weekly figure is the total of every ground
+    # shift staffed across the bases, so a fifth truck one day offsets a short
+    # day, capped at the week's plan (less any "no vehicle" truck-days).
     tgt_planned = getattr(ws, "gr_target_planned", None)
-    if tgt_day is not None and tgt_night is not None:
-        gr_target_staffed = int(tgt_day) + int(tgt_night)
-        gr_planned = (
-            int(tgt_planned)
-            if tgt_planned is not None
-            else SYSTEM_GR_MAX_SHIFTS_PER_WEEK
-        )
-    else:
-        gr_target_staffed = min(gr_staffed, SYSTEM_GR_MAX_SHIFTS_PER_WEEK)
-        gr_planned = SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+    gr_planned = (
+        int(tgt_planned) if tgt_planned is not None else SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+    )
+    gr_target_staffed = min(gr_staffed, gr_planned)
     system_gr_pct = float(gr_target_staffed) / float(gr_planned) if gr_planned else 0.0
     # Each base's share of the ground shifts actually staffed (cost-center view).
     for entry in base_metrics.values():
@@ -455,7 +447,7 @@ def compute_role_fill(session, week_starts: list[str]) -> list[RoleFill]:
 
 
 def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:
-    """Return the numeric value for a board KPI metric name."""
+    """Return the numeric value for a headline KPI metric name."""
     mapping = {
         "Staffing Rate": metrics.staffing_rate,
         # Backfill Rate (aka OT Dependency)
@@ -471,7 +463,7 @@ def get_metric_value(metrics: WeekMetrics, metric_name: str) -> float | None:
 
 
 def get_pooled_metric_value(rollups: PeriodRollups, metric_name: str) -> float | None:
-    """Return pooled period rate for a board KPI metric name."""
+    """Return pooled period rate for a headline KPI metric name."""
     mapping = {
         "Staffing Rate": rollups.pooled_staffing_rate,
         "OT Dependency": rollups.pooled_ot_dependency,

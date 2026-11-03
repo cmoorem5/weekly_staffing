@@ -1,4 +1,4 @@
-"""Board_Summary sheet writer (no cross-sheet formulas — values only)."""
+"""Executive_Summary sheet writer (no cross-sheet formulas — values only)."""
 
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ def _generate_narrative(
     }
 
 
-def _write_board_summary(
+def _write_executive_summary(
     wb: Workbook,
     week_start: str,
     week_end: str,
@@ -137,7 +137,7 @@ def _write_board_summary(
     narrative: dict[str, list[str]],
     metadata: dict | None = None,
 ) -> None:
-    ws = wb.create_sheet("Board_Summary", 0)
+    ws = wb.create_sheet("Executive_Summary", 0)
     row = 1
 
     logo_ok = _add_logo(ws, "A1", max_height_px=76)
@@ -164,7 +164,7 @@ def _write_board_summary(
         row += 2
 
     # KPI Panel: (display_label, internal_metric_name)
-    board_metrics = [
+    headline_metrics = [
         ("Staffing Rate", "Staffing Rate"),
         ("Backfill Rate", "OT Dependency"),
         ("Shift Exception %", "Shift Exception %"),
@@ -190,7 +190,7 @@ def _write_board_summary(
         cell.border = THIN_BORDER
     row += 1
 
-    for display_name, metric_key in board_metrics:
+    for display_name, metric_key in headline_metrics:
         val_this = get_metric_value(this_metrics, metric_key)
         val_prior = (
             get_metric_value(prior_metrics, metric_key) if prior_metrics else None

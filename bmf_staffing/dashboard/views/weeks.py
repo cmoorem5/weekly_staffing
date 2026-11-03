@@ -32,7 +32,7 @@ from staffing_tool.models import (
     WeeklyVehicleOutage,
 )
 from staffing_tool.rag import NO_TARGET, evaluate_rag
-from staffing_tool.report import export_board_pack
+from staffing_tool.report import export_staffing_workbook
 from staffing_tool.schedule_import import UNIT_MAP
 from staffing_tool.shortfall import (
     GROUND_DAY_PER_DAY,
@@ -355,9 +355,11 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
                 "pct": f"{m['rw_pct'] * 100:.1f}%",
             }
         )
+    # Weekly ground total = every ground shift staffed across the bases (an extra
+    # truck one day offsets a short day); the headline % caps it at the plan.
     ground_staffed = {
-        "Day": result.staffed[(GROUND_DAY_SCOPE, "GR")],
-        "Night": result.staffed[(GROUND_NIGHT_SCOPE, "GR")],
+        "Day": int(sum(m["gr_d"] for m in base_metrics.values())),
+        "Night": int(sum(m["gr_n"] for m in base_metrics.values())),
     }
     ground_planned = {
         "Day": result.planned[(GROUND_DAY_SCOPE, "GR")],
@@ -373,6 +375,12 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
             ("Day", GROUND_DAY_PER_DAY),
             ("Night", GROUND_NIGHT_PER_DAY),
         )
+    ] + [
+        {
+            "shift": "Total (counted toward the %)",
+            "planned": metrics.gr_planned_unit_days,
+            "staffed": metrics.gr_staffed_unit_days,
+        }
     ]
     by_base = [
         {
@@ -398,6 +406,7 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         "system_rw_counts": f"{metrics.rw_staffed_unit_days} of {metrics.rw_total_unit_days}",
         "system_gr": f"{metrics.system_gr_pct * 100:.1f}%",
         "system_gr_counts": f"{metrics.gr_staffed_unit_days} of {metrics.gr_planned_unit_days}",
+        "ground_plan": metrics.gr_planned_unit_days,
         "reasons": [
             {"label": REASON_LABELS[r], "count": counts[r]} for r in REASON_ROLES
         ],
@@ -809,7 +818,6 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
             )
             session.add(row)
         session.flush()
-        ground_edited = False
         for form in formset:
             if form.cleaned_data.get("base_name"):
                 base = form.cleaned_data["base_name"]
@@ -828,8 +836,6 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                     .first()
                 )
                 if rec:
-                    if (rec.gr_staffed_day, rec.gr_staffed_night) != (gr_d, gr_n):
-                        ground_edited = True
                     rec.rw_staffed_day = rw_d
                     rec.rw_staffed_night = rw_n
                     rec.gr_staffed_day = gr_d
@@ -837,7 +843,6 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                     rec.rw_staffed_unit_days = rw_s
                     rec.gr_staffed_unit_days = gr_s
                 else:
-                    ground_edited = True
                     session.add(
                         WeeklyBaseCoverage(
                             week_start=week_start,
@@ -850,13 +855,6 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
                             gr_staffed_night=gr_n,
                         )
                     )
-        if ground_edited:
-            # Hand-edited ground counts no longer match the schedule detail the
-            # per-day target figure was derived from, so fall back to the
-            # per-base sum (capped at the weekly target).
-            row.gr_target_staffed_day = None
-            row.gr_target_staffed_night = None
-            row.gr_target_planned = None
         session.query(WeeklyLeaveDetail).filter(
             WeeklyLeaveDetail.week_start == week_start
         ).delete()
@@ -928,7 +926,7 @@ def export_excel(request, week_start):
             "source_filename": source_filename,
             "source_rows": 1 + n_base + n_exc,
         }
-        path = export_board_pack(
+        path = export_staffing_workbook(
             DB_PATH,
             week_start,
             trend_weeks=12,

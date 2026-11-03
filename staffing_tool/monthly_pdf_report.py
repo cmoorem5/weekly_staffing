@@ -1,15 +1,15 @@
 """
 Monthly staffing PDF report builder (data from staffing.db).
 
-Reuses the data loader from monthly_html_report.py (MonthlyBoardData /
-load_monthly_board_data) and the shared PDF chart builders from
+Reuses the data loader from monthly_html_report.py (MonthlyReportData /
+load_monthly_report_data) and the shared PDF chart builders from
 quarterly_pdf_report.py — the weekly trend / exception breakdown charts read
-only .weekly_trend / .leave_breakdown, which MonthlyBoardData already
+only .weekly_trend / .leave_breakdown, which MonthlyReportData already
 provides in the same shape. Visual style: staffing_tool/report_style.py.
 
 The KPI-delta-vs-prior-period and combined exception chart+table layout
-below mirror monthly_html_report.py's board summary so the PDF and HTML
-board reports read as the same document in two formats.
+below mirror monthly_html_report.py's executive summary so the PDF and HTML
+reports read as the same document in two formats.
 """
 
 from __future__ import annotations
@@ -30,7 +30,10 @@ from reportlab.platypus import (
 )
 
 from staffing_tool import report_style as style
-from staffing_tool.monthly_html_report import MonthlyBoardData, load_monthly_board_data
+from staffing_tool.monthly_html_report import (
+    MonthlyReportData,
+    load_monthly_report_data,
+)
 
 GREEN = colors.HexColor("#0F6E56")
 NEUTRAL = colors.HexColor("#666666")
@@ -66,7 +69,7 @@ def _kpi_delta(
     return f"{sign} {abs(diff):.1f} pts", color
 
 
-def _kpi_rows(data: MonthlyBoardData) -> list[tuple[str, str, str, colors.Color]]:
+def _kpi_rows(data: MonthlyReportData) -> list[tuple[str, str, str, colors.Color]]:
     """(label, value, delta text, delta color) — delta blank when there's no prior period."""
     r, p = data.rollups, data.prior_rollups
     rows: list[tuple[str, str, str, colors.Color]] = []
@@ -153,11 +156,11 @@ def _note(text: str) -> Paragraph:
     return Paragraph(text, style_)
 
 
-def _role_fill_table(data: MonthlyBoardData) -> Table:
+def _role_fill_table(data: MonthlyReportData) -> Table:
     return style.role_fill_table(data.role_fill)
 
 
-def _ot_table(data: MonthlyBoardData) -> Table:
+def _ot_table(data: MonthlyReportData) -> Table:
     headers = ["Role", "OT Shifts"]
     total = sum(v for _, v in data.ot_by_role)
     rows = [headers] + [[label, str(v)] for label, v in data.ot_by_role]
@@ -190,7 +193,7 @@ def _ot_table(data: MonthlyBoardData) -> Table:
     return t
 
 
-def _weekly_detail_table(data: MonthlyBoardData) -> Table:
+def _weekly_detail_table(data: MonthlyReportData) -> Table:
     headers = ["Week", "Staffing Rate", "OT Dependency", "Exception %", "Vacancies"]
     col_w = style.full_width_col_widths([1.3, 1.7, 1.7, 1.7, 1.3])
     rows = [headers] + [list(r) for r in data.weekly_detail]
@@ -208,7 +211,7 @@ def _weekly_detail_table(data: MonthlyBoardData) -> Table:
     return t
 
 
-def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
+def build_monthly_pdf(data: MonthlyReportData, output_path: str) -> str:
     from staffing_tool.quarterly_pdf_report import (
         _build_base_coverage_fig,
         _build_exception_bar_fig,
@@ -324,7 +327,7 @@ def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
     return output_path
 
 
-def _output_path(output_dir: str, data: MonthlyBoardData) -> str:
+def _output_path(output_dir: str, data: MonthlyReportData) -> str:
     os.makedirs(output_dir, exist_ok=True)
     safe_start = data.date_start.replace("-", "")
     safe_end = data.date_end.replace("-", "")
@@ -337,6 +340,6 @@ def export_monthly_report_pdf(
     date_end: str,
     output_dir: str,
 ) -> str:
-    data = load_monthly_board_data(db_path, date_start, date_end)
+    data = load_monthly_report_data(db_path, date_start, date_end)
     path = _output_path(output_dir, data)
     return build_monthly_pdf(data, path)

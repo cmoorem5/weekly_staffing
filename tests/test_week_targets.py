@@ -81,23 +81,53 @@ class WeekTargetTests(TempDbTestCase):
                     )
                 )
 
-    def test_extra_truck_one_day_does_not_hide_a_gap_another_day(self):
+    def test_five_trucks_one_day_offsets_a_short_day(self):
+        # The weekly ground figure is the total of every ground shift staffed:
+        # 5 trucks one day and 3 another is the same as 4 and 4.
         for i in range(7):
             self._staff(i, ROTOR_UNITS)
-        # Day 0: a fifth truck (all four day trucks). Day 1: only two day trucks.
-        self._staff(0, ("GR", "LG", "MG", "PG", "NG"))
-        self._staff(1, ("GR", "LG", "NG"))
+        self._staff(0, ("GR", "LG", "MG", "PG", "NG"))  # a fifth truck
+        self._staff(1, ("GR", "LG", "NG"))  # a day truck short
         for i in range(2, 7):
             self._staff(i, NORMAL_UNITS)
+        # Day trucks: 4 + 2 + 3x5 = 21, night 7: 28 shifts, the same total as
+        # 4 trucks a day, so the same weekly percentage.
+        self._cover(
+            Bedford=(0, 7, 7),
+            Lawrence=(0, 7, 0),
+            Mansfield=(0, 7, 0),
+            Plymouth=(0, 0, 0),
+        )
         with session_scope(self.db) as session:
             self.assertTrue(recompute_week_targets(session, WEEK))
-            row = session.query(WeeklyStaffing).one()
-            # Day trucks capped at 3 a day: 3 + 2 + 3*5 = 20. A raw sum would be 22.
-            self.assertEqual(row.gr_target_staffed_day, 20)
-            self.assertEqual(row.gr_target_staffed_night, 7)
-            self.assertEqual(row.gr_target_planned, 28)
-        self._cover(Bedford=(14, 0, 0))
-        self.assertAlmostEqual(self._metrics().system_gr_pct, 27 / 28)
+            self.assertEqual(session.query(WeeklyStaffing).one().gr_target_planned, 28)
+        m = self._metrics()
+        self.assertEqual(m.gr_staffed_unit_days, 28)
+        self.assertAlmostEqual(m.system_gr_pct, 1.0)
+
+    def test_more_than_the_plan_is_capped_at_100_percent(self):
+        self._cover(
+            Bedford=(0, 10, 7),
+            Lawrence=(0, 7, 0),
+            Mansfield=(0, 7, 0),
+            Plymouth=(0, 7, 0),
+        )
+        m = self._metrics()  # 38 ground shifts staffed against a plan of 28
+        self.assertEqual(m.gr_staffed_unit_days, 28)
+        self.assertAlmostEqual(m.system_gr_pct, 1.0)
+
+    def test_editing_a_base_changes_that_base_and_the_weekly_total_together(self):
+        self._cover(Bedford=(0, 7, 7), Lawrence=(0, 7, 0))
+        before = self._metrics()
+        with session_scope(self.db) as session:
+            lawrence = (
+                session.query(WeeklyBaseCoverage).filter_by(base_name="Lawrence").one()
+            )
+            lawrence.gr_staffed_day = 5
+            lawrence.gr_staffed_unit_days = 5
+        after = self._metrics()
+        self.assertAlmostEqual(before.system_gr_pct, 21 / 28)
+        self.assertAlmostEqual(after.system_gr_pct, 19 / 28)
 
     def test_no_vehicle_without_crew_comes_off_the_rotor_wing_plan(self):
         for i in range(7):
@@ -134,11 +164,8 @@ class WeekTargetTests(TempDbTestCase):
     def test_week_without_detail_is_cleared_not_guessed(self):
         with session_scope(self.db) as session:
             row = session.query(WeeklyStaffing).one()
-            row.gr_target_staffed_day = 20
-            row.gr_target_staffed_night = 7
-            row.gr_target_planned = 28
+            row.gr_target_planned = 27
             self.assertFalse(recompute_week_targets(session, WEEK))
-            self.assertIsNone(row.gr_target_staffed_day)
             self.assertIsNone(row.gr_target_planned)
 
     def test_legacy_week_caps_the_per_base_sum_at_the_weekly_target(self):

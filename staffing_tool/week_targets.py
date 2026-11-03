@@ -3,10 +3,11 @@
 Base coverage as imported counts staffed trucks per base. The CEO figures need
 two things the per-base counts can't give:
 
-- **Ground** is a system target of 3 day + 1 night truck a day, from any base.
-  A fifth truck on a day must not offset a gap on another day, so the system
-  figure is capped per day and stored on ``WeeklyStaffing``
-  (``gr_target_staffed_day`` / ``_night`` / ``gr_target_planned``).
+- **Ground** is a system target of 3 day + 1 night truck a day, from any base:
+  28 a week. The weekly figure is the total of every ground shift staffed (a
+  fifth truck one day offsets a short day), capped at the plan, so only the plan
+  is stored (``WeeklyStaffing.gr_target_planned``); the staffed total comes from
+  the per-base counts, which the week edit page lets you correct.
 - **No vehicle** (an aircraft or truck out of service, marked by hand) is not a
   staffing problem. A down aircraft with no crew comes off that base's plan
   (``WeeklyBaseCoverage.rw_planned_removed``) and a down truck lowers the ground
@@ -47,15 +48,11 @@ def recompute_week_targets(session: Session, week_start: str) -> bool:
     )
     result = analyze_week(session, week_start)
     if result is None:
-        week.gr_target_staffed_day = None
-        week.gr_target_staffed_night = None
         week.gr_target_planned = None
         for c in coverages:
             c.rw_planned_removed = 0
         return False
 
-    week.gr_target_staffed_day = result.staffed[(GROUND_DAY_SCOPE, "GR")]
-    week.gr_target_staffed_night = result.staffed[(GROUND_NIGHT_SCOPE, "GR")]
     week.gr_target_planned = (
         result.planned[(GROUND_DAY_SCOPE, "GR")]
         + result.planned[(GROUND_NIGHT_SCOPE, "GR")]

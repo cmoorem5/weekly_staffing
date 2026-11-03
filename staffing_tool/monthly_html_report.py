@@ -1,7 +1,7 @@
 """
-Monthly staffing board report — polished HTML export.
+Monthly staffing report — polished HTML export.
 
-Board-level summary for a date range (usually one calendar month): core
+Leadership-level summary for a date range (usually one calendar month): core
 staffing KPIs averaged over the period with change vs the prior period,
 weekly trend and exception-mix charts, OT by role, base coverage, and a
 week-by-week detail table. Same visual family as the weekly and quarterly
@@ -49,7 +49,7 @@ def _short_label(iso: str) -> str:
 
 
 @dataclass
-class MonthlyBoardData:
+class MonthlyReportData:
     date_start: str
     date_end: str
     weeks_count: int
@@ -90,9 +90,9 @@ def _period_rollups(session, start_s: str, end_s: str) -> PeriodRollups | None:
     return compute_period_rollups(metrics)
 
 
-def load_monthly_board_data(
+def load_monthly_report_data(
     db_path: str, date_start: str, date_end: str
-) -> MonthlyBoardData:
+) -> MonthlyReportData:
     try:
         ds = datetime.strptime(date_start, "%Y-%m-%d").date()
         de = datetime.strptime(date_end, "%Y-%m-%d").date()
@@ -199,7 +199,7 @@ def load_monthly_board_data(
                 )
             )
 
-        return MonthlyBoardData(
+        return MonthlyReportData(
             date_start=date_start,
             date_end=date_end,
             weeks_count=n,
@@ -238,7 +238,7 @@ def load_monthly_board_data(
         )
 
 
-def _board_kpis(data: MonthlyBoardData) -> list[tuple]:
+def _headline_kpis(data: MonthlyReportData) -> list[tuple]:
     """KPI cells with change vs the prior period when it has data."""
     r, p = data.rollups, data.prior_rollups
     spec = [
@@ -267,7 +267,7 @@ def _board_kpis(data: MonthlyBoardData) -> list[tuple]:
     return kpis
 
 
-def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
+def build_monthly_html(data: MonthlyReportData, output_path: str) -> str:
     # Chart builders are shared with the quarterly report; they only read
     # .weekly_trend / .leave_breakdown, so a namespace stand-in works.
     from staffing_tool.quarterly_pdf_report import (
@@ -293,7 +293,7 @@ def build_monthly_board_html(data: MonthlyBoardData, output_path: str) -> str:
         if data.prior_rollups
         else rh.note("No prior-period data available for comparison.")
     )
-    body += rh.body_cell(rh.kpi_strip(_board_kpis(data), data.kpi_status) + kpi_note)
+    body += rh.body_cell(rh.kpi_strip(_headline_kpis(data), data.kpi_status) + kpi_note)
 
     if trend_b64:
         body += rh.section_bar("WEEKLY TREND THIS PERIOD")
@@ -378,11 +378,11 @@ def export_monthly_report_html(
     date_end: str,
     output_dir: str,
 ) -> str:
-    data = load_monthly_board_data(db_path, date_start, date_end)
+    data = load_monthly_report_data(db_path, date_start, date_end)
     os.makedirs(output_dir, exist_ok=True)
     safe_start = date_start.replace("-", "")
     safe_end = date_end.replace("-", "")
     out_path = os.path.join(
         output_dir, f"Monthly_staffing_{safe_start}_to_{safe_end}.html"
     )
-    return build_monthly_board_html(data, out_path)
+    return build_monthly_html(data, out_path)

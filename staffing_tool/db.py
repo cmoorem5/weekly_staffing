@@ -112,15 +112,10 @@ def migrate_week_target_columns(engine: Engine) -> None:
     """Add the ground-target and no-vehicle columns (all additive, safe to rerun)."""
     with engine.connect() as conn:
         columns = _pragma_column_names(conn, "weekly_staffing")
-        for col in (
-            "gr_target_staffed_day",
-            "gr_target_staffed_night",
-            "gr_target_planned",
-        ):
-            if col not in columns:
-                conn.execute(
-                    text(f"ALTER TABLE weekly_staffing ADD COLUMN {col} INTEGER")
-                )
+        if "gr_target_planned" not in columns:
+            conn.execute(
+                text("ALTER TABLE weekly_staffing ADD COLUMN gr_target_planned INTEGER")
+            )
         columns = _pragma_column_names(conn, "weekly_base_coverage")
         if "rw_planned_removed" not in columns:
             conn.execute(

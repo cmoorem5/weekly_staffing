@@ -73,8 +73,6 @@ class WeeklyReportTests(TempDbTestCase):
                     week_start=WEEK,
                     filled_day=52,
                     filled_night=30,
-                    gr_target_staffed_day=18,
-                    gr_target_staffed_night=7,
                     gr_target_planned=28,
                 )
             )

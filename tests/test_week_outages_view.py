@@ -172,10 +172,6 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
                     gr_staffed_day=7,
                 )
             )
-            week = session.query(WeeklyStaffing).one()
-            week.gr_target_staffed_day = 21
-            week.gr_target_staffed_night = 7
-            week.gr_target_planned = 28
 
     def test_card_names_the_missing_pilot(self):
         resp = self.client.get(reverse("week_edit", args=[WEEK_START]))
@@ -195,8 +191,10 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
             )
             self.assertEqual(lawrence.rw_planned_removed, 1)
 
-    def test_hand_editing_ground_counts_clears_the_derived_target(self):
+    def test_editing_ground_counts_moves_the_weekly_total(self):
         from staffing_tool.db import DEFAULT_BASES
+        from staffing_tool.metrics import compute_week_metrics
+        from staffing_tool.models import BaseConfig, WeeklyBaseCoverage
 
         prefix = "cov"
         data = {
@@ -211,14 +209,18 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
             f"{prefix}-MAX_NUM_FORMS": "1000",
         }
         for i, (base_name, _rw, _gr) in enumerate(DEFAULT_BASES):
-            gr_day = "6" if base_name == "Lawrence" else "0"  # was 7
             data[f"{prefix}-{i}-base_name"] = base_name
             data[f"{prefix}-{i}-rw_staffed_day"] = "0"
             data[f"{prefix}-{i}-rw_staffed_night"] = "0"
-            data[f"{prefix}-{i}-gr_staffed_day"] = gr_day
+            data[f"{prefix}-{i}-gr_staffed_day"] = (
+                "6" if base_name == "Lawrence" else "0"
+            )
             data[f"{prefix}-{i}-gr_staffed_night"] = "0"
         resp = self.client.post(reverse("week_edit", args=[WEEK_START]), data=data)
         self.assertEqual(resp.status_code, 302)
         with session_scope(self.db_path) as session:
-            week = session.query(WeeklyStaffing).one()
-            self.assertIsNone(week.gr_target_staffed_day)
+            row = session.query(WeeklyStaffing).one()
+            covs = session.query(WeeklyBaseCoverage).all()
+            m = compute_week_metrics(row, covs, session.query(BaseConfig).all())
+        self.assertEqual(m.gr_staffed_unit_days, 6)
+        self.assertAlmostEqual(m.system_gr_pct, 6 / 28)

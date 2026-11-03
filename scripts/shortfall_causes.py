@@ -112,7 +112,17 @@ def report(result: ShortfallResult, start: date, end: date) -> None:
 
     for service in ("RW", "GR"):
         planned = sum(n for (_scope, s), n in result.planned.items() if s == service)
-        staffed = sum(n for (_scope, s), n in result.staffed.items() if s == service)
+        if service == "GR":
+            # Weekly ground = every ground shift staffed (an extra truck one day
+            # offsets a short day), capped at the plan, as on the dashboard.
+            staffed = min(
+                sum(n for (_scope, s), n in result.staffed_all.items() if s == "GR"),
+                planned,
+            )
+        else:
+            staffed = sum(
+                n for (_scope, s), n in result.staffed.items() if s == service
+            )
         shorts = [s for s in result.shortfalls if s.service_type == service]
         by_cause = {c: sum(1 for s in shorts if s.cause == c) for c in CAUSES}
         op = operator_label(service)
@@ -159,15 +169,18 @@ def report(result: ShortfallResult, start: date, end: date) -> None:
                 (f"Night ({GROUND_NIGHT_PER_DAY} a day)", GROUND_NIGHT_SCOPE, "N"),
             ):
                 p = result.planned[(scope, "GR")]
-                st = result.staffed[(scope, "GR")]
+                st = result.staffed_all[(scope, "GR")]
                 c = by_shift.get(shift, dict.fromkeys(CAUSES, 0))
                 shift_rows.append(
-                    [label, p, st, _pct(st, p)]
-                    + [c[CAUSE_CREW], c[CAUSE_OPERATOR], c[CAUSE_BOTH]]
+                    [label, p, st] + [c[CAUSE_CREW], c[CAUSE_OPERATOR], c[CAUSE_BOTH]]
                 )
             _print_table(
-                ["Shift", "Planned", "Staffed", "%"] + _cause_headers(service),
+                ["Shift", "Planned", "Staffed (all trucks)"] + _cause_headers(service),
                 shift_rows,
+            )
+            print(
+                "Short counts are the days a seat was missing; the weekly % above "
+                "adds up every ground shift staffed."
             )
         print()
 

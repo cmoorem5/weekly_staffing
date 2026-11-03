@@ -460,7 +460,7 @@ def _base_coverage_table(ctx: QuarterlyReportContext):
 
 
 def _build_base_coverage_fig(ctx):
-    # Also called with MonthlyBoardData by the monthly reports.
+    # Also called with MonthlyReportData by the monthly reports.
     return style.base_coverage_fig(
         ctx.base_coverage, getattr(ctx, "trend_targets", None)
     )
@@ -498,7 +498,7 @@ def _weekly_detail_table(ctx: QuarterlyReportContext):
 def _build_trend_fig(ctx: QuarterlyReportContext):
     return style.trend_fig(
         ctx.weekly_trend,
-        # Also called with MonthlyBoardData by the monthly PDF.
+        # Also called with MonthlyReportData by the monthly PDF.
         targets=getattr(ctx, "trend_targets", None),
     )
 
@@ -645,7 +645,7 @@ def export_quarterly_staffing_pdf(
 
 
 # --------------------------------------------------------------------
-# HTML export (board-ready, same visual family as the weekly report)
+# HTML export (leadership-ready, same visual family as the weekly report)
 # --------------------------------------------------------------------
 
 # KPI label -> whether a higher value is better (for prior-quarter deltas).

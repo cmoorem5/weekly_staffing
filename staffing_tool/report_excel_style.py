@@ -1,4 +1,4 @@
-"""BMF brand styles + Excel style helpers for the board-pack workbook.
+"""BMF brand styles + Excel style helpers for the staffing workbook.
 
 Status colors are computed in code — never Excel conditional formatting
 (docs/report-generator-spec.md).
@@ -292,7 +292,7 @@ def _add_logo(ws, anchor: str = "A1", max_height_px: int = 88) -> bool:
 def _new_workbook_from_template_or_empty() -> Workbook:
     """
     If the template file exists, load it and remove all sheets (use as branded shell / theme).
-    Otherwise a fresh Workbook. Caller adds Board_Summary, Weekly_Detail, etc.
+    Otherwise a fresh Workbook. Caller adds Executive_Summary, Weekly_Detail, etc.
     """
     path = os.environ.get("WEEKLY_STAFFING_REPORT_TEMPLATE", _report_template_path())
     if os.path.isfile(path):

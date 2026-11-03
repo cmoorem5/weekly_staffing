@@ -22,7 +22,9 @@ What counts as "planned":
   which truck or base staffs them does not matter (crews move around to where
   the staffing is). So ground is one target per shift for the whole system, not
   a plan per base; any staffed day truck counts toward the 3, any night truck
-  toward the 1. Which truck is blamed for a missing slot is only the one
+  toward the 1. The *weekly* ground percentage is the total of every ground
+  shift staffed (``staffed_all``) over the plan, so an extra truck one day makes
+  up for a short day; the per-day list here names the days a seat was missing. Which truck is blamed for a missing slot is only the one
   closest to being staffed, so read ground by cause and shift, not by base.
 - Opportunistic units (``EXTRA_UNIT_CODES``) are never planned.
 
@@ -174,7 +176,12 @@ class ShortfallResult:
     # (scope, service) -> planned / staffed vehicle-days across the window.
     # scope is the base for RW and GROUND_SCOPE for GR.
     planned: Counter = field(default_factory=Counter)
+    # Staffed vehicle-days counted per day against the plan (a spare vehicle one
+    # day does not offset a gap another day): what the per-day shortfall list uses.
     staffed: Counter = field(default_factory=Counter)
+    # Every fully staffed vehicle-day, including ones beyond the day's plan. The
+    # weekly ground % is built from this (an extra truck offsets a short day).
+    staffed_all: Counter = field(default_factory=Counter)
     days_analyzed: int = 0
     weeks_without_detail: list[str] = field(default_factory=list)
 
@@ -237,9 +244,10 @@ def find_shortfalls(
             filled = min(staffed_count, slots)
             result.planned[(g.scope, g.service_type)] += slots
             result.staffed[(g.scope, g.service_type)] += filled
+            result.staffed_all[(g.scope, g.service_type)] += staffed_count
             need = slots - filled
             # Blame the vehicles closest to being staffed: they are the ones a
-            # single missing seat kept off the board.
+            # single missing seat kept from being staffed.
             for _n, _order, unit, crew, op_missing in sorted(gaps)[:need]:
                 result.shortfalls.append(
                     UnitDayShortfall(

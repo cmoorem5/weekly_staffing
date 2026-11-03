@@ -1,14 +1,14 @@
 # Weekly Staffing Report — Generator Spec
 
-Requirements for the generator that produces the weekly staffing Excel report (Board_Summary and Weekly_Detail tabs). Derived from review of the 2026-04-12 report with the report owner.
+Requirements for the generator that produces the weekly staffing Excel report (Executive_Summary and Weekly_Detail tabs). Derived from review of the 2026-04-12 report with the report owner.
 
 ## Context
 
 - The report is **regenerated from scratch** each week from source schedule data. It is an output artifact, not a live spreadsheet.
-- Do **not** use cross-sheet formulas to link Board_Summary values to Weekly_Detail. The generator writes both tabs independently from the same source data.
+- Do **not** use cross-sheet formulas to link Executive_Summary values to Weekly_Detail. The generator writes both tabs independently from the same source data.
 - Do **not** convert values to `SUM`/`AVERAGE` formulas. The generator is the source of truth.
 - Do **not** rely on Excel conditional formatting for status colors. Bake color logic into the generator so the file renders identically in any viewer.
-- Audience includes board members and non-operational readers. Tone of visual signals (colors, labels) should reflect operational reality without creating false alarm.
+- Audience includes senior leadership, the CEO, and other non-operational readers. Tone of visual signals (colors, labels) should reflect operational reality without creating false alarm.
 
 ---
 
@@ -59,7 +59,7 @@ Color status is derived from these thresholds at generation time. **These match 
 | System GR %            | ≥ 92%             | 85% – 91.9%      | < 85%                |
 | System RW %            | ≥ 95%             | 90% – 94.9%      | < 90%                |
 
-Display the green threshold in a "Target" column on Board_Summary's KPI table and Weekly_Detail's Executive Summary so readers see *why* a status is Monitor without inferring.
+Display the green threshold in a "Target" column on Executive_Summary's KPI table and Weekly_Detail's Executive Summary so readers see *why* a status is Monitor without inferring.
 
 ### 1.5 Metrics that are NOT graded
 
@@ -174,7 +174,7 @@ Cell fills for status come from §1.4 + §2.2. Never hardcode. A good week rende
 
 ### 4.3 Direction arrows are computed
 
-Column G on Board_Summary's KPI table shows **semantic** direction (improvement vs worsening), not raw week-over-week arithmetic alone.
+Column G on Executive_Summary's KPI table shows **semantic** direction (improvement vs worsening), not raw week-over-week arithmetic alone.
 
 Implementation matches `direction_for_metric` in code:
 
@@ -232,13 +232,13 @@ Thin `#CBC7D1` vertical border between the RW columns (B:C) and GR columns (D:E)
 
 Fill Day and Night columns for the Staffing rate row (`filled_day / required_day`, `filled_night / required_night`). Do not leave them blank — the reader will read a blank cell as missing data.
 
-### 5.7 Board_Summary structure
+### 5.7 Executive_Summary structure
 
 - Title spans A1:G1
 - KPI table includes Target column using §1.4 green thresholds
 - System RW% and GR% appear in **one location only** — the KPI block. Remove from the base coverage table's totals row.
 
-### 5.8 Narrative section (Board_Summary)
+### 5.8 Narrative section (Executive_Summary)
 
 Current placeholder text (`[User-editable action item]`, empty Risks header) is not acceptable. Pick one model:
 
@@ -256,7 +256,7 @@ Pick one. Commit in code.
 
 ## 6. Metadata footer
 
-Small block at the bottom of Board_Summary (or hidden row at top) with:
+Small block at the bottom of Executive_Summary (or hidden row at top) with:
 
 - Generation timestamp (ISO 8601)
 - Generator / app version
@@ -282,7 +282,7 @@ When a file "looks weird" three weeks from now, this turns a 30-minute forensic 
 
 ## 8. What NOT to do
 
-- ❌ **Cross-sheet formulas.** Board_Summary cells should not reference Weekly_Detail cells. Both tabs are written independently from source data.
+- ❌ **Cross-sheet formulas.** Executive_Summary cells should not reference Weekly_Detail cells. Both tabs are written independently from source data.
 - ❌ **`SUM`/`AVERAGE` formulas on generated values.** Decorative at best, fragile at worst.
 - ❌ **Conditional formatting for status colors.** Compute in code, write the fill directly.
 - ❌ **Summing raw shift counts across bases.** See §3.3.

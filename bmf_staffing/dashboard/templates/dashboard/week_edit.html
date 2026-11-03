@@ -98,7 +98,7 @@
           {% for r in coverage.short_rows %}<tr><td>{{ r.day }}</td><td>{{ r.unit }}</td><td>{{ r.type }}</td><td>{{ r.missing }}</td></tr>{% endfor %}
         </tbody>
       </table>
-      <p class="text-muted small mt-1 mb-0">For ground, the vehicle shown is the truck closest to being staffed, not a specific base's plan.</p>
+      <p class="text-muted small mt-1 mb-0">For ground, the vehicle shown is the truck closest to being staffed, not a specific base's plan. The weekly ground % adds up every ground shift staffed, so an extra truck on one day makes up for a short day.</p>
       {% else %}
       <p class="mt-3 mb-0">Every planned vehicle-day was staffed.</p>
       {% endif %}
@@ -187,6 +187,7 @@
           </tr>
         </tbody>
       </table>
+      <p class="text-muted small mb-0" id="tally-note">Day and night move automatically when you change the base coverage counts below.</p>
     </div>
   </div>
 
@@ -324,10 +325,88 @@
       </tr>
       {% endfor %}
     </tbody>
+    <tfoot>
+      <tr class="fw-bold">
+        <td>Total</td>
+        <td id="cov-total-rw_staffed_day">0</td>
+        <td id="cov-total-rw_staffed_night">0</td>
+        <td id="cov-total-gr_staffed_day">0</td>
+        <td id="cov-total-gr_staffed_night">0</td>
+      </tr>
+    </tfoot>
   </table>
+  <p class="mb-1" id="cov-summary" data-plan="{% if coverage %}{{ coverage.ground_plan }}{% else %}28{% endif %}">
+    <strong>Ground:</strong> <span id="gr-total">0</span> shifts staffed of <span id="gr-plan">28</span> planned
+    (<span id="gr-pct">0.0%</span>). Every ground shift counts, from any base, so an extra truck one day makes up for a short day.
+    <br><strong>Rotor wing:</strong> <span id="rw-total">0</span> shifts staffed.
+    <br><strong>All vehicle shifts:</strong> day <span id="all-day">0</span>, night <span id="all-night">0</span>.
+  </p>
   <p class="mt-3">
     <button type="submit" class="btn btn-primary">Save week + base coverage</button>
     <a href="{% url 'week_list' %}" class="btn btn-secondary">Cancel</a>
   </p>
 </form>
+<script>
+(function () {
+  var COLS = ["rw_staffed_day", "rw_staffed_night", "gr_staffed_day", "gr_staffed_night"];
+  var inputs = {};
+  COLS.forEach(function (c) {
+    inputs[c] = Array.prototype.slice.call(
+      document.querySelectorAll('input[name^="cov-"][name$="-' + c + '"]')
+    );
+  });
+  var filledDay = document.querySelector('input[name="week-filled_day"]');
+  var filledNight = document.querySelector('input[name="week-filled_night"]');
+  var summary = document.getElementById("cov-summary");
+  if (!summary || !inputs.gr_staffed_day.length) { return; }
+
+  function num(el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 0 ? 0 : v; }
+  function sum(c) { return inputs[c].reduce(function (t, el) { return t + num(el); }, 0); }
+
+  // Totals as loaded, so "Complete shifts" moves by what you change rather than
+  // being overwritten with the coverage sum (the imported count can differ slightly).
+  var start = {};
+  COLS.forEach(function (c) { start[c] = sum(c); });
+  var baseDay = filledDay ? num(filledDay) : 0;
+  var baseNight = filledNight ? num(filledNight) : 0;
+  var plan = parseInt(summary.getAttribute("data-plan"), 10) || 28;
+  document.getElementById("gr-plan").textContent = plan;
+
+  function deltaDay() { return sum("rw_staffed_day") - start.rw_staffed_day + sum("gr_staffed_day") - start.gr_staffed_day; }
+  function deltaNight() { return sum("rw_staffed_night") - start.rw_staffed_night + sum("gr_staffed_night") - start.gr_staffed_night; }
+
+  function refresh() {
+    COLS.forEach(function (c) {
+      document.getElementById("cov-total-" + c).textContent = sum(c);
+    });
+    var gr = sum("gr_staffed_day") + sum("gr_staffed_night");
+    document.getElementById("gr-total").textContent = gr;
+    document.getElementById("gr-pct").textContent = (plan ? (Math.min(gr, plan) / plan * 100) : 0).toFixed(1) + "%";
+    document.getElementById("rw-total").textContent = sum("rw_staffed_day") + sum("rw_staffed_night");
+    document.getElementById("all-day").textContent = sum("rw_staffed_day") + sum("gr_staffed_day");
+    document.getElementById("all-night").textContent = sum("rw_staffed_night") + sum("gr_staffed_night");
+  }
+
+  function retally() {
+    if (filledDay) { filledDay.value = Math.max(0, baseDay + deltaDay()); }
+    if (filledNight) { filledNight.value = Math.max(0, baseNight + deltaNight()); }
+    var note = document.getElementById("tally-note");
+    var dd = deltaDay(), dn = deltaNight();
+    if (note && (dd || dn)) {
+      note.textContent = "Updated from your base coverage changes: day " + (dd > 0 ? "+" : "") + dd +
+        ", night " + (dn > 0 ? "+" : "") + dn + ".";
+    }
+  }
+
+  COLS.forEach(function (c) {
+    inputs[c].forEach(function (el) {
+      el.addEventListener("input", function () { refresh(); retally(); });
+    });
+  });
+  // Typing a total yourself sticks: later coverage edits add to what you typed.
+  if (filledDay) { filledDay.addEventListener("input", function () { baseDay = num(filledDay) - deltaDay(); }); }
+  if (filledNight) { filledNight.addEventListener("input", function () { baseNight = num(filledNight) - deltaNight(); }); }
+  refresh();
+})();
+</script>
 {% endblock %}

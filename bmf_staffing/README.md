@@ -1,6 +1,6 @@
 # BMF Staffing – Django dashboard
 
-Web UI for the Boston MedFlight board staffing KPI workflow. Uses the same `staffing.db` SQLite database and **`staffing_tool`** package as the command-line tool in the parent folder.
+Web UI for the Boston MedFlight staffing KPI workflow. Uses the same `staffing.db` SQLite database and **`staffing_tool`** package as the command-line tool in the parent folder.
 
 ## Run locally
 
@@ -30,7 +30,7 @@ Web UI for the Boston MedFlight board staffing KPI workflow. Uses the same `staf
 - **Import schedule** – Upload the schedule workbook; preview parsed shifts, then apply to a week.
 - **Add week** – Create a week (Sunday `YYYY-MM-DD`) and enter coverage manually.
 - **Monthly report** – Pick a date range and download the aggregated Excel workbook.
-- **Export Excel** (from a week) – Downloads the board pack for that week (`staffing_tool.report`).
+- **Export Excel** (from a week) – Downloads the staffing workbook for that week (`staffing_tool.report`).
 
 Data lives in **`staffing.db`** in the parent **`Weekly_staffing`** folder. Exports go to the **`output`** folder there (created as needed).
 

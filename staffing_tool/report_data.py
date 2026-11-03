@@ -1,4 +1,4 @@
-"""Week loading, metric prep, and status text for the board-pack workbook.
+"""Week loading, metric prep, and status text for the staffing workbook.
 
 Status wording is "On target / Monitor / Action needed" — never
 Green/Yellow/Red in user-facing cells (docs/report-generator-spec.md).
@@ -106,7 +106,7 @@ def _load_weeks_ordered(
 def _metrics_for_weeks(
     session: Session, week_starts: list[str]
 ) -> list[tuple[str, WeekMetrics, RAG | None]]:
-    """Load metrics for each week and RAG for board metrics (using first metric only for status)."""
+    """Load metrics for each week and RAG for headline metrics (using first metric only for status)."""
     if not week_starts:
         return []
     thresholds = {t.metric_name: t for t in session.query(KpiThreshold).all()}

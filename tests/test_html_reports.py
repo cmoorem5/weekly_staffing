@@ -11,7 +11,7 @@ from staffing_tool.metrics import ROLE_FILL_LABELS, compute_role_fill
 from staffing_tool.models import WeeklyPersonShift, WeeklyStaffing
 from staffing_tool.monthly_html_report import (
     export_monthly_report_html,
-    load_monthly_board_data,
+    load_monthly_report_data,
 )
 from staffing_tool.monthly_pdf_report import export_monthly_report_pdf
 from staffing_tool.quarterly_pdf_report import export_quarterly_staffing_html
@@ -26,7 +26,7 @@ class HtmlReportExportTests(TempDbTestCase):
         self.out_dir = os.path.join(self.tmp.name, "output")
         init_db(self.db_path)
         with session_scope(self.db_path) as session:
-            # Two months so the December board report has a prior period.
+            # Two months so the December monthly report has a prior period.
             for ws, filled in [
                 ("2025-11-02", 48),
                 ("2025-11-09", 47),
@@ -60,8 +60,8 @@ class HtmlReportExportTests(TempDbTestCase):
                 )
             session.commit()
 
-    def test_monthly_board_data_includes_prior_period(self):
-        data = load_monthly_board_data(self.db_path, "2025-12-01", "2025-12-31")
+    def test_monthly_report_data_includes_prior_period(self):
+        data = load_monthly_report_data(self.db_path, "2025-12-01", "2025-12-31")
         self.assertEqual(data.weeks_count, 2)
         self.assertIsNotNone(data.prior_rollups)
         self.assertEqual(len(data.weekly_detail), 2)

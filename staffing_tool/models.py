@@ -402,12 +402,8 @@ class WeeklyStaffing(Base):
 
     overnights_below = Column(Integer, nullable=False, default=0)
     pilot_vacancies = Column(Integer, nullable=False, default=0)
-    # System ground target (3 day + 1 night trucks a day, any base), derived from
-    # the schedule's name-level OPS View rows by week_targets.recompute_week_targets.
-    # NULL = not derived (legacy week or hand-edited coverage): metrics then fall
-    # back to the per-base sum capped at the weekly target.
-    gr_target_staffed_day = Column(Integer, nullable=True)
-    gr_target_staffed_night = Column(Integer, nullable=True)
+    # Ground trucks planned for the week (3 day + 1 night a day = 28), less any
+    # truck-days taken off the plan for "no vehicle" (week_targets). NULL = 28.
     gr_target_planned = Column(Integer, nullable=True)
     # CEO report: manually entered unpartnered staff counts (not derived from schedule import).
     medic_unpartnered = Column(Integer, nullable=False, default=0)
