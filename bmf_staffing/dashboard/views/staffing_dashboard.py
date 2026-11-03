@@ -38,6 +38,7 @@ from staffing_tool.models import (
     WeeklyStaffing,
 )
 from staffing_tool.rag import green_boundary
+from staffing_tool.shortfall import analyze_range, reason_table_rows
 from staffing_tool.time_buckets import bucket_label, buckets_for_range
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 
@@ -387,6 +388,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
                 "exc_table_rows": [],
                 "base_coverage_breakdown_order": BASE_DISPLAY_ORDER,
                 "base_coverage_table": [],
+                "reasons_rows": [],
                 "role_fill_breakdown_order": list(ROLE_CAPACITY_PER_WEEK),
                 "role_fill_table": [],
                 "extra_kpi_table": [],
@@ -444,6 +446,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             lambda: defaultdict(int)
         )
         exc_total_by_week: dict[str, int] = defaultdict(int)
+        # Why coverage fell short over the selected dates (nurse / paramedic /
+        # pilot / EMT), from the stored schedule detail.
+        reasons_rows = reason_table_rows(analyze_range(session, date_start, date_end))
         exc_q = (
             session.query(
                 WeeklyLeaveDetail.week_start,
@@ -625,20 +630,29 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             }
         )
 
-        # Vehicle / base coverage per bucket: average each base's weekly RW %/GR %
-        # across the weeks in this bucket (same "avg" convention as staffing rate above).
+        # Vehicle / base coverage per bucket: average each base's weekly RW % across
+        # the weeks in this bucket (same "avg" convention as staffing rate above).
+        # Ground is a system target (crews move between bases), so each base shows
+        # its pooled share of the ground shifts staffed in the bucket instead.
         base_coverage_row: dict[str, dict[str, float]] = {}
+        gr_by_base: dict[str, float] = dict.fromkeys(BASE_DISPLAY_ORDER, 0.0)
+        for _d0, bm in in_bucket:
+            for base_name in BASE_DISPLAY_ORDER:
+                entry = (bm.base_metrics or {}).get(base_name)
+                if entry:
+                    gr_by_base[base_name] += entry.get("gr_staffed", 0.0)
+        gr_all = sum(gr_by_base.values())
         for base_name in BASE_DISPLAY_ORDER:
             rw_sum = 0.0
-            gr_sum = 0.0
             for _d0, bm in in_bucket:
                 entry = (bm.base_metrics or {}).get(base_name)
                 if entry:
                     rw_sum += entry.get("rw_pct", 0.0)
-                    gr_sum += entry.get("gr_pct", 0.0)
             base_coverage_row[base_name] = {
                 "rw_pct": round(100.0 * (rw_sum / n), 2) if n else 0.0,
-                "gr_pct": round(100.0 * (gr_sum / n), 2) if n else 0.0,
+                "gr_share": (
+                    round(100.0 * gr_by_base[base_name] / gr_all, 2) if gr_all else 0.0
+                ),
             }
         base_coverage_table.append(
             {
@@ -787,6 +801,7 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         "exc_table_rows": exc_table_rows,
         "base_coverage_breakdown_order": BASE_DISPLAY_ORDER,
         "base_coverage_table": base_coverage_table,
+        "reasons_rows": reasons_rows,
         "role_fill_breakdown_order": list(ROLE_CAPACITY_PER_WEEK),
         "role_fill_table": role_fill_table,
         "extra_kpi_table": extra_kpi_table,
@@ -970,17 +985,19 @@ def staffing_dashboard_export_csv(request):
     base_cov_rows = cast(list[dict[str, object]], ctx.get("base_coverage_table") or [])
     base_order = cast(list[str], ctx.get("base_coverage_breakdown_order") or [])
     writer.writerow([])
-    writer.writerow(["Vehicle / base coverage (RW % / GR %, avg across weeks)"])
+    writer.writerow(
+        ["Vehicle / base coverage (RW % avg across weeks; GR = share of ground shifts)"]
+    )
     header = ["Period", "Period start", "Period end"]
     for b in base_order:
-        header += [f"{b} RW (%)", f"{b} GR (%)"]
+        header += [f"{b} RW (%)", f"{b} GR share (%)"]
     writer.writerow(header)
     for r in base_cov_rows:
         bc = cast(dict[str, dict[str, float]], r.get("base_coverage") or {})
         row = [r.get("label"), r.get("bucket_start"), r.get("bucket_end")]
         for b in base_order:
             entry = bc.get(b, {})
-            row += [entry.get("rw_pct", 0.0), entry.get("gr_pct", 0.0)]
+            row += [entry.get("rw_pct", 0.0), entry.get("gr_share", 0.0)]
         writer.writerow(row)
 
     # Role fill section (worked vs. seat capacity, pooled)
@@ -1187,7 +1204,7 @@ def staffing_dashboard_export_xlsx(request):
         row = [r.get("label"), r.get("bucket_start"), r.get("bucket_end")]
         for b in base_order:
             entry = bc.get(b, {})
-            row += [entry.get("rw_pct", 0.0), entry.get("gr_pct", 0.0)]
+            row += [entry.get("rw_pct", 0.0), entry.get("gr_share", 0.0)]
         ws_base.append(row)
 
     ws_role = wb.create_sheet("Role fill")

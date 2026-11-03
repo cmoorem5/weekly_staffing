@@ -15,6 +15,7 @@ import io
 from functools import lru_cache
 
 from staffing_tool.paths import resolve_logo_path
+from staffing_tool.shortfall import REASON_TABLE_HEADERS
 
 NAVY = "#052C47"
 BLUE = "#2A4492"
@@ -283,6 +284,18 @@ def summary_list(lines: list[str]) -> str:
 
 def note(text: str) -> str:
     return f'<p style="font-size:11px;color:#555;margin:10px 0 0;">{text}</p>'
+
+
+def reasons_block(rows: list[list[str]]) -> str:
+    """ "Why coverage fell short" section; empty when there is no schedule detail."""
+    if not rows:
+        return ""
+    return section_bar("WHY COVERAGE FELL SHORT") + body_cell(
+        data_table(REASON_TABLE_HEADERS, rows, right_cols={1, 2})
+        + note(
+            "Vehicle-days short a seat, from the schedule detail. A vehicle missing two seats is counted under each. Ground is 3 day + 1 night truck a day from any base. No-vehicle days (aircraft or truck out of service) are shown for information and never counted against staffing."
+        )
+    )
 
 
 def report_shell(

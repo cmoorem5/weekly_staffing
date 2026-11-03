@@ -304,6 +304,11 @@ def build_monthly_pdf(data: MonthlyBoardData, output_path: str) -> str:
             ]
         ),
         section_gap,
+        *(
+            [KeepTogether(style.reasons_flowables(data.reasons)), section_gap]
+            if data.reasons
+            else []
+        ),
         KeepTogether(
             [style.section_bar("WEEK-BY-WEEK DETAIL"), _weekly_detail_table(data)]
         ),

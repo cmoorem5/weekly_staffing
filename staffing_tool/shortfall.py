@@ -267,46 +267,51 @@ def load_shortfalls(db_path: str | None, start: date, end: date) -> ShortfallRes
     imported without them is listed in ``weeks_without_detail`` and left out
     rather than counted as fully short.
     """
+    with session_scope(db_path) as session:
+        return analyze_range(session, start, end)
+
+
+def analyze_range(session, start: date, end: date) -> ShortfallResult:
+    """``load_shortfalls`` for a caller that already has a session open."""
     start_s, end_s = start.isoformat(), end.isoformat()
     # Weeks overlapping the window (a week can start before ``start``).
     week_floor = (start - timedelta(days=6)).isoformat()
-    with session_scope(db_path) as session:
-        known_weeks = [
-            w
-            for (w,) in session.query(WeeklyStaffing.week_start)
-            .filter(WeeklyStaffing.week_start >= week_floor)
-            .filter(WeeklyStaffing.week_start <= end_s)
-            .all()
-        ]
-        weeks_with_rows = {
-            w
-            for (w,) in session.query(WeeklyOpsViewAssignment.week_start)
-            .filter(WeeklyOpsViewAssignment.week_start >= week_floor)
-            .filter(WeeklyOpsViewAssignment.week_start <= end_s)
-            .group_by(WeeklyOpsViewAssignment.week_start)
-            .having(func.count(WeeklyOpsViewAssignment.id) > 0)
-            .all()
-        }
-        staffed_rows = (
-            session.query(
-                WeeklyOpsViewAssignment.day_date,
-                WeeklyOpsViewAssignment.unit_code,
-                WeeklyOpsViewAssignment.role,
-            )
-            .filter(WeeklyOpsViewAssignment.week_start.in_(weeks_with_rows or [""]))
-            .filter(WeeklyOpsViewAssignment.is_staffed == 1)
-            .all()
+    known_weeks = [
+        w
+        for (w,) in session.query(WeeklyStaffing.week_start)
+        .filter(WeeklyStaffing.week_start >= week_floor)
+        .filter(WeeklyStaffing.week_start <= end_s)
+        .all()
+    ]
+    weeks_with_rows = {
+        w
+        for (w,) in session.query(WeeklyOpsViewAssignment.week_start)
+        .filter(WeeklyOpsViewAssignment.week_start >= week_floor)
+        .filter(WeeklyOpsViewAssignment.week_start <= end_s)
+        .group_by(WeeklyOpsViewAssignment.week_start)
+        .having(func.count(WeeklyOpsViewAssignment.id) > 0)
+        .all()
+    }
+    staffed_rows = (
+        session.query(
+            WeeklyOpsViewAssignment.day_date,
+            WeeklyOpsViewAssignment.unit_code,
+            WeeklyOpsViewAssignment.role,
         )
-        outage_rows = (
-            session.query(
-                WeeklyVehicleOutage.day_date,
-                WeeklyVehicleOutage.unit_code,
-                WeeklyVehicleOutage.note,
-            )
-            .filter(WeeklyVehicleOutage.day_date >= start_s)
-            .filter(WeeklyVehicleOutage.day_date <= end_s)
-            .all()
+        .filter(WeeklyOpsViewAssignment.week_start.in_(weeks_with_rows or [""]))
+        .filter(WeeklyOpsViewAssignment.is_staffed == 1)
+        .all()
+    )
+    outage_rows = (
+        session.query(
+            WeeklyVehicleOutage.day_date,
+            WeeklyVehicleOutage.unit_code,
+            WeeklyVehicleOutage.note,
         )
+        .filter(WeeklyVehicleOutage.day_date >= start_s)
+        .filter(WeeklyVehicleOutage.day_date <= end_s)
+        .all()
+    )
     roles: dict[tuple[date, str], set[str]] = defaultdict(set)
     for day_s, unit, role in staffed_rows:
         roles[(datetime.strptime(day_s, "%Y-%m-%d").date(), unit)].add(role)
@@ -395,3 +400,46 @@ def analyze_week(session, week_start: str) -> ShortfallResult | None:
         for day_s, unit, note in outage_rows
     }
     return find_shortfalls(roles, _week_days(week_start), outages)
+
+
+REASON_TABLE_HEADERS: list[str] = ["", "Rotor wing", "Ground"]
+
+
+def reason_table_rows(result: ShortfallResult | None) -> list[list[str]]:
+    """Report rows: why planned vehicles were short, by vehicle type.
+
+    Pilot applies to rotor wing only and EMT to ground only; a seat that does
+    not exist on a vehicle type shows an em dash. Returns [] when there is no
+    schedule detail to analyze, so a report leaves the block off rather than
+    printing zeros it can't back up.
+    """
+    if result is None or not result.days_analyzed:
+        return []
+    em = "\u2014"
+    by_type = {
+        svc: reason_counts(s for s in result.shortfalls if s.service_type == svc)
+        for svc in ("RW", "GR")
+    }
+    shorts = {
+        svc: sum(1 for s in result.shortfalls if s.service_type == svc)
+        for svc in ("RW", "GR")
+    }
+    rows = [["Short vehicle-days", str(shorts["RW"]), str(shorts["GR"])]]
+    for role, label in (
+        ("RN", "Short a nurse"),
+        ("Medic", "Short a paramedic"),
+        ("Pilot", "Short a pilot"),
+        ("EMT", "Short an EMT"),
+    ):
+        rw = str(by_type["RW"][role]) if role != "EMT" else em
+        gr = str(by_type["GR"][role]) if role != "Pilot" else em
+        rows.append([label, rw, gr])
+    if result.no_vehicle:
+        rows.append(
+            [
+                "No vehicle (not counted)",
+                str(sum(1 for n in result.no_vehicle if n.service_type == "RW")),
+                str(sum(1 for n in result.no_vehicle if n.service_type == "GR")),
+            ]
+        )
+    return rows

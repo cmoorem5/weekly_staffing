@@ -61,6 +61,7 @@ from staffing_tool.schedule_import import (
     parse_ops_view_daily,
     parse_schedule_workbook,
 )
+from staffing_tool.shortfall import analyze_week, reason_table_rows
 
 EM = "\u2014"
 BASE_ORDER = BASE_DISPLAY_ORDER
@@ -100,6 +101,8 @@ class WeeklyReportContext:
     trend_targets: dict[str, float] = field(default_factory=dict)
     # KPI tile label -> (status line, hex color); see report_data.kpi_tile_statuses
     kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # "Why coverage fell short" rows (shortfall.reason_table_rows); [] = no detail
+    reasons: list[list[str]] = field(default_factory=list)
 
     @property
     def has_daily_detail(self) -> bool:
@@ -368,7 +371,6 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             m = bm.get(base, {})
             cfg = cfg_by_name.get(base)
             rw_cap = int(cfg.rw_total_unit_days) if cfg else 0
-            gr_cap = int(cfg.gr_total_unit_days) if cfg else 0
             rw_n = int(m.get("rw_staffed", 0))
             gr_n = int(m.get("gr_staffed", 0))
             base_coverage.append(
@@ -379,9 +381,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
                     if rw_cap and rw_n
                     else (EM if not rw_cap else "0.0%"),
                     str(gr_n) if gr_n else EM,
-                    _pct(m["gr_pct"])
-                    if gr_cap and gr_n
-                    else (EM if not gr_cap else "0.0%"),
+                    _pct(m.get("gr_share", 0.0)) if gr_n else EM,
                 )
             )
 
@@ -485,6 +485,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             exception_by_role=exception_by_role,
             exception_col_totals=exception_col_totals,
             trend_data=trend_data,
+            reasons=reason_table_rows(analyze_week(session, week_start)),
         )
 
 
@@ -766,6 +767,10 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
         story.append(KeepTogether([style.section_bar(title), *items]))
         story.append(Spacer(1, gap))
 
+    if ctx.reasons:
+        story.append(KeepTogether(style.reasons_flowables(ctx.reasons)))
+        story.append(Spacer(1, 10))
+
     doc.build(
         story,
         onFirstPage=on_first,
@@ -849,7 +854,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
     )
 
     base_table = _html_data_table(
-        ["Base", "RW Shifts", "RW Avail %", "GR Shifts", "GR Avail %"],
+        style.BASE_COVERAGE_HEADERS,
         [list(r) for r in ctx.base_coverage],
         navy=navy,
         lgray=lgray,
@@ -1007,6 +1012,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 {_html_section_bar("COVERAGE BY BASE", navy)}
 <tr><td style="padding:12px 16px;">{rh.chart_img(_fig_to_png_base64(_build_base_coverage_fig(ctx)), "Coverage by base")}
 <div style="height:12px;"></div>{base_table}</td></tr>
+{rh.reasons_block(ctx.reasons)}
 
 <tr><td style="padding:16px 24px;font-size:11px;color:#666;border-top:1px solid {mgray};">
 Boston MedFlight &middot; Clinical Operations &middot; Confidential
