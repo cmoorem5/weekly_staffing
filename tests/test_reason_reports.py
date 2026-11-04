@@ -70,12 +70,13 @@ class ReasonRowTests(unittest.TestCase):
             [r[0] for r in reason_table_rows(result, (0, 0))],
         )
 
-    def test_html_block_has_the_headers_and_the_counting_note(self):
+    def test_html_block_has_the_headers_and_no_footnote(self):
         rows = reason_table_rows(find_shortfalls(_all_staffed(DAY), [DAY]))
         html = rh.reasons_block(rows)
         self.assertIn("WHY COVERAGE FELL SHORT", html)
         self.assertIn("Rotor wing", html)
-        self.assertIn("never counted against staffing", html)
+        self.assertNotIn("Vehicle-days short a seat", html)
+        self.assertNotIn("cause was not recorded", html)
         self.assertEqual(REASON_TABLE_HEADERS, ["", "Rotor wing", "Ground"])
 
 

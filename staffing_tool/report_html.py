@@ -292,9 +292,6 @@ def reasons_block(rows: list[list[str]]) -> str:
         return ""
     return section_bar("WHY COVERAGE FELL SHORT") + body_cell(
         data_table(REASON_TABLE_HEADERS, rows, right_cols={1, 2})
-        + note(
-            "Vehicle-days short a seat, from the schedule detail. A vehicle missing two seats is counted under each. Ground is 3 day + 1 night truck a day from any base. No-vehicle days (aircraft or truck out of service) are shown for information and never counted against staffing. A short day corrected by hand on the week edit page stays in the counts and is shown on its own line; its cause was not recorded."
-        )
     )
 
 
