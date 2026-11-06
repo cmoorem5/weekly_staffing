@@ -106,6 +106,10 @@ class WeekMetrics:
     # Ground plan for the week: 28 (4 trucks x 7 days), less any truck-days off
     # the plan for "no vehicle". Denominator of ``system_gr_pct``.
     gr_planned_unit_days: int = SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+    # Planned vehicle-days (rotor wing + ground) taken off the week's plan because
+    # a vehicle was out of service with no crew ("no vehicle"). The staffing
+    # rate's denominator is ``required_total`` after this.
+    plan_removed_unit_days: int = 0
 
 
 def role_ot_totals(row: WeeklyStaffing) -> dict[str, int]:
@@ -160,6 +164,26 @@ def coverages_by_week(
     return out
 
 
+def vehicle_filled_shifts(
+    rw_day: int, rw_night: int, gr_day: int, gr_night: int, rw_plan: int, gr_plan: int
+) -> tuple[int, int]:
+    """(filled_day, filled_night): vehicles fully staffed, each type capped at its plan.
+
+    Rotor wing is capped at ``rw_plan`` and ground at ``gr_plan`` (any ground
+    shift counts, so a spare truck one day makes up a short day). Nights are
+    filled first when splitting the capped totals, so day + night always equals
+    the rotor wing plus ground counted. Shared by ``compute_week_metrics`` and
+    the week edit save so the page and the reports can never disagree.
+    """
+    rw_counted = min(rw_day + rw_night, rw_plan)
+    gr_counted = min(gr_day + gr_night, gr_plan)
+    gr_night_part = min(gr_night, gr_counted)
+    rw_night_part = min(rw_night, rw_counted)
+    filled_night = rw_night_part + gr_night_part
+    filled_day = (rw_counted - rw_night_part) + (gr_counted - gr_night_part)
+    return filled_day, filled_night
+
+
 def compute_week_metrics(
     row: WeeklyStaffing,
     base_coverages: list[WeeklyBaseCoverage],
@@ -169,17 +193,14 @@ def compute_week_metrics(
     # ORM instance: class-level Column types confuse static analysis
     ws = cast(Any, row)
 
-    # Required shifts are fixed (8 day crews + 4 night crews, 7 days).
+    # Planned vehicles are fixed: 12 a day (5 rotor wing + 3 ground days, 3 rotor
+    # wing + 1 ground nights) = 84 a week. Filled shifts are settled below, from
+    # the base coverage, once the vehicle counts are known.
     required_day = REQUIRED_DAY
     required_night = REQUIRED_NIGHT
     required_total = REQUIRED_TOTAL
     filled_day = int(ws.filled_day)
     filled_night = int(ws.filled_night)
-    filled_total = filled_day + filled_night
-    vacancies = max(0, required_total - filled_total)
-    staffing_rate = (
-        float(filled_total) / float(required_total) if required_total else 0.0
-    )
 
     # OT dependency: separated RN/Medic/EMT with day/night split when present.
     ot_rn_day = int(ws.ot_rn_day or 0)
@@ -200,7 +221,6 @@ def compute_week_metrics(
         total_ot = int(ws.ot_rn or 0) + int(ws.ot_medic or 0) + int(ws.ot_emt or 0)
     if total_ot == 0:
         total_ot = int(ws.ot_shifts or 0)
-    ot_dependency = float(total_ot) / float(filled_total) if filled_total else 0.0
 
     leave_total = weekly_leave_total(row)
     leave_exposure = (
@@ -215,6 +235,7 @@ def compute_week_metrics(
     rw_staffed = 0
     gr_staffed = 0
     rw_removed_total = 0
+    rw_day_total = rw_night_total = gr_day_total = gr_night_total = 0
 
     for c in base_coverages:
         bc = cast(Any, c)
@@ -254,6 +275,10 @@ def compute_week_metrics(
         }
         rw_staffed += rw_sum
         gr_staffed += gr_sum
+        rw_day_total += rw_d
+        rw_night_total += rw_n
+        gr_day_total += gr_d
+        gr_night_total += gr_n
 
     rw_total_unit_days = max(0, rw_total_unit_days - rw_removed_total)
     system_rw_pct = (
@@ -273,6 +298,31 @@ def compute_week_metrics(
     # Each base's share of the ground shifts actually staffed (cost-center view).
     for entry in base_metrics.values():
         entry["gr_share"] = entry["gr_staffed"] / gr_staffed if gr_staffed else 0.0
+
+    # Filled shifts = vehicles fully staffed (crew plus pilot or EMT), the same
+    # rule as RW and GR coverage, so the headline staffing rate always agrees
+    # with them and can never pass 100%: rotor wing is capped at its plan and
+    # ground at its weekly plan. A vehicle out of service with no crew is off
+    # the plan, not a gap. Ground days and nights are split by filling nights
+    # first, so day + night always equals the ground total counted.
+    plan_removed = 0
+    if base_metrics:
+        filled_day, filled_night = vehicle_filled_shifts(
+            rw_day_total,
+            rw_night_total,
+            gr_day_total,
+            gr_night_total,
+            rw_total_unit_days,
+            gr_planned,
+        )
+        plan_removed = rw_removed_total + (SYSTEM_GR_MAX_SHIFTS_PER_WEEK - gr_planned)
+        required_total = REQUIRED_TOTAL - plan_removed
+    filled_total = filled_day + filled_night
+    vacancies = max(0, required_total - filled_total)
+    staffing_rate = (
+        float(filled_total) / float(required_total) if required_total else 0.0
+    )
+    ot_dependency = float(total_ot) / float(filled_total) if filled_total else 0.0
 
     return WeekMetrics(
         week_start=str(ws.week_start),
@@ -304,6 +354,7 @@ def compute_week_metrics(
             float(filled_night) / float(required_night) if required_night else 0.0
         ),
         gr_planned_unit_days=gr_planned,
+        plan_removed_unit_days=plan_removed,
     )
 
 
@@ -320,7 +371,9 @@ def compute_period_rollups(metrics_list: list[WeekMetrics]) -> PeriodRollups | N
     filled_total = sum(m.filled_total for m in metrics_list)
     ot_shifts = sum(m.ot_shifts for m in metrics_list)
     leave_total = sum(m.leave_total for m in metrics_list)
-    required_total = n * REQUIRED_TOTAL
+    # Each week's own plan, so a vehicle out of service with no crew does not
+    # count against the period.
+    required_total = sum(m.required_total for m in metrics_list)
     person_shifts = n * TOTAL_PERSON_SHIFTS
     rw_staffed = sum(m.rw_staffed_unit_days for m in metrics_list)
     gr_staffed = sum(m.gr_staffed_unit_days for m in metrics_list)

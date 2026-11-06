@@ -23,17 +23,45 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from .models import WeeklyBaseCoverage, WeeklyOpsViewAssignment, WeeklyStaffing
+from .metrics import compute_week_metrics
+from .models import (
+    BaseConfig,
+    WeeklyBaseCoverage,
+    WeeklyOpsViewAssignment,
+    WeeklyStaffing,
+)
 from .shortfall import (
     GROUND_DAY_SCOPE,
     GROUND_NIGHT_SCOPE,
     analyze_week,
+    net_of_hand_corrections,
     planned_groups,
 )
 
 
+def _sync_filled(session: Session, week: WeeklyStaffing, coverages) -> None:
+    """Store the vehicles-fully-staffed day/night counts for readers of the columns.
+
+    ``compute_week_metrics`` derives them from the coverage on read, so the
+    reports never depend on this; it keeps the stored columns (CLI, exports) in
+    step. A week with no coverage rows keeps whatever it had.
+    """
+    if not coverages:
+        return
+    m = compute_week_metrics(week, list(coverages), session.query(BaseConfig).all())
+    week.filled_day = m.filled_day
+    week.filled_night = m.filled_night
+
+
 def recompute_week_targets(session: Session, week_start: str) -> bool:
-    """Refresh the target columns for one week. True when derived from detail."""
+    """Refresh the derived columns for one week. True when derived from detail.
+
+    Always re-syncs the stored filled counts from the coverage. When the week
+    has name-level schedule rows it also refreshes the ground plan, the rotor wing
+    plan removals, pilot vacancies (rotor wing days with no pilot) and overnights
+    below coverage (nights with a planned night vehicle unstaffed), both net of
+    days fixed by hand and of vehicles marked out of service.
+    """
     week = (
         session.query(WeeklyStaffing)
         .filter(WeeklyStaffing.week_start == week_start)
@@ -51,6 +79,8 @@ def recompute_week_targets(session: Session, week_start: str) -> bool:
         week.gr_target_planned = None
         for c in coverages:
             c.rw_planned_removed = 0
+        session.flush()
+        _sync_filled(session, week, coverages)
         return False
 
     week.gr_target_planned = (
@@ -65,6 +95,13 @@ def recompute_week_targets(session: Session, week_start: str) -> bool:
             if full is not None
             else 0
         )
+    session.flush()
+    net = net_of_hand_corrections(session, result, [week_start]) or result
+    week.pilot_vacancies = sum(
+        1 for s in net.shortfalls if s.service_type == "RW" and s.operator_missing
+    )
+    week.overnights_below = len({s.day for s in net.shortfalls if s.day_night == "N"})
+    _sync_filled(session, week, coverages)
     return True
 
 

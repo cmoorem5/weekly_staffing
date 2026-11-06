@@ -236,7 +236,7 @@ def parse_ops_view(
       [week_start, week_start+6] are used.
     - Vehicles: column A rows 4–66; unit codes from UNIT_MAP; role rows
       RN, Medic, PIC, EMT (GR2/NG2 EMT = EMT).
-    - RW staffed: RN + Medic + (PIC or EMT); GR staffed: RN + Medic + EMT.
+    - RW staffed: RN + Medic + PIC; GR staffed: RN + Medic + EMT.
 
     Returns (rw_day, rw_night, gr_day, gr_night) per base_name.
     """
@@ -272,7 +272,8 @@ def _ops_staffed_for_column(
         _ops_cell_staffed(ws.cell(row=r, column=col_idx).value) for r in emt_rows
     )
     if service_type == "RW":
-        return rn_ok and medic_ok and (pic_ok or emt_ok)
+        # A rotor wing always needs a pilot: an EMT never substitutes.
+        return rn_ok and medic_ok and pic_ok
     return rn_ok and medic_ok and emt_ok
 
 

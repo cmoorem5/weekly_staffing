@@ -5,6 +5,7 @@ rule the OPS View coverage counts use):
 
 - crew     = RN and Medic
 - operator = Pilot (PIC row) on a rotor-wing (RW) unit, EMT on a ground (GR) unit
+  (an EMT never substitutes for a pilot)
 
 When a planned vehicle-day is short, this module says which side was missing:
 ``No crew`` (RN and/or Medic), ``No operator`` (Pilot on RW, EMT on GR), or
@@ -194,7 +195,7 @@ class ShortfallResult:
 def _missing(service_type: str, roles: set[str]) -> tuple[tuple[str, ...], bool]:
     crew = tuple(r for r in CREW_ROLES if r not in roles)
     if service_type == "RW":
-        operator_ok = "PIC" in roles or "EMT" in roles
+        operator_ok = "PIC" in roles  # a pilot is always required on rotor wing
     else:
         operator_ok = "EMT" in roles
     return crew, not operator_ok

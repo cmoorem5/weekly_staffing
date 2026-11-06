@@ -62,6 +62,29 @@ def _coverage_post(prefix="cov", *, rw_day=0, gr_by_base=None):
     return data
 
 
+# A fully staffed week: every planned vehicle (rotor wing 56, ground 28) is staffed.
+FULL_RW = {
+    "Bedford": (7, 7),
+    "Lawrence": (7, 7),
+    "Mansfield": (7, 0),
+    "Manchester": (7, 0),
+    "Plymouth": (7, 7),
+}
+FULL_GR = {"Bedford": (7, 7), "Lawrence": (7, 0), "Mansfield": (7, 0)}
+
+
+def _full_coverage_post(prefix="cov"):
+    data = _coverage_post(prefix)
+    for i, (base_name, _rw, _gr) in enumerate(DEFAULT_BASES):
+        rw_d, rw_n = FULL_RW.get(base_name, (0, 0))
+        gr_d, gr_n = FULL_GR.get(base_name, (0, 0))
+        data[f"{prefix}-{i}-rw_staffed_day"] = str(rw_d)
+        data[f"{prefix}-{i}-rw_staffed_night"] = str(rw_n)
+        data[f"{prefix}-{i}-gr_staffed_day"] = str(gr_d)
+        data[f"{prefix}-{i}-gr_staffed_night"] = str(gr_n)
+    return data
+
+
 class WeekEditBlockedSaveTests(TempDbTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -90,7 +113,9 @@ class WeekEditBlockedSaveTests(TempDbTestCase):
             p.start()
         self.client = Client(HTTP_HOST="localhost")
 
-    def _post_edit(self, *, filled_day, filled_night, notes, training_shifts=0):
+    def _post_edit(
+        self, *, filled_day, filled_night, notes, training_shifts=0, full=False
+    ):
         data = {
             "week-week_start": WEEK_START,
             "week-filled_day": str(filled_day),
@@ -98,7 +123,7 @@ class WeekEditBlockedSaveTests(TempDbTestCase):
             "week-training_shifts": str(training_shifts),
             "week-notes": notes,
         }
-        data.update(_coverage_post())
+        data.update(_full_coverage_post() if full else _coverage_post())
         return self.client.post(reverse("week_edit", args=[WEEK_START]), data=data)
 
     def test_blocked_save_does_not_redirect_and_preserves_db(self):
@@ -125,7 +150,9 @@ class WeekEditBlockedSaveTests(TempDbTestCase):
             )
 
     def test_allowed_save_redirects_and_persists(self):
-        resp = self._post_edit(filled_day=52, filled_night=30, notes="")
+        # The typed Complete shifts (52 / 30) are ignored: the save stores vehicles
+        # fully staffed, worked out from the posted coverage (56 day / 28 night).
+        resp = self._post_edit(filled_day=52, filled_night=30, notes="", full=True)
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp["Location"], reverse("week_list"))
 
@@ -135,12 +162,12 @@ class WeekEditBlockedSaveTests(TempDbTestCase):
                 .filter(WeeklyStaffing.week_start == WEEK_START)
                 .first()
             )
-            self.assertEqual(row.filled_day, 52)
-            self.assertEqual(row.filled_night, 30)
+            self.assertEqual(row.filled_day, 56)
+            self.assertEqual(row.filled_night, 28)
 
     def test_training_shifts_saved_and_reloaded(self):
         resp = self._post_edit(
-            filled_day=52, filled_night=30, notes="", training_shifts=4
+            filled_day=52, filled_night=30, notes="", training_shifts=4, full=True
         )
         self.assertEqual(resp.status_code, 302)
 

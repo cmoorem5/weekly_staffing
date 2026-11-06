@@ -12,8 +12,22 @@ BaseTotalsFormSet = forms.formset_factory(BaseTotalForm, extra=0)
 
 class WeekForm(forms.Form):
     week_start = forms.CharField(max_length=10, label="Week start (Sunday YYYY-MM-DD)")
-    filled_day = forms.IntegerField(min_value=0, initial=52, label="Day")
-    filled_night = forms.IntegerField(min_value=0, initial=30, label="Night")
+    # Calculated from the base coverage counts (vehicles fully staffed); the page
+    # tallies them live and the save ignores typed values.
+    filled_day = forms.IntegerField(
+        min_value=0,
+        initial=52,
+        label="Day",
+        required=False,
+        widget=forms.NumberInput(attrs={"readonly": "readonly"}),
+    )
+    filled_night = forms.IntegerField(
+        min_value=0,
+        initial=30,
+        label="Night",
+        required=False,
+        widget=forms.NumberInput(attrs={"readonly": "readonly"}),
+    )
     ot_rn_day = forms.IntegerField(
         min_value=0, required=False, initial=0, label="OT RN (Day)"
     )

@@ -209,6 +209,31 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
             )
             self.assertEqual(lawrence.rw_planned_removed, 1)
 
+    def test_saving_keeps_the_calculated_pilot_vacancy(self):
+        from staffing_tool.db import DEFAULT_BASES
+
+        prefix = "cov"
+        data = {
+            "week-week_start": WEEK_START,
+            "week-training_shifts": "0",
+            "week-notes": "saved",
+            f"{prefix}-TOTAL_FORMS": str(len(DEFAULT_BASES)),
+            f"{prefix}-INITIAL_FORMS": str(len(DEFAULT_BASES)),
+            f"{prefix}-MIN_NUM_FORMS": "0",
+            f"{prefix}-MAX_NUM_FORMS": "1000",
+        }
+        for i, (base_name, _rw, _gr) in enumerate(DEFAULT_BASES):
+            data[f"{prefix}-{i}-base_name"] = base_name
+            for col in ("rw_staffed_day", "rw_staffed_night", "gr_staffed_day"):
+                data[f"{prefix}-{i}-{col}"] = "0"
+            data[f"{prefix}-{i}-gr_staffed_night"] = "0"
+        resp = self.client.post(reverse("week_edit", args=[WEEK_START]), data=data)
+        self.assertEqual(resp.status_code, 302)
+        with session_scope(self.db_path) as session:
+            week = session.query(WeeklyStaffing).one()
+            # D9L has no pilot on Monday in the saved schedule.
+            self.assertEqual(week.pilot_vacancies, 1)
+
     def test_editing_ground_counts_moves_the_weekly_total(self):
         from staffing_tool.db import DEFAULT_BASES
         from staffing_tool.metrics import compute_week_metrics
@@ -220,7 +245,7 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
             "week-filled_day": "52",
             "week-filled_night": "30",
             "week-training_shifts": "0",
-            "week-notes": "",
+            "week-notes": "coverage corrected",
             f"{prefix}-TOTAL_FORMS": str(len(DEFAULT_BASES)),
             f"{prefix}-INITIAL_FORMS": str(len(DEFAULT_BASES)),
             f"{prefix}-MIN_NUM_FORMS": "0",
