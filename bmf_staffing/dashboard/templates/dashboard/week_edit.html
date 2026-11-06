@@ -40,14 +40,21 @@
         was out of service below, then save. Ground is 3 day + 1 night truck a day from any base.
       </p>
       <div class="row g-3 mb-3">
-        <div class="col-sm-6">
+        <div class="col-sm-4">
+          <div class="border rounded p-2">
+            <div class="small text-muted">Staffing rate</div>
+            <div class="h4 mb-0 bmf-numeric" id="card-sr-pct">{{ coverage.staffing_rate }}</div>
+            <div class="small text-muted"><span id="card-sr-counts">{{ coverage.staffing_counts }}</span> vehicles fully staffed</div>
+          </div>
+        </div>
+        <div class="col-sm-4">
           <div class="border rounded p-2">
             <div class="small text-muted">System rotor wing</div>
             <div class="h4 mb-0 bmf-numeric" id="card-rw-pct">{{ coverage.system_rw }}</div>
             <div class="small text-muted"><span id="card-rw-counts">{{ coverage.system_rw_counts }}</span> planned aircraft-days staffed</div>
           </div>
         </div>
-        <div class="col-sm-6">
+        <div class="col-sm-4">
           <div class="border rounded p-2">
             <div class="small text-muted">System ground</div>
             <div class="h4 mb-0 bmf-numeric" id="card-gr-pct">{{ coverage.system_gr }}</div>
@@ -188,7 +195,7 @@
           </tr>
         </tbody>
       </table>
-      <p class="text-muted small mb-0" id="tally-note">Day and night move automatically when you change the base coverage counts below.</p>
+      <p class="text-muted small mb-0" id="tally-note">Calculated from the base coverage counts below: vehicles fully staffed, each type capped at its plan.</p>
     </div>
   </div>
 
@@ -336,11 +343,12 @@
       </tr>
     </tfoot>
   </table>
-  <p class="mb-1" id="cov-summary" data-plan="{% if coverage %}{{ coverage.ground_plan }}{% else %}28{% endif %}">
+  <p class="mb-1" id="cov-summary" data-plan="{{ plan_gr|default:28 }}" data-rw-plan="{{ plan_rw|default:56 }}">
     <strong>Ground:</strong> <span id="gr-total">0</span> shifts staffed of <span id="gr-plan">28</span> planned
     (<span id="gr-pct">0.0%</span>). Every ground shift counts, from any base, so an extra truck one day makes up for a short day.
     <br><strong>Rotor wing:</strong> <span id="rw-total">0</span> shifts staffed.
     <br><strong>All vehicle shifts:</strong> day <span id="all-day">0</span>, night <span id="all-night">0</span>.
+    <br><strong>Staffing rate:</strong> <span id="sr-counts">0 of 84</span> vehicles fully staffed (<span id="sr-pct">0.0%</span>).
   </p>
   <p class="mt-3">
     <button type="submit" class="btn btn-primary">Save week + base coverage</button>
@@ -364,17 +372,19 @@
   function num(el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 0 ? 0 : v; }
   function sum(c) { return inputs[c].reduce(function (t, el) { return t + num(el); }, 0); }
 
-  // Totals as loaded, so "Complete shifts" moves by what you change rather than
-  // being overwritten with the coverage sum (the imported count can differ slightly).
-  var start = {};
-  COLS.forEach(function (c) { start[c] = sum(c); });
-  var baseDay = filledDay ? num(filledDay) : 0;
-  var baseNight = filledNight ? num(filledNight) : 0;
   var plan = parseInt(summary.getAttribute("data-plan"), 10) || 28;
+  var rwPlanAll = parseInt(summary.getAttribute("data-rw-plan"), 10) || 56;
   document.getElementById("gr-plan").textContent = plan;
 
-  function deltaDay() { return sum("rw_staffed_day") - start.rw_staffed_day + sum("gr_staffed_day") - start.gr_staffed_day; }
-  function deltaNight() { return sum("rw_staffed_night") - start.rw_staffed_night + sum("gr_staffed_night") - start.gr_staffed_night; }
+  // Vehicles fully staffed, each type capped at its plan; nights are filled first
+  // when splitting day and night. Same rule as the reports (metrics.vehicle_filled_shifts).
+  function vehicleFilled() {
+    var rwCounted = Math.min(sum("rw_staffed_day") + sum("rw_staffed_night"), rwPlanAll);
+    var grCounted = Math.min(sum("gr_staffed_day") + sum("gr_staffed_night"), plan);
+    var grNight = Math.min(sum("gr_staffed_night"), grCounted);
+    var rwNight = Math.min(sum("rw_staffed_night"), rwCounted);
+    return { day: (rwCounted - rwNight) + (grCounted - grNight), night: rwNight + grNight, total: rwCounted + grCounted };
+  }
 
   // Base name -> its four coverage inputs, so each base's row can recalculate.
   var byBase = {};
@@ -386,7 +396,7 @@
       byBase[b.value] = { rwd: f("rw_staffed_day"), rwn: f("rw_staffed_night"), grd: f("gr_staffed_day"), grn: f("gr_staffed_night") };
     });
   var card = document.getElementById("coverage-reasons");
-  var rwPlan = card ? parseInt(card.getAttribute("data-rw-plan"), 10) || 0 : 0;
+  var rwPlan = rwPlanAll;
   function pct(n, d) { return d ? (n / d * 100).toFixed(1) + "%" : "\u2014"; }
   function setText(sel, text, root) { var el = (root || document).querySelector(sel); if (el) { el.textContent = text; } }
 
@@ -432,14 +442,14 @@
   }
 
   function retally() {
-    if (filledDay) { filledDay.value = Math.max(0, baseDay + deltaDay()); }
-    if (filledNight) { filledNight.value = Math.max(0, baseNight + deltaNight()); }
-    var note = document.getElementById("tally-note");
-    var dd = deltaDay(), dn = deltaNight();
-    if (note && (dd || dn)) {
-      note.textContent = "Updated from your base coverage changes: day " + (dd > 0 ? "+" : "") + dd +
-        ", night " + (dn > 0 ? "+" : "") + dn + ".";
-    }
+    var v = vehicleFilled();
+    if (filledDay) { filledDay.value = v.day; }
+    if (filledNight) { filledNight.value = v.night; }
+    var required = rwPlanAll + plan;
+    setText("#sr-counts", v.total + " of " + required);
+    setText("#sr-pct", pct(v.total, required));
+    setText("#card-sr-counts", v.total + " of " + required);
+    setText("#card-sr-pct", pct(v.total, required));
   }
 
   COLS.forEach(function (c) {
@@ -447,10 +457,8 @@
       el.addEventListener("input", function () { refresh(); retally(); });
     });
   });
-  // Typing a total yourself sticks: later coverage edits add to what you typed.
-  if (filledDay) { filledDay.addEventListener("input", function () { baseDay = num(filledDay) - deltaDay(); }); }
-  if (filledNight) { filledNight.addEventListener("input", function () { baseNight = num(filledNight) - deltaNight(); }); }
   refresh();
+  retally();
 })();
 </script>
 {% endblock %}

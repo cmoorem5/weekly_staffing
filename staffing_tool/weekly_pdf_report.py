@@ -41,7 +41,6 @@ from staffing_tool.metrics import (
     BASE_DISPLAY_ORDER,
     REQUIRED_DAY,
     REQUIRED_NIGHT,
-    REQUIRED_TOTAL,
     compute_role_fill,
     compute_week_metrics,
     role_ot_totals,
@@ -476,7 +475,7 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             ],
             daily_data=daily_data,
             daily_totals=(
-                f"{metrics.filled_total} / {REQUIRED_TOTAL}",
+                f"{metrics.filled_total} / {metrics.required_total}",
                 rw_total,
                 gr_total,
                 exc_total,

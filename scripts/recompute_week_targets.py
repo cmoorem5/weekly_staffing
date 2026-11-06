@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Recompute the ground-target and no-vehicle figures for already-imported weeks.
+Bring already-imported weeks in line with the current number definitions.
 
-Ground is a system target of 3 day + 1 night truck a day from any base, and a
-vehicle marked "no vehicle" never counts against staffing. New imports apply
-both automatically; this brings weeks imported earlier in line, using the
-name-level OPS View rows already stored (no workbook needed).
+- **Staffing rate** is vehicles fully staffed (crew plus pilot or EMT), capped at
+  the plan, not RN + Medic crews. It is worked out from each week's base
+  coverage (including any corrections made on the week edit page).
+- **Ground** is a system target of 3 day + 1 night truck a day from any base.
+- **No vehicle** marks never count against staffing.
+- **Pilot vacancies** (rotor wing days with no pilot) and **overnights below
+  coverage** (nights with a planned night vehicle unstaffed) are calculated from
+  the saved schedule, net of days fixed by hand.
 
-Weeks with no name-level rows are left on their current numbers.
+New imports and saves apply all of this automatically; this brings the weeks
+imported earlier in line. Every week with base coverage is refreshed; pilot
+vacancies and overnights need the saved schedule rows, so a week without them
+keeps its current values.
 
-Safe to rerun. Use --dry-run first to see how each week's System RW % and
-System GR % would change, then run without it (a safety backup of staffing.db
-is saved to archive/ before any write).
+Safe to rerun. Use --dry-run first to see each week before and after (nothing is
+written); a safety backup of staffing.db is saved to archive/ before any write.
 
 Usage:
     python scripts/recompute_week_targets.py --dry-run
@@ -31,22 +37,29 @@ if str(_ROOT) not in sys.path:
 
 from staffing_tool.db import ensure_db_ready, session_scope
 from staffing_tool.db_backup import create_db_backup
-from staffing_tool.metrics import compute_week_metrics
-from staffing_tool.models import (
-    BaseConfig,
-    WeeklyBaseCoverage,
-    WeeklyOpsViewAssignment,
-    WeeklyStaffing,
-)
+from staffing_tool.metrics import REQUIRED_TOTAL, compute_week_metrics
+from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
 from staffing_tool.paths import PROJECT_ROOT
 from staffing_tool.week_targets import recompute_week_targets
 
 
-def _pcts(session, week_start: str) -> tuple[float, float]:
+def _snapshot(session, week_start: str) -> dict[str, float]:
     row = session.query(WeeklyStaffing).filter_by(week_start=week_start).one()
     covs = session.query(WeeklyBaseCoverage).filter_by(week_start=week_start).all()
     m = compute_week_metrics(row, covs, session.query(BaseConfig).all())
-    return m.system_rw_pct, m.system_gr_pct
+    return {
+        "old_rate": (int(row.filled_day or 0) + int(row.filled_night or 0))
+        / REQUIRED_TOTAL,
+        "rate": m.staffing_rate,
+        "rw": m.system_rw_pct,
+        "gr": m.system_gr_pct,
+        "pilot": int(row.pilot_vacancies or 0),
+        "nights": int(row.overnights_below or 0),
+    }
+
+
+def _pct(v: float) -> str:
+    return f"{v:.1%}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,28 +82,38 @@ def main(argv: list[str] | None = None) -> int:
     with session_scope(args.db) as session:
         weeks = [
             w
-            for (w,) in session.query(WeeklyOpsViewAssignment.week_start)
-            .group_by(WeeklyOpsViewAssignment.week_start)
-            .order_by(WeeklyOpsViewAssignment.week_start)
+            for (w,) in session.query(WeeklyStaffing.week_start)
+            .order_by(WeeklyStaffing.week_start)
             .all()
             if (not args.from_date or w >= args.from_date)
             and (not args.to_date or w <= args.to_date)
         ]
         print(
-            f"{'Week':<12} {'RW before':>10} {'RW after':>9} {'GR before':>10} {'GR after':>9}"
+            f"{'Week':<12} {'Staffing old':>12} {'new':>7} {'RW before':>10} "
+            f"{'after':>7} {'GR before':>10} {'after':>7} {'Pilot vac':>10} "
+            f"{'Overnights':>11}"
         )
         for w in weeks:
-            rw0, gr0 = _pcts(session, w)
+            before = _snapshot(session, w)
             recompute_week_targets(session, w)
             session.flush()
-            rw1, gr1 = _pcts(session, w)
-            if (round(rw0, 4), round(gr0, 4)) != (round(rw1, 4), round(gr1, 4)):
+            after = _snapshot(session, w)
+            if any(
+                round(before[k], 4) != round(after[k], 4)
+                for k in ("rw", "gr", "pilot", "nights")
+            ) or round(before["old_rate"], 4) != round(after["rate"], 4):
                 changed += 1
-            print(f"{w:<12} {rw0:>10.1%} {rw1:>9.1%} {gr0:>10.1%} {gr1:>9.1%}")
+            print(
+                f"{w:<12} {_pct(before['old_rate']):>12} {_pct(after['rate']):>7} "
+                f"{_pct(before['rw']):>10} {_pct(after['rw']):>7} "
+                f"{_pct(before['gr']):>10} {_pct(after['gr']):>7} "
+                f"{before['pilot']:>4} -> {after['pilot']:<3} "
+                f"{before['nights']:>4} -> {after['nights']:<3}"
+            )
         if args.dry_run:
             session.rollback()
     verb = "would change" if args.dry_run else "changed"
-    print(f"\n{len(weeks)} week(s) with detail; {changed} {verb}.")
+    print(f"\n{len(weeks)} week(s); {changed} {verb}.")
     return 0
 
 

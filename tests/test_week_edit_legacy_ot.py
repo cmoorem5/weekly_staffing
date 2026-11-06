@@ -91,7 +91,7 @@ class WeekEditLegacyOtTests(TempDbTestCase):
             "week-week_start": WEEK_START,
             "week-filled_day": "52",
             "week-filled_night": "30",
-            "week-notes": "",
+            "week-notes": "ot test",
         }
         for field in (
             "ot_rn_day",
