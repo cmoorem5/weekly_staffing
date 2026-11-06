@@ -35,7 +35,7 @@ from staffing_tool.models import BaseConfig, WeeklyStaffing
 from staffing_tool.report_data import kpi_tile_statuses, load_trend_targets
 from staffing_tool.shortfall import (
     analyze_range,
-    hand_corrections,
+    net_of_hand_corrections,
     reason_table_rows,
 )
 
@@ -218,13 +218,16 @@ def load_monthly_report_data(
             ot_by_role=[("RN", ot_rn), ("Paramedic", ot_medic), ("EMT", ot_emt)],
             base_coverage=base_coverage,
             reasons=reason_table_rows(
-                analyze_range(
+                net_of_hand_corrections(
                     session,
-                    date.fromisoformat(str(week_rows[0].week_start)),
-                    date.fromisoformat(str(week_rows[-1].week_start))
-                    + timedelta(days=6),
-                ),
-                hand_corrections(session, [str(r.week_start) for r in week_rows]),
+                    analyze_range(
+                        session,
+                        date.fromisoformat(str(week_rows[0].week_start)),
+                        date.fromisoformat(str(week_rows[-1].week_start))
+                        + timedelta(days=6),
+                    ),
+                    [str(r.week_start) for r in week_rows],
+                )
             ),
             role_fill=compute_role_fill(
                 session, [str(row.week_start) for row in week_rows]

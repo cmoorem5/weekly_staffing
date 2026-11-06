@@ -181,8 +181,11 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
         self.assertIn("Short a pilot", body)
         self.assertIn("D9L", body)
 
-    def test_card_reports_hand_corrected_days(self):
-        # Lawrence stored at 14 while the schedule supports 13 (a pilot gap Monday).
+    def test_card_drops_days_fixed_by_hand_without_extra_wording(self):
+        url = reverse("week_edit", args=[WEEK_START])
+        before = self.client.get(url).content.decode()
+        self.assertIn("<td>Pilot</td>", before)  # Lawrence's pilot gap is listed
+        # Lawrence stored at 14 while the schedule supports 13: that day was fixed.
         with session_scope(self.db_path) as session:
             from staffing_tool.models import WeeklyBaseCoverage
 
@@ -192,9 +195,9 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
             cov.rw_staffed_day = 7
             cov.rw_staffed_night = 7
             cov.rw_staffed_unit_days = 14
-        body = self.client.get(reverse("week_edit", args=[WEEK_START])).content.decode()
-        self.assertIn("Corrected by hand:", body)
-        self.assertIn("1 rotor wing", body)
+        after = self.client.get(url).content.decode()
+        self.assertNotIn("<td>Pilot</td>", after)
+        self.assertNotIn("Corrected by hand", after)
 
     def test_marking_no_vehicle_removes_it_from_the_rotor_plan(self):
         self._add(day_date="2026-10-26", unit_code="D9L", note="aircraft down")

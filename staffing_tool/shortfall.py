@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func
@@ -418,21 +418,13 @@ def analyze_week(session, week_start: str) -> ShortfallResult | None:
 REASON_TABLE_HEADERS: list[str] = ["", "Rotor wing", "Ground"]
 
 
-def reason_table_rows(
-    result: ShortfallResult | None,
-    corrected: tuple[int, int] | None = None,
-) -> list[list[str]]:
+def reason_table_rows(result: ShortfallResult | None) -> list[list[str]]:
     """Report rows: why planned vehicles were short, by vehicle type.
 
     Pilot applies to rotor wing only and EMT to ground only; a seat that does
     not exist on a vehicle type shows an em dash. Returns [] when there is no
     schedule detail to analyze, so a report leaves the block off rather than
     printing zeros it can't back up.
-
-    ``corrected`` is (rotor wing, ground) short days that were later corrected
-    by hand on the week edit page (``hand_corrections``). They stay in the
-    counts, since the schedule shows them short, and get their own line so the
-    block ties to the stored percentage; their cause was not recorded.
     """
     if result is None or not result.days_analyzed:
         return []
@@ -446,14 +438,6 @@ def reason_table_rows(
         for svc in ("RW", "GR")
     }
     rows = [["Short vehicle-days", str(shorts["RW"]), str(shorts["GR"])]]
-    if corrected and any(corrected):
-        rows.append(
-            [
-                "Corrected by hand (cause not recorded)",
-                str(corrected[0]),
-                str(corrected[1]),
-            ]
-        )
     for role, label in (
         ("RN", "Short a nurse"),
         ("Medic", "Short a paramedic"),
@@ -543,21 +527,43 @@ def reconcile_week(session, week_start: str) -> list[ReconcileRow]:
     return rows
 
 
-def hand_corrections(session, week_starts: Iterable[str]) -> tuple[int, int]:
-    """(rotor wing, ground) short days corrected by hand across ``week_starts``.
+def net_of_hand_corrections(
+    session, result: ShortfallResult | None, week_starts: Iterable[str]
+) -> ShortfallResult | None:
+    """``result`` without the short days that were fixed by hand.
 
-    A stored count above what the schedule supports means the schedule showed a
-    vehicle-day short and someone corrected it on the week edit page (a late
-    fill, an aircraft out of service, a pilot on leave). The cause is not
-    recorded, so this only counts them. A stored count below the schedule is
-    not a correction of a shortfall and is ignored.
+    A stored count above what the schedule supports means a vehicle-day the
+    schedule showed short was later fixed on the week edit page (a late fill, an
+    aircraft out of service, a pilot on leave). A fixed day is no longer a
+    shortfall, so it is dropped and the reasons tie to the stored percentage.
+
+    The schedule cannot say which day a fix covered. Where a base-week has more
+    short days than fixes, the earliest short days are the ones dropped, so the
+    seat counts for that base-week are a best estimate; where every short day
+    was fixed they are exact. Rotor wing is netted per base, ground as one
+    system total. A stored count below the schedule is not a fix and is ignored.
     """
-    rw = gr = 0
+    if result is None:
+        return None
+    drop: set[int] = set()
     for week in week_starts:
+        days = set(_week_days(week))
         for row in reconcile_week(session, week):
-            if row.diff > 0:
-                if row.service_type == "RW":
-                    rw += row.diff
-                else:
-                    gr += row.diff
-    return rw, gr
+            if row.diff <= 0:
+                continue
+            candidates = sorted(
+                (
+                    s
+                    for s in result.shortfalls
+                    if s.day in days
+                    and s.service_type == row.service_type
+                    and (row.service_type == "GR" or s.base == row.scope)
+                ),
+                key=lambda s: (s.day, s.unit_code),
+            )
+            drop.update(id(s) for s in candidates[: row.diff])
+    if not drop:
+        return result
+    return replace(
+        result, shortfalls=[s for s in result.shortfalls if id(s) not in drop]
+    )

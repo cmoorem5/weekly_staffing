@@ -40,7 +40,7 @@ from staffing_tool.models import (
 from staffing_tool.rag import green_boundary
 from staffing_tool.shortfall import (
     analyze_range,
-    hand_corrections,
+    net_of_hand_corrections,
     reason_table_rows,
 )
 from staffing_tool.time_buckets import bucket_label, buckets_for_range
@@ -460,8 +460,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
             .all()
         ]
         reasons_rows = reason_table_rows(
-            analyze_range(session, date_start, date_end),
-            hand_corrections(session, window_weeks),
+            net_of_hand_corrections(
+                session, analyze_range(session, date_start, date_end), window_weeks
+            )
         )
         exc_q = (
             session.query(
