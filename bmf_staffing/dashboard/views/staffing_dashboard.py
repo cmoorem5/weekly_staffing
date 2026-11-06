@@ -461,7 +461,9 @@ def _build_staffing_dashboard_context(request) -> dict[str, object]:
         ]
         reasons_rows = reason_table_rows(
             net_of_hand_corrections(
-                session, analyze_range(session, date_start, date_end), window_weeks
+                session,
+                analyze_range(session, date_start, date_end, tracked_only=True),
+                window_weeks,
             )
         )
         exc_q = (

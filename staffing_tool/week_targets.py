@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from .metrics import compute_week_metrics
+from .metrics import compute_week_metrics, uses_current_definitions
 from .models import (
     BaseConfig,
     WeeklyBaseCoverage,
@@ -62,6 +62,8 @@ def recompute_week_targets(session: Session, week_start: str) -> bool:
     below coverage (nights with a planned night vehicle unstaffed), both net of
     days fixed by hand and of vehicles marked out of service.
     """
+    if not uses_current_definitions(week_start):
+        return False  # last FY stays exactly as it was reported
     week = (
         session.query(WeeklyStaffing)
         .filter(WeeklyStaffing.week_start == week_start)

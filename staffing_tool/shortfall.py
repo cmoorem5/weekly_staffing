@@ -49,7 +49,12 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func
 
 from .db import session_scope
-from .metrics import EXTRA_UNIT_CODES, SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+from .metrics import (
+    CURRENT_DEFINITIONS_FROM_WEEK,
+    EXTRA_UNIT_CODES,
+    SYSTEM_GR_MAX_SHIFTS_PER_WEEK,
+    uses_current_definitions,
+)
 from .models import (
     WeeklyBaseCoverage,
     WeeklyOpsViewAssignment,
@@ -285,8 +290,21 @@ def load_shortfalls(db_path: str | None, start: date, end: date) -> ShortfallRes
         return analyze_range(session, start, end)
 
 
-def analyze_range(session, start: date, end: date) -> ShortfallResult:
-    """``load_shortfalls`` for a caller that already has a session open."""
+def analyze_range(
+    session, start: date, end: date, *, tracked_only: bool = False
+) -> ShortfallResult:
+    """``load_shortfalls`` for a caller that already has a session open.
+
+    ``tracked_only`` limits the window to weeks the current definitions apply to
+    (FY2027 onward); reports pass it so last FY is never given reasons it was
+    not tracked under. The shortfall script leaves it off so any window can be
+    inspected.
+    """
+    if tracked_only:
+        cutoff = date.fromisoformat(CURRENT_DEFINITIONS_FROM_WEEK)
+        if end < cutoff:
+            return ShortfallResult()
+        start = max(start, cutoff)
     start_s, end_s = start.isoformat(), end.isoformat()
     # Weeks overlapping the window (a week can start before ``start``).
     week_floor = (start - timedelta(days=6)).isoformat()
@@ -378,8 +396,16 @@ def reason_counts(shortfalls: Iterable[UnitDayShortfall]) -> dict[str, int]:
     return out
 
 
-def analyze_week(session, week_start: str) -> ShortfallResult | None:
-    """Shortfalls for one stored week, or None if it has no name-level rows."""
+def analyze_week(
+    session, week_start: str, *, tracked_only: bool = False
+) -> ShortfallResult | None:
+    """Shortfalls for one stored week, or None if it has no name-level rows.
+
+    ``tracked_only`` also returns None for a week before the current
+    definitions apply (last FY).
+    """
+    if tracked_only and not uses_current_definitions(week_start):
+        return None
     has_rows = (
         session.query(WeeklyOpsViewAssignment.id)
         .filter(WeeklyOpsViewAssignment.week_start == week_start)

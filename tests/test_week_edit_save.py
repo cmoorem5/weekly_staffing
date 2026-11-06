@@ -150,8 +150,7 @@ class WeekEditBlockedSaveTests(TempDbTestCase):
             )
 
     def test_allowed_save_redirects_and_persists(self):
-        # The typed Complete shifts (52 / 30) are ignored: the save stores vehicles
-        # fully staffed, worked out from the posted coverage (56 day / 28 night).
+        # Last FY (before FY2027) keeps the typed Complete shifts, as reported.
         resp = self._post_edit(filled_day=52, filled_night=30, notes="", full=True)
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp["Location"], reverse("week_list"))
@@ -162,8 +161,41 @@ class WeekEditBlockedSaveTests(TempDbTestCase):
                 .filter(WeeklyStaffing.week_start == WEEK_START)
                 .first()
             )
-            self.assertEqual(row.filled_day, 56)
-            self.assertEqual(row.filled_night, 28)
+            self.assertEqual(row.filled_day, 52)
+            self.assertEqual(row.filled_night, 30)
+
+    def test_current_fy_week_stores_vehicles_fully_staffed(self):
+        # FY2027 onward: the typed Complete shifts (52 / 30) are ignored and the save
+        # stores vehicles fully staffed from the posted coverage (56 day / 28 night).
+        week = "2026-10-04"
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyStaffing(
+                    week_start=week,
+                    filled_day=1,
+                    filled_night=1,
+                    created_at="2026-10-04T00:00:00Z",
+                    updated_at="2026-10-04T00:00:00Z",
+                )
+            )
+        data = {
+            "week-week_start": week,
+            "week-filled_day": "52",
+            "week-filled_night": "30",
+            "week-training_shifts": "0",
+            "week-notes": "",
+        }
+        data.update(_full_coverage_post())
+        resp = self.client.post(reverse("week_edit", args=[week]), data=data)
+        self.assertEqual(resp.status_code, 302)
+        with session_scope(self.db_path) as session:
+            row = session.query(WeeklyStaffing).filter_by(week_start=week).first()
+            self.assertEqual((row.filled_day, row.filled_night), (56, 28))
+
+    def test_last_fy_page_keeps_complete_shifts_editable(self):
+        html = self.client.get(reverse("week_edit", args=[WEEK_START])).content.decode()
+        self.assertNotIn('name="week-filled_day" value="52" readonly', html)
+        self.assertNotIn("Vehicles out of service", html)
 
     def test_training_shifts_saved_and_reloaded(self):
         resp = self._post_edit(

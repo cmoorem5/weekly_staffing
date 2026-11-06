@@ -375,6 +375,7 @@ def load_window_report_data(
                         session,
                         date.fromisoformat(week_starts[0]),
                         date.fromisoformat(week_starts[-1]) + timedelta(days=6),
+                        tracked_only=True,
                     ),
                     week_starts,
                 )

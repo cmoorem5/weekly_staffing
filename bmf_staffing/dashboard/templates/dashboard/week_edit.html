@@ -113,6 +113,7 @@
     </div>
   </div>
   {% endif %}
+  {% if current_definitions %}
   <div class="card mb-4" id="vehicles-out-of-service">
     <div class="card-body py-3">
       <h2 class="h6 card-title mb-1">Vehicles out of service (no vehicle)</h2>
@@ -166,6 +167,7 @@
       </form>
     </div>
   </div>
+  {% endif %}
 {% endif %}
 
 <form method="post" autocomplete="off">
@@ -195,7 +197,7 @@
           </tr>
         </tbody>
       </table>
-      <p class="text-muted small mb-0" id="tally-note">Calculated from the base coverage counts below: vehicles fully staffed, each type capped at its plan.</p>
+      <p class="text-muted small mb-0" id="tally-note">{% if current_definitions %}Calculated from the base coverage counts below: vehicles fully staffed, each type capped at its plan.{% else %}Last fiscal year: these counts are kept as they were reported and are not recalculated.{% endif %}</p>
     </div>
   </div>
 
@@ -343,12 +345,12 @@
       </tr>
     </tfoot>
   </table>
-  <p class="mb-1" id="cov-summary" data-plan="{{ plan_gr|default:28 }}" data-rw-plan="{{ plan_rw|default:56 }}">
+  <p class="mb-1" id="cov-summary" data-plan="{{ plan_gr|default:28 }}" data-rw-plan="{{ plan_rw|default:56 }}" data-current="{% if current_definitions %}1{% else %}0{% endif %}">
     <strong>Ground:</strong> <span id="gr-total">0</span> shifts staffed of <span id="gr-plan">28</span> planned
     (<span id="gr-pct">0.0%</span>). Every ground shift counts, from any base, so an extra truck one day makes up for a short day.
     <br><strong>Rotor wing:</strong> <span id="rw-total">0</span> shifts staffed.
     <br><strong>All vehicle shifts:</strong> day <span id="all-day">0</span>, night <span id="all-night">0</span>.
-    <br><strong>Staffing rate:</strong> <span id="sr-counts">0 of 84</span> vehicles fully staffed (<span id="sr-pct">0.0%</span>).
+    {% if current_definitions %}<br><strong>Staffing rate:</strong> <span id="sr-counts">0 of 84</span> vehicles fully staffed (<span id="sr-pct">0.0%</span>).{% endif %}
   </p>
   <p class="mt-3">
     <button type="submit" class="btn btn-primary">Save week + base coverage</button>
@@ -442,6 +444,8 @@
   }
 
   function retally() {
+    // Last fiscal year keeps its typed Complete shifts, as reported.
+    if (summary.getAttribute("data-current") !== "1") { return; }
     var v = vehicleFilled();
     if (filledDay) { filledDay.value = v.day; }
     if (filledNight) { filledNight.value = v.night; }

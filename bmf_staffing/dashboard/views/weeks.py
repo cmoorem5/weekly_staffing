@@ -22,6 +22,7 @@ from staffing_tool.metrics import (
     REQUIRED_TOTAL,
     SYSTEM_GR_MAX_SHIFTS_PER_WEEK,
     compute_week_metrics,
+    uses_current_definitions,
     vehicle_filled_shifts,
 )
 from staffing_tool.models import (
@@ -253,8 +254,9 @@ def _load_training_breakdown(week_start, session):
 
 def week_edit(request, week_start):
     _ensure_db()
+    current = uses_current_definitions(week_start)
     if request.method == "POST":
-        form = WeekForm(request.POST, prefix="week")
+        form = WeekForm(request.POST, prefix="week", current_definitions=current)
         formset = BaseCoverageFormSet(request.POST, prefix="cov")
         if form.is_valid() and formset.is_valid():
             saved = _save_week_and_coverage(
@@ -282,7 +284,7 @@ def week_edit(request, week_start):
             )
             leave_breakdown = {(r.role, r.leave_type): r.count for r in leave_details}
             training_breakdown = _load_training_breakdown(week_start, session)
-        form = WeekForm(initial=initial, prefix="week")
+        form = WeekForm(initial=initial, prefix="week", current_definitions=current)
         formset = BaseCoverageFormSet(initial=coverage_initial, prefix="cov")
         leave_grid_rows = _build_leave_grid_rows(leave_breakdown)
     coverage_forms = list(zip(BASES, formset))
@@ -301,6 +303,7 @@ def week_edit(request, week_start):
             "leave_types_order": EXCEPTION_GRID_COLS,
             "leave_grid_rows": leave_grid_rows,
             "training_breakdown": training_breakdown,
+            "current_definitions": current,
             **_outage_context(week_start),
             **_plan_context(week_start),
             "coverage": _coverage_context(week_start),
@@ -329,7 +332,7 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
     aggregate-only weeks), so the card is simply left off.
     """
     with session_scope(DB_PATH) as session:
-        result = analyze_week(session, week_start)
+        result = analyze_week(session, week_start, tracked_only=True)
         if result is None:
             return None
         row = (
@@ -567,8 +570,13 @@ def week_outages(request, week_start):
 def week_add(request):
     _ensure_db()
     last_sun = _last_sunday()
+    current = uses_current_definitions(
+        (request.POST.get("week-week_start") or last_sun)
+        if request.method == "POST"
+        else last_sun
+    )
     if request.method == "POST":
-        form = WeekForm(request.POST, prefix="week")
+        form = WeekForm(request.POST, prefix="week", current_definitions=current)
         formset = BaseCoverageFormSet(request.POST, prefix="cov")
         if form.is_valid() and formset.is_valid():
             week_start = form.cleaned_data.get("week_start") or last_sun
@@ -580,7 +588,9 @@ def week_add(request):
         leave_detail_map, _ = _parse_exception_grid_post(request.POST)
         leave_grid_rows = _build_leave_grid_rows(leave_detail_map)
     else:
-        form = WeekForm(initial={"week_start": last_sun}, prefix="week")
+        form = WeekForm(
+            initial={"week_start": last_sun}, prefix="week", current_definitions=current
+        )
         formset = BaseCoverageFormSet(
             initial=[
                 {
@@ -603,6 +613,7 @@ def week_add(request):
             "form": form,
             "formset": formset,
             "week_start": None,
+            "current_definitions": current,
             "bases": BASES,
             "coverage_forms": coverage_forms,
             "is_add": True,
@@ -727,44 +738,49 @@ def _save_week_and_coverage(request, data, formset, week_start) -> bool:
         # Complete shifts are vehicles fully staffed, worked out from the posted
         # base coverage (the page tallies the same numbers live); typed values for
         # them are ignored. Vehicles out of service with no crew are off the plan.
-        removed = sum(
-            int(getattr(c, "rw_planned_removed", 0) or 0)
-            for c in session.query(WeeklyBaseCoverage)
-            .filter(WeeklyBaseCoverage.week_start == week_start)
-            .all()
-        )
-        gr_plan_week = (
-            int(row.gr_target_planned)
-            if row is not None and row.gr_target_planned is not None
-            else SYSTEM_GR_MAX_SHIFTS_PER_WEEK
-        )
-        post = {"rw_d": 0, "rw_n": 0, "gr_d": 0, "gr_n": 0}
-        for f in formset:
-            if f.cleaned_data.get("base_name"):
-                post["rw_d"] += _int(f.cleaned_data.get("rw_staffed_day"))
-                post["rw_n"] += _int(f.cleaned_data.get("rw_staffed_night"))
-                post["gr_d"] += _int(f.cleaned_data.get("gr_staffed_day"))
-                post["gr_n"] += _int(f.cleaned_data.get("gr_staffed_night"))
-        rw_plan_week = (
-            sum(
-                int(cast(int, b.rw_total_unit_days) or 0) for b in base_by_name.values()
+        # Last FY keeps the typed crew-based counts, exactly as it was reported.
+        if uses_current_definitions(week_start):
+            removed = sum(
+                int(getattr(c, "rw_planned_removed", 0) or 0)
+                for c in session.query(WeeklyBaseCoverage)
+                .filter(WeeklyBaseCoverage.week_start == week_start)
+                .all()
             )
-            - removed
-        )
-        filled_day, filled_night = vehicle_filled_shifts(
-            post["rw_d"],
-            post["rw_n"],
-            post["gr_d"],
-            post["gr_n"],
-            rw_plan_week,
-            gr_plan_week,
-        )
-        filled_total = filled_day + filled_night
-        required_total = (
-            REQUIRED_TOTAL - removed - (SYSTEM_GR_MAX_SHIFTS_PER_WEEK - gr_plan_week)
-        )
-        staffing_rate = filled_total / required_total if required_total else 0
-        ot_dependency = ot_shifts / filled_total if filled_total else 0
+            gr_plan_week = (
+                int(row.gr_target_planned)
+                if row is not None and row.gr_target_planned is not None
+                else SYSTEM_GR_MAX_SHIFTS_PER_WEEK
+            )
+            post = {"rw_d": 0, "rw_n": 0, "gr_d": 0, "gr_n": 0}
+            for f in formset:
+                if f.cleaned_data.get("base_name"):
+                    post["rw_d"] += _int(f.cleaned_data.get("rw_staffed_day"))
+                    post["rw_n"] += _int(f.cleaned_data.get("rw_staffed_night"))
+                    post["gr_d"] += _int(f.cleaned_data.get("gr_staffed_day"))
+                    post["gr_n"] += _int(f.cleaned_data.get("gr_staffed_night"))
+            rw_plan_week = (
+                sum(
+                    int(cast(int, b.rw_total_unit_days) or 0)
+                    for b in base_by_name.values()
+                )
+                - removed
+            )
+            filled_day, filled_night = vehicle_filled_shifts(
+                post["rw_d"],
+                post["rw_n"],
+                post["gr_d"],
+                post["gr_n"],
+                rw_plan_week,
+                gr_plan_week,
+            )
+            filled_total = filled_day + filled_night
+            required_total = (
+                REQUIRED_TOTAL
+                - removed
+                - (SYSTEM_GR_MAX_SHIFTS_PER_WEEK - gr_plan_week)
+            )
+            staffing_rate = filled_total / required_total if required_total else 0
+            ot_dependency = ot_shifts / filled_total if filled_total else 0
         # A week imported/backfilled before the day/night OT split stores its
         # OT only in the legacy ot_rn/ot_medic/ot_emt/ot_shifts totals; the
         # edit form shows the (all-zero) day/night columns, so an untouched

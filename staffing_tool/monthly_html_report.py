@@ -225,6 +225,7 @@ def load_monthly_report_data(
                         date.fromisoformat(str(week_rows[0].week_start)),
                         date.fromisoformat(str(week_rows[-1].week_start))
                         + timedelta(days=6),
+                        tracked_only=True,
                     ),
                     [str(r.week_start) for r in week_rows],
                 )

@@ -7,7 +7,11 @@ from datetime import date, datetime, timedelta
 
 from openpyxl import Workbook
 from staffing_tool.db import session_scope
-from staffing_tool.metrics import compute_week_metrics, vehicle_filled_shifts
+from staffing_tool.metrics import (
+    compute_week_metrics,
+    uses_current_definitions,
+    vehicle_filled_shifts,
+)
 from staffing_tool.models import (
     BaseConfig,
     WeeklyBaseCoverage,
@@ -15,7 +19,12 @@ from staffing_tool.models import (
     WeeklyStaffing,
 )
 from staffing_tool.schedule_import import UNIT_MAP, _parse_ops_view_worksheet
-from staffing_tool.shortfall import find_shortfalls, planned_groups
+from staffing_tool.shortfall import (
+    analyze_range,
+    analyze_week,
+    find_shortfalls,
+    planned_groups,
+)
 from staffing_tool.week_targets import recompute_week_targets
 from tests._temp_db import TempDbTestCase
 
@@ -207,6 +216,95 @@ class AuditNameCheckTests(unittest.TestCase):
             self.assertTrue(looks(name), name)
         for code in ("", "0", "12", "LT", "sick", "OPEN", "N/A", "X", "AT8", "--"):
             self.assertFalse(looks(code), code)
+
+
+class LastFiscalYearUntouchedTests(TempDbTestCase):
+    """Weeks before FY2027 keep the numbers exactly as they were reported."""
+
+    OLD = "2026-09-20"  # last week of FY2026
+    NEW = "2026-09-27"  # first week of FY2027
+
+    def test_the_cutoff_is_week_one_of_fy2027(self):
+        self.assertFalse(uses_current_definitions(self.OLD))
+        self.assertTrue(uses_current_definitions(self.NEW))
+        self.assertFalse(uses_current_definitions("2025-10-05"))
+
+    def test_an_old_week_keeps_its_stored_crew_counts(self):
+        cov = _cov()
+        for c in cov:
+            c.week_start = self.OLD
+        w = _week(week_start=self.OLD, filled_day=50, filled_night=24)
+        m = compute_week_metrics(w, cov, CONFIGS)
+        self.assertEqual((m.filled_day, m.filled_night), (50, 24))
+        self.assertEqual(m.required_total, 84)
+        self.assertAlmostEqual(m.staffing_rate, 74 / 84)
+        self.assertEqual(m.plan_removed_unit_days, 0)
+
+    def test_the_first_week_of_fy2027_uses_vehicles_fully_staffed(self):
+        cov = _cov()
+        for c in cov:
+            c.week_start = self.NEW
+        m = compute_week_metrics(_week(week_start=self.NEW), cov, CONFIGS)
+        self.assertEqual(m.filled_total, 84)
+
+    def test_recompute_never_touches_an_old_week(self):
+        db = self.make_temp_db()
+        with session_scope(db) as session:
+            session.add(
+                _week(
+                    week_start=self.OLD,
+                    filled_day=50,
+                    filled_night=24,
+                    pilot_vacancies=0,
+                    overnights_below=0,
+                )
+            )
+            session.flush()
+            day = date.fromisoformat(self.OLD).isoformat()
+            session.add(
+                WeeklyOpsViewAssignment(
+                    week_start=self.OLD,
+                    day_date=day,
+                    unit_code="D9L",
+                    role="RN",
+                    person_display="N",
+                    raw_value="N",
+                    is_staffed=1,
+                )
+            )
+        with session_scope(db) as session:
+            self.assertFalse(recompute_week_targets(session, self.OLD))
+            w = session.query(WeeklyStaffing).one()
+            self.assertEqual(
+                (w.filled_day, w.filled_night, w.pilot_vacancies, w.overnights_below),
+                (50, 24, 0, 0),
+            )
+            self.assertIsNone(w.gr_target_planned)
+
+    def test_reasons_are_not_offered_for_last_fy(self):
+        db = self.make_temp_db()
+        with session_scope(db) as session:
+            session.add(_week(week_start=self.OLD))
+            session.flush()
+            session.add(
+                WeeklyOpsViewAssignment(
+                    week_start=self.OLD,
+                    day_date=self.OLD,
+                    unit_code="D9L",
+                    role="RN",
+                    person_display="N",
+                    raw_value="N",
+                    is_staffed=1,
+                )
+            )
+        with session_scope(db) as session:
+            self.assertIsNone(analyze_week(session, self.OLD, tracked_only=True))
+            # Untracked (the shortfall script) can still inspect any week.
+            self.assertIsNotNone(analyze_week(session, self.OLD))
+            empty = analyze_range(
+                session, date(2026, 9, 1), date(2026, 9, 26), tracked_only=True
+            )
+            self.assertEqual(empty.days_analyzed, 0)
 
 
 class DerivedKpiTests(TempDbTestCase):
