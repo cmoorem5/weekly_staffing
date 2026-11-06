@@ -490,7 +490,9 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             trend_data=trend_data,
             reasons=reason_table_rows(
                 net_of_hand_corrections(
-                    session, analyze_week(session, week_start), [week_start]
+                    session,
+                    analyze_week(session, week_start, tracked_only=True),
+                    [week_start],
                 )
             ),
         )

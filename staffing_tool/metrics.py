@@ -39,6 +39,19 @@ BASE_DISPLAY_ORDER = ["Bedford", "Lawrence", "Manchester", "Mansfield", "Plymout
 # they don't inflate fill rate past the required-line capacity above.
 EXTRA_UNIT_CODES = {"GR2", "NG2", "G9B"}
 
+# First week (Sunday) the current number definitions apply to: week 1 of FY2027.
+# Earlier weeks keep the numbers as they were reported (crew-based staffing rate,
+# no reasons or derived pilot vacancies / overnights), because the schedule data
+# before this was entered under older conventions and has not been re-checked.
+# To bring older weeks in, go through their uploads first, then lower this date.
+CURRENT_DEFINITIONS_FROM_WEEK = "2026-09-27"
+
+
+def uses_current_definitions(week_start: str) -> bool:
+    """True for a week the current definitions apply to (FY2027 onward)."""
+    return str(week_start) >= CURRENT_DEFINITIONS_FROM_WEEK
+
+
 # Max GR unit-days (D+N) staffable system-wide per week — denominator for
 # System GR % only.
 SYSTEM_GR_MAX_SHIFTS_PER_WEEK = 28
@@ -306,7 +319,8 @@ def compute_week_metrics(
     # the plan, not a gap. Ground days and nights are split by filling nights
     # first, so day + night always equals the ground total counted.
     plan_removed = 0
-    if base_metrics:
+    # Weeks before the cutoff keep the stored crew-based counts (as reported).
+    if base_metrics and uses_current_definitions(str(ws.week_start)):
         filled_day, filled_night = vehicle_filled_shifts(
             rw_day_total,
             rw_night_total,

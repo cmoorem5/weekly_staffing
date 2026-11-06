@@ -11,6 +11,14 @@ BaseTotalsFormSet = forms.formset_factory(BaseTotalForm, extra=0)
 
 
 class WeekForm(forms.Form):
+    def __init__(self, *args, current_definitions: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not current_definitions:
+            # Last FY keeps the typed Complete shifts, as it was reported.
+            for name in ("filled_day", "filled_night"):
+                self.fields[name].required = True
+                self.fields[name].widget.attrs.pop("readonly", None)
+
     week_start = forms.CharField(max_length=10, label="Week start (Sunday YYYY-MM-DD)")
     # Calculated from the base coverage counts (vehicles fully staffed); the page
     # tallies them live and the save ignores typed values.

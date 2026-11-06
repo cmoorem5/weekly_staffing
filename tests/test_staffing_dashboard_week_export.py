@@ -250,10 +250,10 @@ class StaffingDashboardWeeklyExportTests(TempDbTestCase):
         def col(name):
             return header.index(name)
 
-        # Day/night staffing rate is vehicles fully staffed (from the base coverage),
-        # not the stored crew counts: Bedford 7 rotor wing day shifts / required_day 56.
-        self.assertEqual(rows[WEEK_1][col("Day staffing rate (%, avg)")], "12.5")
-        self.assertEqual(rows[WEEK_1][col("Night staffing rate (%, avg)")], "0.0")
+        # Weeks before FY2027 keep the stored crew counts, as they were reported:
+        # filled_day=52/required_day=56, filled_night=30/required_night=28.
+        self.assertEqual(rows[WEEK_1][col("Day staffing rate (%, avg)")], "92.86")
+        self.assertEqual(rows[WEEK_1][col("Night staffing rate (%, avg)")], "107.14")
         self.assertEqual(rows[WEEK_1][col("Overnights below coverage (total)")], "1")
         self.assertEqual(rows[WEEK_2][col("Overnights below coverage (total)")], "0")
         self.assertEqual(rows[WEEK_1][col("Pilot vacancies (avg)")], "2.0")
