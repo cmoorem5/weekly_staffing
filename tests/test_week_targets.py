@@ -15,7 +15,11 @@ from staffing_tool.models import (
     WeeklyVehicleOutage,
 )
 from staffing_tool.schedule_import import UNIT_MAP
-from staffing_tool.shortfall import hand_corrections, reconcile_week
+from staffing_tool.shortfall import (
+    analyze_week,
+    net_of_hand_corrections,
+    reconcile_week,
+)
 from staffing_tool.week_targets import recompute_all_weeks, recompute_week_targets
 from tests._temp_db import TempDbTestCase
 
@@ -220,23 +224,95 @@ class WeekTargetTests(TempDbTestCase):
             [("Ground (system)", 25, 28)],
         )
 
-    def test_hand_corrections_count_only_stored_above_schedule(self):
+    def _net(self):
+        with session_scope(self.db) as session:
+            result = analyze_week(session, WEEK)
+            return result, net_of_hand_corrections(session, result, [WEEK])
+
+    def _drop_pilot(self, unit: str, day_index: int):
+        with session_scope(self.db) as session:
+            session.query(WeeklyOpsViewAssignment).filter_by(
+                day_date=_day(day_index), unit_code=unit, role="PIC"
+            ).delete()
+
+    def test_fixed_short_day_leaves_the_reasons(self):
         for i in range(7):
-            self._staff(i, ROTOR_UNITS)
-        # Lawrence stored one above the schedule (+1), Bedford one below (-1, ignored).
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        self._drop_pilot("D9L", 1)  # schedule: Lawrence short one day (13 of 14)
+        # Stored at 14: that day was fixed by hand.
         self._cover(
-            Bedford=(13, 0, 0),
-            Lawrence=(15, 0, 0),
+            Bedford=(14, 0, 0),
+            Lawrence=(14, 0, 0),
             Mansfield=(7, 0, 0),
             Manchester=(7, 0, 0),
             Plymouth=(14, 0, 0),
         )
-        with session_scope(self.db) as session:
-            self.assertEqual(hand_corrections(session, [WEEK]), (1, 0))
+        raw, net = self._net()
+        self.assertEqual(len(raw.shortfalls), 1)
+        self.assertEqual(net.shortfalls, [])
 
-    def test_hand_corrections_ignore_a_week_without_detail(self):
+    def test_unfixed_short_days_stay(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        self._drop_pilot("D9L", 1)
+        self._cover(  # stored matches the schedule: nothing was fixed
+            Bedford=(14, 0, 0),
+            Lawrence=(13, 0, 0),
+            Mansfield=(7, 0, 0),
+            Manchester=(7, 0, 0),
+            Plymouth=(14, 0, 0),
+        )
+        raw, net = self._net()
+        self.assertEqual(len(net.shortfalls), 1)
+        self.assertIs(net, raw)
+
+    def test_fewer_fixes_than_short_days_drop_the_earliest(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        self._drop_pilot("D9L", 1)
+        self._drop_pilot("D9L", 3)  # two short days; stored is one above the schedule
+        self._cover(
+            Bedford=(14, 0, 0),
+            Lawrence=(13, 0, 0),
+            Mansfield=(7, 0, 0),
+            Manchester=(7, 0, 0),
+            Plymouth=(14, 0, 0),
+        )
+        _raw, net = self._net()
+        self.assertEqual([s.day.isoformat() for s in net.shortfalls], [_day(3)])
+
+    def test_stored_below_the_schedule_is_not_a_fix(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        self._cover(
+            Bedford=(10, 0, 0),
+            Lawrence=(14, 0, 0),
+            Mansfield=(7, 0, 0),
+            Manchester=(7, 0, 0),
+            Plymouth=(14, 0, 0),
+        )
+        raw, net = self._net()
+        self.assertEqual(raw.shortfalls, [])
+        self.assertEqual(net.shortfalls, [])
+
+    def test_netting_leaves_the_percentage_alone(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        self._drop_pilot("D9L", 1)
+        self._cover(
+            Bedford=(14, 0, 0),
+            Lawrence=(14, 0, 0),
+            Mansfield=(7, 0, 0),
+            Manchester=(7, 0, 0),
+            Plymouth=(14, 0, 0),
+        )
+        before = self._metrics().system_rw_pct
+        self._net()
+        self.assertEqual(self._metrics().system_rw_pct, before)
+
+    def test_netting_passes_a_missing_result_through(self):
         with session_scope(self.db) as session:
-            self.assertEqual(hand_corrections(session, [WEEK]), (0, 0))
+            self.assertIsNone(net_of_hand_corrections(session, None, [WEEK]))
 
     def test_reconcile_skips_a_week_without_detail(self):
         self.assertEqual(self._reconcile(), [])

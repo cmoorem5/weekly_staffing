@@ -32,7 +32,7 @@
   </div>
   {% endif %}
   {% if coverage %}
-  <div class="card mb-4" id="coverage-reasons">
+  <div class="card mb-4" id="coverage-reasons" data-rw-plan="{{ coverage.system_rw_plan }}">
     <div class="card-body py-3">
       <h2 class="h6 card-title mb-1">Coverage and why vehicles were short</h2>
       <p class="text-muted small mb-3">
@@ -43,33 +43,26 @@
         <div class="col-sm-6">
           <div class="border rounded p-2">
             <div class="small text-muted">System rotor wing</div>
-            <div class="h4 mb-0 bmf-numeric">{{ coverage.system_rw }}</div>
-            <div class="small text-muted">{{ coverage.system_rw_counts }} planned aircraft-days staffed</div>
+            <div class="h4 mb-0 bmf-numeric" id="card-rw-pct">{{ coverage.system_rw }}</div>
+            <div class="small text-muted"><span id="card-rw-counts">{{ coverage.system_rw_counts }}</span> planned aircraft-days staffed</div>
           </div>
         </div>
         <div class="col-sm-6">
           <div class="border rounded p-2">
             <div class="small text-muted">System ground</div>
-            <div class="h4 mb-0 bmf-numeric">{{ coverage.system_gr }}</div>
-            <div class="small text-muted">{{ coverage.system_gr_counts }} planned truck-days staffed</div>
+            <div class="h4 mb-0 bmf-numeric" id="card-gr-pct">{{ coverage.system_gr }}</div>
+            <div class="small text-muted"><span id="card-gr-counts">{{ coverage.system_gr_counts }}</span> planned truck-days staffed</div>
           </div>
         </div>
       </div>
 
+      <p class="text-muted small mb-3">The percentages and counts in this card update as you change the base coverage counts below. The reasons refresh when you save.</p>
       <h3 class="h6">Short because (vehicle-days missing this seat)</h3>
       <table class="table table-sm w-auto mb-1">
         <thead><tr>{% for r in coverage.reasons %}<th class="text-end">Short a {{ r.label|lower }}</th>{% endfor %}</tr></thead>
         <tbody><tr>{% for r in coverage.reasons %}<td class="text-end bmf-numeric">{{ r.count }}</td>{% endfor %}</tr></tbody>
       </table>
-      <p class="text-muted small mb-1">A vehicle missing two seats is counted under each.</p>
-      {% if coverage.corrected_rw or coverage.corrected_gr %}
-      <p class="small mb-3">
-        <strong>Corrected by hand:</strong>
-        {% if coverage.corrected_rw %}{{ coverage.corrected_rw }} rotor wing{% endif %}{% if coverage.corrected_rw and coverage.corrected_gr %}, {% endif %}{% if coverage.corrected_gr %}{{ coverage.corrected_gr }} ground{% endif %}
-        short day{{ coverage.corrected_rw|add:coverage.corrected_gr|pluralize }} above were fixed with a coverage count correction (cause not recorded).
-        To keep the cause, mark an out-of-service aircraft or truck below instead of raising the count.
-      </p>
-      {% else %}<div class="mb-3"></div>{% endif %}
+      <p class="text-muted small mb-3">A vehicle missing two seats is counted under each.</p>
 
       <div class="row g-3">
         <div class="col-lg-6">
@@ -77,7 +70,7 @@
           <table class="table table-sm mb-0">
             <thead><tr><th>Base</th><th class="text-end">Planned</th><th class="text-end">Staffed</th><th class="text-end">%</th></tr></thead>
             <tbody>
-              {% for r in coverage.rotor %}<tr><td>{{ r.base }}</td><td class="text-end bmf-numeric">{{ r.planned }}</td><td class="text-end bmf-numeric">{{ r.staffed }}</td><td class="text-end bmf-numeric">{{ r.pct }}</td></tr>{% endfor %}
+              {% for r in coverage.rotor %}<tr data-rw-base="{{ r.base }}" data-plan="{{ r.planned }}"><td>{{ r.base }}</td><td class="text-end bmf-numeric">{{ r.planned }}</td><td class="text-end bmf-numeric rw-staffed">{{ r.staffed }}</td><td class="text-end bmf-numeric rw-pct">{{ r.pct }}</td></tr>{% endfor %}
             </tbody>
           </table>
         </div>
@@ -86,13 +79,13 @@
           <table class="table table-sm mb-2">
             <thead><tr><th>Shift</th><th class="text-end">Planned</th><th class="text-end">Staffed</th></tr></thead>
             <tbody>
-              {% for r in coverage.ground_shifts %}<tr><td>{{ r.shift }}</td><td class="text-end bmf-numeric">{{ r.planned }}</td><td class="text-end bmf-numeric">{{ r.staffed }}</td></tr>{% endfor %}
+              {% for r in coverage.ground_shifts %}<tr data-gr-shift="{{ r.key }}"><td>{{ r.shift }}</td><td class="text-end bmf-numeric">{{ r.planned }}</td><td class="text-end bmf-numeric gr-shift-staffed">{{ r.staffed }}</td></tr>{% endfor %}
             </tbody>
           </table>
           <table class="table table-sm mb-0">
             <thead><tr><th>Truck staffed from</th><th class="text-end">Shifts</th><th class="text-end">Share</th></tr></thead>
             <tbody>
-              {% for r in coverage.ground_by_base %}<tr><td>{{ r.base }}</td><td class="text-end bmf-numeric">{{ r.shifts }}</td><td class="text-end bmf-numeric">{{ r.share }}</td></tr>{% endfor %}
+              {% for r in coverage.ground_by_base %}<tr data-gr-base="{{ r.base }}"{% if not r.shifts %} style="display:none"{% endif %}><td>{{ r.base }}</td><td class="text-end bmf-numeric gr-shifts">{{ r.shifts }}</td><td class="text-end bmf-numeric gr-share">{{ r.share }}</td></tr>{% endfor %}
             </tbody>
           </table>
         </div>
@@ -383,7 +376,50 @@
   function deltaDay() { return sum("rw_staffed_day") - start.rw_staffed_day + sum("gr_staffed_day") - start.gr_staffed_day; }
   function deltaNight() { return sum("rw_staffed_night") - start.rw_staffed_night + sum("gr_staffed_night") - start.gr_staffed_night; }
 
+  // Base name -> its four coverage inputs, so each base's row can recalculate.
+  var byBase = {};
+  Array.prototype.slice
+    .call(document.querySelectorAll('input[name^="cov-"][name$="-base_name"]'))
+    .forEach(function (b) {
+      var n = b.name.match(/^cov-(\d+)-/)[1];
+      function f(c) { return document.querySelector('input[name="cov-' + n + '-' + c + '"]'); }
+      byBase[b.value] = { rwd: f("rw_staffed_day"), rwn: f("rw_staffed_night"), grd: f("gr_staffed_day"), grn: f("gr_staffed_night") };
+    });
+  var card = document.getElementById("coverage-reasons");
+  var rwPlan = card ? parseInt(card.getAttribute("data-rw-plan"), 10) || 0 : 0;
+  function pct(n, d) { return d ? (n / d * 100).toFixed(1) + "%" : "\u2014"; }
+  function setText(sel, text, root) { var el = (root || document).querySelector(sel); if (el) { el.textContent = text; } }
+
+  function refreshCard() {
+    if (!card) { return; }
+    var rwTotal = sum("rw_staffed_day") + sum("rw_staffed_night");
+    var grTotal = sum("gr_staffed_day") + sum("gr_staffed_night");
+    var grCounted = Math.min(grTotal, plan);
+    setText("#card-rw-pct", pct(rwTotal, rwPlan));
+    setText("#card-rw-counts", rwTotal + " of " + rwPlan);
+    setText("#card-gr-pct", pct(grCounted, plan));
+    setText("#card-gr-counts", grCounted + " of " + plan);
+    Array.prototype.slice.call(card.querySelectorAll("tr[data-rw-base]")).forEach(function (tr) {
+      var b = byBase[tr.getAttribute("data-rw-base")];
+      var staffed = b ? num(b.rwd) + num(b.rwn) : 0;
+      setText(".rw-staffed", staffed, tr);
+      setText(".rw-pct", pct(staffed, parseInt(tr.getAttribute("data-plan"), 10) || 0), tr);
+    });
+    var shiftTotals = { day: sum("gr_staffed_day"), night: sum("gr_staffed_night"), total: grCounted };
+    Array.prototype.slice.call(card.querySelectorAll("tr[data-gr-shift]")).forEach(function (tr) {
+      setText(".gr-shift-staffed", shiftTotals[tr.getAttribute("data-gr-shift")], tr);
+    });
+    Array.prototype.slice.call(card.querySelectorAll("tr[data-gr-base]")).forEach(function (tr) {
+      var b = byBase[tr.getAttribute("data-gr-base")];
+      var shifts = b ? num(b.grd) + num(b.grn) : 0;
+      setText(".gr-shifts", shifts, tr);
+      setText(".gr-share", grTotal ? (shifts / grTotal * 100).toFixed(1) + "%" : "0.0%", tr);
+      tr.style.display = shifts ? "" : "none";
+    });
+  }
+
   function refresh() {
+    refreshCard();
     COLS.forEach(function (c) {
       document.getElementById("cov-total-" + c).textContent = sum(c);
     });

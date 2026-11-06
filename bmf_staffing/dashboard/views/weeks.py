@@ -42,7 +42,7 @@ from staffing_tool.shortfall import (
     REASON_LABELS,
     REASON_ROLES,
     analyze_week,
-    hand_corrections,
+    net_of_hand_corrections,
     reason_counts,
 )
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
@@ -368,6 +368,7 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
     }
     ground_shifts = [
         {
+            "key": label.lower(),
             "shift": f"{label} ({per_day} a day)",
             "planned": ground_planned[label],
             "staffed": ground_staffed[label],
@@ -378,6 +379,7 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         )
     ] + [
         {
+            "key": "total",
             "shift": "Total (counted toward the %)",
             "planned": metrics.gr_planned_unit_days,
             "staffed": metrics.gr_staffed_unit_days,
@@ -390,11 +392,13 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
             "share": f"{base_metrics[base]['gr_share'] * 100:.1f}%",
         }
         for base in BASES
-        if base in base_metrics and base_metrics[base]["gr_staffed"]
+        if base in base_metrics
     ]
-    counts = reason_counts(result.shortfalls)
+    # Days already fixed by hand are no longer short, so the reasons and the list
+    # below match the percentages above.
     with session_scope(DB_PATH) as session:
-        corrected_rw, corrected_gr = hand_corrections(session, [week_start])
+        result = net_of_hand_corrections(session, result, [week_start]) or result
+    counts = reason_counts(result.shortfalls)
     short_rows = [
         {
             "day": s.day.strftime("%a %b %d"),
@@ -410,6 +414,7 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         "system_gr": f"{metrics.system_gr_pct * 100:.1f}%",
         "system_gr_counts": f"{metrics.gr_staffed_unit_days} of {metrics.gr_planned_unit_days}",
         "ground_plan": metrics.gr_planned_unit_days,
+        "system_rw_plan": metrics.rw_total_unit_days,
         "reasons": [
             {"label": REASON_LABELS[r], "count": counts[r]} for r in REASON_ROLES
         ],
@@ -418,8 +423,6 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         "ground_by_base": by_base,
         "short_rows": short_rows,
         "no_vehicle_count": len(result.no_vehicle),
-        "corrected_rw": corrected_rw,
-        "corrected_gr": corrected_gr,
     }
 
 
