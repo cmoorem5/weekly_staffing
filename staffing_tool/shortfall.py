@@ -44,7 +44,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import func
 
@@ -193,6 +193,8 @@ class ShortfallResult:
     # Every fully staffed vehicle-day, including ones beyond the day's plan. The
     # weekly ground % is built from this (an extra truck offsets a short day).
     staffed_all: Counter = field(default_factory=Counter)
+    # "D" / "N" -> planned vehicle-days taken off the plan for "no vehicle".
+    planned_removed: Counter = field(default_factory=Counter)
     days_analyzed: int = 0
     weeks_without_detail: list[str] = field(default_factory=list)
 
@@ -219,9 +221,8 @@ def find_shortfalls(
     result.days_analyzed = len(day_list)
     for day in day_list:
         for g in groups:
-            slots = g.slots
             staffed_count = 0
-            unavailable = 0
+            unavailable: list[str] = []  # day/night of each down vehicle
             gaps: list[tuple[int, int, str, tuple[str, ...], bool]] = []
             for order, unit in enumerate(g.units):
                 roles = staffed_roles.get((day, unit), set())
@@ -243,7 +244,8 @@ def find_shortfalls(
                     staffed_count += 1
                     continue
                 if marked:
-                    unavailable += 1  # out of service: not a staffing problem
+                    # out of service: not a staffing problem
+                    unavailable.append(UNIT_MAP[unit][2])
                     continue
                 gaps.append(
                     (len(crew) + int(op_missing), order, unit, crew, op_missing)
@@ -251,7 +253,9 @@ def find_shortfalls(
             # A vehicle out of service can't be staffed, so it takes a slot off
             # the plan only when too few other vehicles remain to fill them all
             # (a down aircraft always does; one of four day trucks doesn't).
-            slots = min(slots, len(g.units) - unavailable)
+            slots = min(g.slots, len(g.units) - len(unavailable))
+            for day_night in unavailable[: g.slots - slots]:
+                result.planned_removed[day_night] += 1
             filled = min(staffed_count, slots)
             result.planned[(g.scope, g.service_type)] += slots
             result.staffed[(g.scope, g.service_type)] += filled
@@ -275,7 +279,7 @@ def find_shortfalls(
 
 
 def _week_days(week_start: str) -> list[date]:
-    start = datetime.strptime(week_start, "%Y-%m-%d").date()
+    start = date.fromisoformat(week_start)
     return [start + timedelta(days=i) for i in range(7)]
 
 
@@ -346,9 +350,9 @@ def analyze_range(
     )
     roles: dict[tuple[date, str], set[str]] = defaultdict(set)
     for day_s, unit, role in staffed_rows:
-        roles[(datetime.strptime(day_s, "%Y-%m-%d").date(), unit)].add(role)
+        roles[(date.fromisoformat(day_s), unit)].add(role)
     outages = {
-        (datetime.strptime(day_s, "%Y-%m-%d").date(), unit): note or ""
+        (date.fromisoformat(day_s), unit): note or ""
         for day_s, unit, note in outage_rows
     }
     days = [
@@ -396,6 +400,45 @@ def reason_counts(shortfalls: Iterable[UnitDayShortfall]) -> dict[str, int]:
     return out
 
 
+def _analyze_weeks(session, week_starts: Iterable[str]) -> dict[str, ShortfallResult]:
+    """Shortfalls for each stored week that has name-level rows, read in bulk.
+
+    Two queries for any number of weeks, so a caller working through a fiscal
+    year does not pay a round trip (and a re-parse of the same rows) per week.
+    Weeks without name-level rows are absent from the result.
+    """
+    weeks = sorted(set(week_starts))
+    if not weeks:
+        return {}
+    with_rows: set[str] = set()
+    roles: dict[str, dict[tuple[date, str], set[str]]] = defaultdict(
+        lambda: defaultdict(set)
+    )
+    for week, day_s, unit, role, is_staffed in session.query(
+        WeeklyOpsViewAssignment.week_start,
+        WeeklyOpsViewAssignment.day_date,
+        WeeklyOpsViewAssignment.unit_code,
+        WeeklyOpsViewAssignment.role,
+        WeeklyOpsViewAssignment.is_staffed,
+    ).filter(WeeklyOpsViewAssignment.week_start.in_(weeks)):
+        with_rows.add(week)
+        if is_staffed == 1:
+            roles[week][(date.fromisoformat(day_s), unit)].add(role)
+    outages: dict[str, dict[tuple[date, str], str]] = defaultdict(dict)
+    if with_rows:
+        for week, day_s, unit, note in session.query(
+            WeeklyVehicleOutage.week_start,
+            WeeklyVehicleOutage.day_date,
+            WeeklyVehicleOutage.unit_code,
+            WeeklyVehicleOutage.note,
+        ).filter(WeeklyVehicleOutage.week_start.in_(sorted(with_rows))):
+            outages[week][(date.fromisoformat(day_s), unit)] = note or ""
+    return {
+        week: find_shortfalls(roles[week], _week_days(week), outages[week])
+        for week in sorted(with_rows)
+    }
+
+
 def analyze_week(
     session, week_start: str, *, tracked_only: bool = False
 ) -> ShortfallResult | None:
@@ -406,40 +449,7 @@ def analyze_week(
     """
     if tracked_only and not uses_current_definitions(week_start):
         return None
-    has_rows = (
-        session.query(WeeklyOpsViewAssignment.id)
-        .filter(WeeklyOpsViewAssignment.week_start == week_start)
-        .first()
-    )
-    if has_rows is None:
-        return None
-    staffed_rows = (
-        session.query(
-            WeeklyOpsViewAssignment.day_date,
-            WeeklyOpsViewAssignment.unit_code,
-            WeeklyOpsViewAssignment.role,
-        )
-        .filter(WeeklyOpsViewAssignment.week_start == week_start)
-        .filter(WeeklyOpsViewAssignment.is_staffed == 1)
-        .all()
-    )
-    outage_rows = (
-        session.query(
-            WeeklyVehicleOutage.day_date,
-            WeeklyVehicleOutage.unit_code,
-            WeeklyVehicleOutage.note,
-        )
-        .filter(WeeklyVehicleOutage.week_start == week_start)
-        .all()
-    )
-    roles: dict[tuple[date, str], set[str]] = defaultdict(set)
-    for day_s, unit, role in staffed_rows:
-        roles[(datetime.strptime(day_s, "%Y-%m-%d").date(), unit)].add(role)
-    outages = {
-        (datetime.strptime(day_s, "%Y-%m-%d").date(), unit): note or ""
-        for day_s, unit, note in outage_rows
-    }
-    return find_shortfalls(roles, _week_days(week_start), outages)
+    return _analyze_weeks(session, [week_start]).get(week_start)
 
 
 REASON_TABLE_HEADERS: list[str] = ["", "Rotor wing", "Ground"]
@@ -510,6 +520,53 @@ def _stored_staffed(cov: WeeklyBaseCoverage | None, kind: str) -> int:
     return day + night if day + night else total
 
 
+def reconcile_weeks(
+    session, week_starts: Iterable[str]
+) -> dict[str, list[ReconcileRow]]:
+    """``reconcile_week`` for many weeks in three queries, keyed by week_start.
+
+    Weeks with no name-level detail are absent from the result.
+    """
+    results = _analyze_weeks(session, week_starts)
+    if not results:
+        return {}
+    covs: dict[str, dict[str, WeeklyBaseCoverage]] = defaultdict(dict)
+    for c in session.query(WeeklyBaseCoverage).filter(
+        WeeklyBaseCoverage.week_start.in_(sorted(results))
+    ):
+        covs[str(c.week_start)][str(c.base_name)] = c
+    rw_groups = [g for g in planned_groups() if g.service_type == "RW"]
+    out: dict[str, list[ReconcileRow]] = {}
+    for week_start, result in results.items():
+        week_covs = covs[week_start]
+        rows = [
+            ReconcileRow(
+                week_start,
+                g.scope,
+                "RW",
+                _stored_staffed(week_covs.get(g.scope), "rw"),
+                result.staffed[(g.scope, "RW")],
+            )
+            for g in rw_groups
+        ]
+        planned = sum(n for (_scope, svc), n in result.planned.items() if svc == "GR")
+        stored = sum(_stored_staffed(c, "gr") for c in week_covs.values())
+        derived = sum(
+            n for (_scope, svc), n in result.staffed_all.items() if svc == "GR"
+        )
+        rows.append(
+            ReconcileRow(
+                week_start,
+                "Ground (system)",
+                "GR",
+                min(stored, planned),
+                min(derived, planned),
+            )
+        )
+        out[week_start] = rows
+    return out
+
+
 def reconcile_week(session, week_start: str) -> list[ReconcileRow]:
     """Compare one week's stored coverage with its schedule detail.
 
@@ -519,39 +576,7 @@ def reconcile_week(session, week_start: str) -> list[ReconcileRow]:
     correction (or detail that is out of date); this lists exactly where.
     Returns [] for a week with no name-level detail.
     """
-    result = analyze_week(session, week_start)
-    if result is None:
-        return []
-    covs = {
-        c.base_name: c
-        for c in session.query(WeeklyBaseCoverage).filter(
-            WeeklyBaseCoverage.week_start == week_start
-        )
-    }
-    rows = [
-        ReconcileRow(
-            week_start,
-            g.scope,
-            "RW",
-            _stored_staffed(covs.get(g.scope), "rw"),
-            result.staffed[(g.scope, "RW")],
-        )
-        for g in planned_groups()
-        if g.service_type == "RW"
-    ]
-    planned = sum(n for (_scope, svc), n in result.planned.items() if svc == "GR")
-    stored = sum(_stored_staffed(c, "gr") for c in covs.values())
-    derived = sum(n for (_scope, svc), n in result.staffed_all.items() if svc == "GR")
-    rows.append(
-        ReconcileRow(
-            week_start,
-            "Ground (system)",
-            "GR",
-            min(stored, planned),
-            min(derived, planned),
-        )
-    )
-    return rows
+    return reconcile_weeks(session, [week_start]).get(week_start, [])
 
 
 def net_of_hand_corrections(
@@ -572,18 +597,25 @@ def net_of_hand_corrections(
     """
     if result is None:
         return None
+    # Only a week that has short days in ``result`` can have one dropped, so the
+    # rest (every week before the current definitions, on a long window) are
+    # never read.
+    week_of_day = {day: week for week in week_starts for day in _week_days(week)}
+    by_week: dict[str, list[UnitDayShortfall]] = defaultdict(list)
+    for s in result.shortfalls:
+        week = week_of_day.get(s.day)
+        if week is not None:
+            by_week[week].append(s)
     drop: set[int] = set()
-    for week in week_starts:
-        days = set(_week_days(week))
-        for row in reconcile_week(session, week):
+    for week, rows in reconcile_weeks(session, by_week).items():
+        for row in rows:
             if row.diff <= 0:
                 continue
             candidates = sorted(
                 (
                     s
-                    for s in result.shortfalls
-                    if s.day in days
-                    and s.service_type == row.service_type
+                    for s in by_week[week]
+                    if s.service_type == row.service_type
                     and (row.service_type == "GR" or s.base == row.scope)
                 ),
                 key=lambda s: (s.day, s.unit_code),

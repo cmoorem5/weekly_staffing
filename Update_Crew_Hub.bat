@@ -68,6 +68,10 @@ if not exist ".env" (
   echo       Created .env from .env.example - edit it later to turn on
   echo       real email sending or PostgreSQL. Defaults work as-is.
 )
+REM Replace the sample secret key with a random one and turn debug mode off
+REM for this desktop install. Safe to rerun; see scripts\secure_env.py.
+"%PYEXE%" scripts\secure_env.py
+if errorlevel 1 echo       WARNING: could not check .env - continuing with it as it is.
 
 REM --- 5) Database backup, before any migration runs ----------------
 REM Migrations change the schema, so both databases are copied to
@@ -84,16 +88,26 @@ if not defined TS (
   echo       ERROR: could not build a timestamp - refusing to skip the backup.
   goto :fail
 )
-if exist "bmf_staffing\db.sqlite3" (
-  copy /Y "bmf_staffing\db.sqlite3" "archive\crew_hub_%TS%.sqlite3" >nul
+REM The databases may already live outside this folder (see the move
+REM below), so ask the app where they are instead of assuming.
+set "HUBDB=bmf_staffing\db.sqlite3"
+set "STAFFDB=staffing.db"
+set "PATHFILE=%TEMP%\crew_hub_dbpath.txt"
+"%PYEXE%" -m staffing_tool.paths crewhub > "%PATHFILE%" 2>nul
+if not errorlevel 1 for /f "usebackq delims=" %%P in ("%PATHFILE%") do set "HUBDB=%%P"
+"%PYEXE%" -m staffing_tool.paths staffing > "%PATHFILE%" 2>nul
+if not errorlevel 1 for /f "usebackq delims=" %%P in ("%PATHFILE%") do set "STAFFDB=%%P"
+del "%PATHFILE%" >nul 2>&1
+if exist "%HUBDB%" (
+  copy /Y "%HUBDB%" "archive\crew_hub_%TS%.sqlite3" >nul
   if errorlevel 1 goto :fail
   echo       Crew Hub schedules, rotations, payroll, time off
   echo         -^> archive\crew_hub_%TS%.sqlite3
 ) else (
   echo       No Crew Hub database yet - nothing to back up ^(first run^).
 )
-if exist "staffing.db" (
-  copy /Y "staffing.db" "archive\staffing_%TS%.db" >nul
+if exist "%STAFFDB%" (
+  copy /Y "%STAFFDB%" "archive\staffing_%TS%.db" >nul
   if errorlevel 1 goto :fail
   echo       Staffing KPI database
   echo         -^> archive\staffing_%TS%.db
@@ -105,6 +119,14 @@ if not errorlevel 1 (
   echo             cannot back up. Take a pg_dump before continuing if you
   echo             have not already.
 )
+echo.
+
+REM One-time move of the live databases out of this folder, which can sync
+REM through OneDrive (a database copied mid-write is how they get corrupted).
+REM Runs after the backup above, deletes nothing, and does nothing once done.
+REM A refusal (for example Crew Hub is still open) is not fatal: the app keeps
+REM using the databases where they are and the move is retried next update.
+"%PYEXE%" scripts\relocate_databases.py
 echo.
 
 REM --- 6) Database migrations ---------------------------------------

@@ -43,7 +43,7 @@ if str(_ROOT) not in sys.path:
 
 from staffing_tool.db import ensure_db_ready, session_scope
 from staffing_tool.models import ScheduleImport
-from staffing_tool.paths import PROJECT_ROOT
+from staffing_tool.paths import staffing_db_path
 from staffing_tool.schedule_apply import (
     manager_last_names_upper_for_parse,
     training_codes_upper_for_parse,
@@ -56,7 +56,7 @@ from staffing_tool.unit_mappings import resolve_unit_overrides
 
 
 def _default_db_path() -> str:
-    return str(PROJECT_ROOT / "staffing.db")
+    return str(staffing_db_path())
 
 
 def _week_in_range(
@@ -288,7 +288,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--db",
         default=_default_db_path(),
-        help="Path to staffing.db (default: staffing.db in repo root).",
+        help="Path to staffing.db (default: the live staffing.db).",
     )
     parser.add_argument(
         "--dir",

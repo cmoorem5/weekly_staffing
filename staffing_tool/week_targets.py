@@ -79,6 +79,7 @@ def recompute_week_targets(session: Session, week_start: str) -> bool:
     result = analyze_week(session, week_start)
     if result is None:
         week.gr_target_planned = None
+        week.plan_removed_night = 0
         for c in coverages:
             c.rw_planned_removed = 0
         session.flush()
@@ -89,6 +90,7 @@ def recompute_week_targets(session: Session, week_start: str) -> bool:
         result.planned[(GROUND_DAY_SCOPE, "GR")]
         + result.planned[(GROUND_NIGHT_SCOPE, "GR")]
     )
+    week.plan_removed_night = result.planned_removed["N"]
     full_rw = {g.scope: g.slots * 7 for g in planned_groups() if g.service_type == "RW"}
     for c in coverages:
         full = full_rw.get(c.base_name)

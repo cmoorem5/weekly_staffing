@@ -39,7 +39,7 @@ if str(_ROOT) not in sys.path:
 
 from staffing_tool.db import ensure_db_ready
 from staffing_tool.metrics import BASE_DISPLAY_ORDER
-from staffing_tool.paths import PROJECT_ROOT
+from staffing_tool.paths import PROJECT_ROOT, staffing_db_path
 from staffing_tool.schedule_import import UNIT_MAP
 from staffing_tool.shortfall import (
     CAUSE_BOTH,
@@ -372,7 +372,7 @@ def reconcile(db_path: str, start: date, end: date) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--db", default=str(PROJECT_ROOT / "staffing.db"))
+    p.add_argument("--db", default=str(staffing_db_path()))
     p.add_argument("--start", type=date.fromisoformat, default=None)
     p.add_argument("--end", type=date.fromisoformat, default=None)
     p.add_argument("--out-dir", default=str(PROJECT_ROOT / "output"))

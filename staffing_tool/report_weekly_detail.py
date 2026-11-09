@@ -72,13 +72,8 @@ def _verify_weekly_detail_checks(
     """Run verification rules for Weekly Staffing Detail. Returns list of (check_name, passed, message)."""
     checks = []
     # Required Total = Required Day + Required Night
-    # (vehicles out of service with no crew are off the plan, so the week's total
-    # is the day + night plan less those)
-    rt = (
-        this_metrics.required_day
-        + this_metrics.required_night
-        - this_metrics.plan_removed_unit_days
-    )
+    # (all three are net of vehicles out of service with no crew)
+    rt = this_metrics.required_day + this_metrics.required_night
     ok = rt == this_metrics.required_total
     checks.append(
         ("Required Total = Day + Night", ok, f"{rt} vs {this_metrics.required_total}")

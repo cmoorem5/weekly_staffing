@@ -405,6 +405,11 @@ class WeeklyStaffing(Base):
     # Ground trucks planned for the week (3 day + 1 night a day = 28), less any
     # truck-days taken off the plan for "no vehicle" (week_targets). NULL = 28.
     gr_target_planned = Column(Integer, nullable=True)
+    # Of the planned vehicle-days taken off this week's plan for "no vehicle"
+    # (rotor wing ``rw_planned_removed`` plus ground below 28), how many were
+    # night vehicles. The rest were day vehicles. Lets the day and night fill
+    # rates use the same net plan the staffing rate does (week_targets).
+    plan_removed_night = Column(Integer, nullable=False, default=0)
     # CEO report: manually entered unpartnered staff counts (not derived from schedule import).
     medic_unpartnered = Column(Integer, nullable=False, default=0)
     rn_unpartnered_staff = Column(Integer, nullable=False, default=0)
