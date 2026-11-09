@@ -68,6 +68,10 @@ if not exist ".env" (
   echo       Created .env from .env.example - edit it later to turn on
   echo       real email sending or PostgreSQL. Defaults work as-is.
 )
+REM Replace the sample secret key with a random one and turn debug mode off
+REM for this desktop install. Safe to rerun; see scripts\secure_env.py.
+"%PYEXE%" scripts\secure_env.py
+if errorlevel 1 echo       WARNING: could not check .env - continuing with it as it is.
 
 REM --- 5) Database backup, before any migration runs ----------------
 REM Migrations change the schema, so both databases are copied to

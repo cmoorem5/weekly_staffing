@@ -43,6 +43,7 @@ deployment, set these before starting Django:
 | `DJANGO_DEBUG` | `true` | Set to `0`/`false` in production. Turning this off automatically enables secure cookies, HSTS, content-type nosniff, `X-Frame-Options: DENY`, and HTTPS redirect. |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated hostnames. |
 | `DJANGO_SSL_REDIRECT` | `1` | Set to `0` if TLS is terminated elsewhere and you don't want Django to force redirects. |
+| `DJANGO_LOOPBACK_HTTP` | off | Desktop install only (waitress on `127.0.0.1`). With `DJANGO_DEBUG` off, skips the settings that need TLS (HTTPS redirect, secure-only cookies, HSTS) and pins the allowed hosts to loopback. `Update_Crew_Hub.bat` turns it on through `scripts/secure_env.py`, which also replaces the sample secret key with a random one. Never set it on a networked deployment. |
 
 Validate a production configuration with `python manage.py check --deploy`.
 

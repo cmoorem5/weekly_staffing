@@ -41,8 +41,28 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
-# Fail fast in production if the placeholder secret was never replaced.
-if not DEBUG and SECRET_KEY == "dev-key-change-in-production":
+# Desktop deployment: waitress on 127.0.0.1 over plain HTTP, opened by the
+# launcher. With DJANGO_DEBUG off this keeps the production behavior that
+# matters on one machine (no debug error pages, a real secret key) and leaves
+# out the parts that need TLS (HTTPS redirect, secure-only cookies, HSTS),
+# which would otherwise make http://127.0.0.1 unusable. It also pins the
+# allowed hosts to loopback, so the relaxed cookies can never be served to
+# another machine by mistake. scripts/secure_env.py turns it on.
+LOOPBACK_HTTP = os.environ.get("DJANGO_LOOPBACK_HTTP", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+if LOOPBACK_HTTP:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+# Fail fast in production if a placeholder secret was never replaced: the
+# built-in default, or the sample value in .env.example (both are public).
+PLACEHOLDER_SECRET_KEYS = (
+    "dev-key-change-in-production",
+    "change-me-to-a-long-random-string",
+)
+if not DEBUG and SECRET_KEY in PLACEHOLDER_SECRET_KEYS:
     raise RuntimeError(
         "DJANGO_SECRET_KEY must be set to a unique value when DJANGO_DEBUG is off."
     )
@@ -142,13 +162,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Hardening that only applies once DEBUG is off (i.e. a real deployment).
 # Left relaxed in local/dev so the loopback dashboard keeps working over HTTP.
 if not DEBUG:
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+if not DEBUG and not LOOPBACK_HTTP:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    X_FRAME_OPTIONS = "DENY"
     # Honor X-Forwarded-Proto when running behind a TLS-terminating proxy.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SSL_REDIRECT", "1").lower() in (
