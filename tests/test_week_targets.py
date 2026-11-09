@@ -166,6 +166,142 @@ class WeekTargetTests(TempDbTestCase):
         self.assertAlmostEqual(m.system_rw_pct, 27 / 55)
         self.assertEqual(m.base_metrics["Lawrence"]["rw_planned"], 13.0)
 
+    def _night_aircraft_down_all_week(self):
+        """N7P (Plymouth night) down all week with no crew; everything else staffed."""
+        for i in range(7):
+            self._staff(i, tuple(u for u in ROTOR_UNITS if u != "N7P") + NORMAL_UNITS)
+        with session_scope(self.db) as session:
+            for i in range(7):
+                session.add(
+                    WeeklyVehicleOutage(
+                        week_start=WEEK,
+                        day_date=_day(i),
+                        unit_code="N7P",
+                        note="aircraft down",
+                        created_at="x",
+                    )
+                )
+            for base, (rw_d, rw_n, gr_d, gr_n) in {
+                "Bedford": (7, 7, 7, 7),
+                "Lawrence": (7, 7, 7, 0),
+                "Mansfield": (7, 0, 7, 0),
+                "Manchester": (7, 0, 0, 0),
+                "Plymouth": (7, 0, 0, 0),
+            }.items():
+                session.add(
+                    WeeklyBaseCoverage(
+                        week_start=WEEK,
+                        base_name=base,
+                        rw_staffed_unit_days=rw_d + rw_n,
+                        rw_staffed_day=rw_d,
+                        rw_staffed_night=rw_n,
+                        gr_staffed_unit_days=gr_d + gr_n,
+                        gr_staffed_day=gr_d,
+                        gr_staffed_night=gr_n,
+                    )
+                )
+
+    def test_night_aircraft_down_is_not_a_night_gap(self):
+        # The night fill rate uses the same net plan the staffing rate does:
+        # it used to read 21 / 28 = 75% beside a staffing rate of 100%.
+        self._night_aircraft_down_all_week()
+        with session_scope(self.db) as session:
+            recompute_week_targets(session, WEEK)
+            self.assertEqual(session.query(WeeklyStaffing).one().plan_removed_night, 7)
+        m = self._metrics()
+        self.assertEqual((m.required_day, m.required_night), (56, 21))
+        self.assertEqual(m.required_total, 77)
+        self.assertAlmostEqual(m.staffing_rate, 1.0)
+        self.assertAlmostEqual(m.day_staffing_rate, 1.0)
+        self.assertAlmostEqual(m.night_staffing_rate, 1.0)
+
+    def test_day_aircraft_down_comes_off_the_day_plan(self):
+        for i in range(7):
+            self._staff(i, ROTOR_UNITS + NORMAL_UNITS)
+        with session_scope(self.db) as session:
+            session.query(WeeklyOpsViewAssignment).filter_by(
+                day_date=_day(3), unit_code="D9L"
+            ).delete()
+            session.add(
+                WeeklyVehicleOutage(
+                    week_start=WEEK,
+                    day_date=_day(3),
+                    unit_code="D9L",
+                    note="aircraft down",
+                    created_at="x",
+                )
+            )
+        self._cover(Lawrence=(13, 0, 0))
+        with session_scope(self.db) as session:
+            recompute_week_targets(session, WEEK)
+            self.assertEqual(session.query(WeeklyStaffing).one().plan_removed_night, 0)
+        m = self._metrics()
+        self.assertEqual((m.required_day, m.required_night), (55, 28))
+
+    def test_night_split_is_filled_in_when_the_column_is_first_added(self):
+        # A database from before the column existed: the upgrade recomputes the
+        # weeks that have plan removals, so nobody has to run a script.
+        from sqlalchemy import text
+        from staffing_tool.db import get_engine, init_db
+
+        self._night_aircraft_down_all_week()
+        with session_scope(self.db) as session:
+            recompute_week_targets(session, WEEK)
+        engine = get_engine(self.db)
+        with engine.connect() as conn:
+            conn.execute(
+                text("ALTER TABLE weekly_staffing DROP COLUMN plan_removed_night")
+            )
+            conn.commit()
+        init_db(self.db)
+        with session_scope(self.db) as session:
+            self.assertEqual(session.query(WeeklyStaffing).one().plan_removed_night, 7)
+
+    def test_netting_a_long_window_does_not_query_per_week(self):
+        from sqlalchemy import event
+        from staffing_tool.db import get_engine
+        from staffing_tool.shortfall import analyze_range
+
+        weeks = [
+            (date.fromisoformat(WEEK) + timedelta(days=7 * i)).isoformat()
+            for i in range(12)
+        ]
+        with session_scope(self.db) as session:
+            for w in weeks[1:]:
+                session.add(WeeklyStaffing(week_start=w, filled_day=0, filled_night=0))
+            session.flush()
+            for w in weeks:
+                session.add(
+                    WeeklyOpsViewAssignment(
+                        week_start=w,
+                        day_date=w,
+                        unit_code="D7B",
+                        role="RN",
+                        person_display="N",
+                        raw_value="N",
+                        is_staffed=1,
+                    )
+                )
+        statements = []
+        engine = get_engine(self.db)
+
+        def _count(*args):
+            statements.append(args[2])
+
+        with session_scope(self.db) as session:
+            result = analyze_range(
+                session,
+                date.fromisoformat(weeks[0]),
+                date.fromisoformat(weeks[-1]) + timedelta(days=6),
+            )
+            self.assertTrue(result.shortfalls)
+            event.listen(engine, "before_cursor_execute", _count)
+            try:
+                net_of_hand_corrections(session, result, weeks)
+            finally:
+                event.remove(engine, "before_cursor_execute", _count)
+        self.assertLessEqual(len(statements), 3)
+
     def test_week_without_detail_is_cleared_not_guessed(self):
         with session_scope(self.db) as session:
             row = session.query(WeeklyStaffing).one()

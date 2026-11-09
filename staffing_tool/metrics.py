@@ -120,8 +120,8 @@ class WeekMetrics:
     # the plan for "no vehicle". Denominator of ``system_gr_pct``.
     gr_planned_unit_days: int = SYSTEM_GR_MAX_SHIFTS_PER_WEEK
     # Planned vehicle-days (rotor wing + ground) taken off the week's plan because
-    # a vehicle was out of service with no crew ("no vehicle"). The staffing
-    # rate's denominator is ``required_total`` after this.
+    # a vehicle was out of service with no crew ("no vehicle"). ``required_day``,
+    # ``required_night`` and ``required_total`` are all net of this.
     plan_removed_unit_days: int = 0
 
 
@@ -330,7 +330,17 @@ def compute_week_metrics(
             gr_planned,
         )
         plan_removed = rw_removed_total + (SYSTEM_GR_MAX_SHIFTS_PER_WEEK - gr_planned)
-        required_total = REQUIRED_TOTAL - plan_removed
+        # Day and night plans come off the same removals, so the day and night
+        # fill rates agree with the staffing rate (a night aircraft out of
+        # service with no crew is not a night gap either).
+        removed_night = min(
+            max(0, int(getattr(ws, "plan_removed_night", 0) or 0)),
+            plan_removed,
+            REQUIRED_NIGHT,
+        )
+        required_night = REQUIRED_NIGHT - removed_night
+        required_day = max(0, REQUIRED_DAY - (plan_removed - removed_night))
+        required_total = required_day + required_night
     filled_total = filled_day + filled_night
     vacancies = max(0, required_total - filled_total)
     staffing_rate = (

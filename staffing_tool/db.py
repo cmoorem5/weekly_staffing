@@ -108,14 +108,27 @@ def migrate_weekly_staffing_columns(engine: Engine) -> None:
         conn.commit()
 
 
-def migrate_week_target_columns(engine: Engine) -> None:
-    """Add the ground-target and no-vehicle columns (all additive, safe to rerun)."""
+def migrate_week_target_columns(engine: Engine) -> bool:
+    """Add the ground-target and no-vehicle columns (all additive, safe to rerun).
+
+    Returns True when ``plan_removed_night`` was added just now, so ``init_db``
+    can fill it for the weeks already stored.
+    """
+    added_night_split = False
     with engine.connect() as conn:
         columns = _pragma_column_names(conn, "weekly_staffing")
         if "gr_target_planned" not in columns:
             conn.execute(
                 text("ALTER TABLE weekly_staffing ADD COLUMN gr_target_planned INTEGER")
             )
+        if "plan_removed_night" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE weekly_staffing ADD COLUMN "
+                    "plan_removed_night INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+            added_night_split = True
         columns = _pragma_column_names(conn, "weekly_base_coverage")
         if "rw_planned_removed" not in columns:
             conn.execute(
@@ -125,6 +138,46 @@ def migrate_week_target_columns(engine: Engine) -> None:
                 )
             )
         conn.commit()
+    return added_night_split
+
+
+def _backfill_plan_removed_night(session: Session) -> None:
+    """Fill ``plan_removed_night`` for stored weeks that have plan removals.
+
+    Runs once, when the column is first added. Only weeks with a no-vehicle
+    removal need it (every other week is correctly 0), and recomputing a week
+    from its stored schedule rows writes the same figures an import or a save
+    already wrote, plus the new split. Best-effort: a failure leaves the split
+    at 0 (all removals read as day vehicles) and must never stop startup.
+    """
+    # Imported here: week_targets imports this module through shortfall.
+    from .models import WeeklyBaseCoverage, WeeklyStaffing
+    from .week_targets import recompute_week_targets
+
+    try:
+        weeks = {
+            w
+            for (w,) in session.query(WeeklyBaseCoverage.week_start).filter(
+                WeeklyBaseCoverage.rw_planned_removed > 0
+            )
+        } | {
+            w
+            for (w,) in session.query(WeeklyStaffing.week_start).filter(
+                WeeklyStaffing.gr_target_planned.isnot(None)
+            )
+        }
+        for week_start in sorted(weeks):
+            recompute_week_targets(session, week_start)
+        session.flush()
+    except Exception:  # noqa: BLE001
+        import logging
+
+        session.rollback()
+        logging.getLogger(__name__).warning(
+            "Could not backfill plan_removed_night; run "
+            "scripts/recompute_week_targets.py",
+            exc_info=True,
+        )
 
 
 def migrate_staff_roster_hire_date(engine: Engine) -> None:
@@ -486,7 +539,7 @@ def init_db(db_path: str | None = None) -> None:
     migrate_weekly_staffing_columns(engine)
     migrate_unpartnered_note_columns(engine)
     migrate_add_base_coverage_day_night(engine)
-    migrate_week_target_columns(engine)
+    added_night_split = migrate_week_target_columns(engine)
     migrate_schedule_persistence_tables(engine)
     migrate_manager_shift_event_type(engine)
     migrate_manager_shift_leave_type(engine)
@@ -501,6 +554,9 @@ def init_db(db_path: str | None = None) -> None:
         seed_manager_roster_if_empty(session)
         backfill_canonical_manager_shift_names(session)
         session.commit()
+        if added_night_split:
+            _backfill_plan_removed_night(session)
+            session.commit()
     migrate_leave_exposure_to_shift_exception_metric(engine)
     migrate_system_gr_kpi_thresholds(engine)
 

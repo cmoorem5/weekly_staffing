@@ -451,12 +451,12 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             prepared_date=date.today().strftime("%B %d, %Y"),
             day_night_fill=[
                 (
-                    "Day (56 required)",
+                    f"Day ({metrics.required_day} required)",
                     f"{metrics.filled_day} / {metrics.required_day}",
                     _pct(metrics.day_staffing_rate),
                 ),
                 (
-                    "Night (28 required)",
+                    f"Night ({metrics.required_night} required)",
                     f"{metrics.filled_night} / {metrics.required_night}",
                     _pct(metrics.night_staffing_rate),
                 ),

@@ -13,11 +13,11 @@ This spec is the single source of truth for visual style across all BMF operatio
 ## 2. Brand Colors
 
 ```python
-NAVY  = colors.HexColor('#052C47')   # Title banner bg, section bar bg, table header rows
-BLUE  = colors.HexColor('#2A4492')   # Primary chart series, accent elements
-LGRAY = colors.HexColor('#E6E6E6')   # Alternating row fill, sub-header fill
-MGRAY = colors.HexColor('#CBC7D1')   # Table borders, total-row fill, dividers
-RED   = colors.HexColor('#C12126')   # Alerts, top exception drivers, OT trend line
+NAVY = colors.HexColor("#052C47")  # Title banner bg, section bar bg, table header rows
+BLUE = colors.HexColor("#2A4492")  # Primary chart series, accent elements
+LGRAY = colors.HexColor("#E6E6E6")  # Alternating row fill, sub-header fill
+MGRAY = colors.HexColor("#CBC7D1")  # Table borders, total-row fill, dividers
+RED = colors.HexColor("#C12126")  # Alerts, top exception drivers, OT trend line
 WHITE = colors.white
 BLACK = colors.black
 ```
@@ -42,15 +42,30 @@ Hex values are canonical. Do not substitute.
 Font files live in `./fonts/` relative to the build script. Registration must happen at module load, before any flowable or canvas draw call.
 
 ```python
-FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
+FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+
 
 def register_fonts():
-    pdfmetrics.registerFont(TTFont('BarlowRegular',       os.path.join(FONT_DIR, 'Barlow-Regular.ttf')))
-    pdfmetrics.registerFont(TTFont('BarlowBold',          os.path.join(FONT_DIR, 'Barlow-Bold.ttf')))
-    pdfmetrics.registerFont(TTFont('BarlowSemiBold',      os.path.join(FONT_DIR, 'Barlow-SemiBold.ttf')))
-    pdfmetrics.registerFont(TTFont('BarlowCondensedBold', os.path.join(FONT_DIR, 'BarlowCondensed-Bold.ttf')))
-    pdfmetrics.registerFont(TTFont('IBMPlexMonoRegular',  os.path.join(FONT_DIR, 'IBMPlexMono-Regular.ttf')))
-    pdfmetrics.registerFont(TTFont('IBMPlexMonoBold',     os.path.join(FONT_DIR, 'IBMPlexMono-Bold.ttf')))
+    pdfmetrics.registerFont(
+        TTFont("BarlowRegular", os.path.join(FONT_DIR, "Barlow-Regular.ttf"))
+    )
+    pdfmetrics.registerFont(
+        TTFont("BarlowBold", os.path.join(FONT_DIR, "Barlow-Bold.ttf"))
+    )
+    pdfmetrics.registerFont(
+        TTFont("BarlowSemiBold", os.path.join(FONT_DIR, "Barlow-SemiBold.ttf"))
+    )
+    pdfmetrics.registerFont(
+        TTFont(
+            "BarlowCondensedBold", os.path.join(FONT_DIR, "BarlowCondensed-Bold.ttf")
+        )
+    )
+    pdfmetrics.registerFont(
+        TTFont("IBMPlexMonoRegular", os.path.join(FONT_DIR, "IBMPlexMono-Regular.ttf"))
+    )
+    pdfmetrics.registerFont(
+        TTFont("IBMPlexMonoBold", os.path.join(FONT_DIR, "IBMPlexMono-Bold.ttf"))
+    )
 ```
 
 ### Type Scale
@@ -75,10 +90,10 @@ def register_fonts():
 ## 4. Page Layout
 
 ```python
-PAGE_SIZE   = letter          # 8.5 × 11 in
-MARGIN      = 0.5 * inch      # all four sides
-USABLE_W    = 7.5 * inch      # 8.5 − 2×0.5
-USABLE_H    = 10.0 * inch     # 11 − 2×0.5
+PAGE_SIZE = letter  # 8.5 × 11 in
+MARGIN = 0.5 * inch  # all four sides
+USABLE_W = 7.5 * inch  # 8.5 − 2×0.5
+USABLE_H = 10.0 * inch  # 11 − 2×0.5
 ```
 
 Use `SimpleDocTemplate` with `leftMargin=rightMargin=topMargin=bottomMargin=0.5*inch`.
@@ -100,19 +115,19 @@ All tables use `TableStyle`. The following is the baseline style. Apply it first
 
 ```python
 BASE_TABLE_STYLE = [
-    ('BACKGROUND',  (0, 0), (-1, 0),  NAVY),          # header row
-    ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
-    ('FONTNAME',    (0, 0), (-1, 0),  'BarlowBold'),
-    ('FONTSIZE',    (0, 0), (-1, 0),  8),
-    ('FONTNAME',    (0, 1), (-1, -1), 'BarlowRegular'),
-    ('FONTSIZE',    (0, 1), (-1, -1), 8),
-    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, LGRAY]),  # alternating rows
-    ('GRID',        (0, 0), (-1, -1), 0.5, MGRAY),
-    ('TOPPADDING',  (0, 0), (-1, -1), 4),
-    ('BOTTOMPADDING',(0,0), (-1, -1), 4),
-    ('LEFTPADDING', (0, 0), (-1, -1), 6),
-    ('RIGHTPADDING',(0, 0), (-1, -1), 6),
-    ('VALIGN',      (0, 0), (-1, -1), 'MIDDLE'),
+    ("BACKGROUND", (0, 0), (-1, 0), NAVY),  # header row
+    ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
+    ("FONTNAME", (0, 0), (-1, 0), "BarlowBold"),
+    ("FONTSIZE", (0, 0), (-1, 0), 8),
+    ("FONTNAME", (0, 1), (-1, -1), "BarlowRegular"),
+    ("FONTSIZE", (0, 1), (-1, -1), 8),
+    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LGRAY]),  # alternating rows
+    ("GRID", (0, 0), (-1, -1), 0.5, MGRAY),
+    ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
 ]
 ```
 
@@ -130,37 +145,40 @@ All charts are generated as `BytesIO` PNG buffers at 150 dpi, then embedded via 
 
 ```python
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from io import BytesIO
 
 # Color constants (match ReportLab palette exactly)
-C_NAVY  = '#052C47'
-C_BLUE  = '#2A4492'
-C_LGRAY = '#E6E6E6'
-C_MGRAY = '#CBC7D1'
-C_RED   = '#C12126'
+C_NAVY = "#052C47"
+C_BLUE = "#2A4492"
+C_LGRAY = "#E6E6E6"
+C_MGRAY = "#CBC7D1"
+C_RED = "#C12126"
+
 
 def _base_figure(w_in, h_in):
     """Return a (fig, ax) with BMF base styling applied."""
     fig, ax = plt.subplots(figsize=(w_in, h_in))
-    fig.patch.set_facecolor('white')
-    ax.set_facecolor('white')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color(C_MGRAY)
-    ax.spines['bottom'].set_color(C_MGRAY)
-    ax.tick_params(colors='#333333', labelsize=7)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color(C_MGRAY)
+    ax.spines["bottom"].set_color(C_MGRAY)
+    ax.tick_params(colors="#333333", labelsize=7)
     ax.xaxis.label.set_fontsize(7)
     ax.yaxis.label.set_fontsize(7)
-    plt.rcParams.update({'font.family': 'sans-serif', 'font.sans-serif': ['Arial']})
+    plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial"]})
     return fig, ax
+
 
 def chart_to_image(fig, width_in_doc, height_in_doc):
     """Save fig to BytesIO and return a ReportLab Image flowable."""
     buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     buf.seek(0)
     return Image(buf, width=width_in_doc, height=height_in_doc)
@@ -215,16 +233,20 @@ Use `Spacer(1, 10)` between every logical section. Do not use `Spacer(1, 0)` as 
 ```python
 def section_bar(text):
     t = Table([[text]], colWidths=[USABLE_W])
-    t.setStyle(TableStyle([
-        ('BACKGROUND',   (0,0), (-1,-1), NAVY),
-        ('TEXTCOLOR',    (0,0), (-1,-1), WHITE),
-        ('FONTNAME',     (0,0), (-1,-1), 'BarlowCondensedBold'),
-        ('FONTSIZE',     (0,0), (-1,-1), 9),
-        ('TOPPADDING',   (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING',(0,0), (-1,-1), 5),
-        ('LEFTPADDING',  (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), NAVY),
+                ("TEXTCOLOR", (0, 0), (-1, -1), WHITE),
+                ("FONTNAME", (0, 0), (-1, -1), "BarlowCondensedBold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
     return t
 ```
 
@@ -238,7 +260,7 @@ def title_banner(title_text, subtitle_text, meta_line=None):
     rows = [[title_text], [subtitle_text]]
     if meta_line:
         rows.append([meta_line])
-    rows.extend([['BOSTON MEDFLIGHT'], ['CLINICAL OPERATIONS']])
+    rows.extend([["BOSTON MEDFLIGHT"], ["CLINICAL OPERATIONS"]])
     # ... TableStyle per staffing_tool/report_style.py
 ```
 
@@ -253,25 +275,27 @@ def kpi_row(kpi_list):
     col_w = USABLE_W / n
     values = [[v for _, v in kpi_list]]
     labels = [[l for l, _ in kpi_list]]
-    t = Table(values + labels, colWidths=[col_w] * n, rowHeights=[0.55*inch, 0.3*inch])
+    t = Table(
+        values + labels, colWidths=[col_w] * n, rowHeights=[0.55 * inch, 0.3 * inch]
+    )
     style = [
-        ('BACKGROUND',  (0,0), (-1,-1), WHITE),
-        ('BOX',         (0,0), (-1,-1), 0.5, MGRAY),
-        ('INNERGRID',   (0,0), (-1,-1), 0.5, MGRAY),
+        ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+        ("BOX", (0, 0), (-1, -1), 0.5, MGRAY),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, MGRAY),
         # value row
-        ('FONTNAME',    (0,0), (-1,0),  'IBMPlexMonoBold'),
-        ('FONTSIZE',    (0,0), (-1,0),  20),
-        ('TEXTCOLOR',   (0,0), (-1,0),  NAVY),
-        ('ALIGN',       (0,0), (-1,0),  'CENTER'),
-        ('VALIGN',      (0,0), (-1,0),  'BOTTOM'),
+        ("FONTNAME", (0, 0), (-1, 0), "IBMPlexMonoBold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 20),
+        ("TEXTCOLOR", (0, 0), (-1, 0), NAVY),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
         # label row
-        ('FONTNAME',    (0,1), (-1,1),  'BarlowRegular'),
-        ('FONTSIZE',    (0,1), (-1,1),  8),
-        ('TEXTCOLOR',   (0,1), (-1,1),  BLACK),
-        ('ALIGN',       (0,1), (-1,1),  'CENTER'),
-        ('VALIGN',      (0,1), (-1,1),  'TOP'),
-        ('TOPPADDING',  (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING',(0,0),(-1,-1), 4),
+        ("FONTNAME", (0, 1), (-1, 1), "BarlowRegular"),
+        ("FONTSIZE", (0, 1), (-1, 1), 8),
+        ("TEXTCOLOR", (0, 1), (-1, 1), BLACK),
+        ("ALIGN", (0, 1), (-1, 1), "CENTER"),
+        ("VALIGN", (0, 1), (-1, 1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
     t.setStyle(TableStyle(style))
     return t
@@ -312,10 +336,18 @@ Import layout helpers from `staffing_tool.report_style` rather than duplicating 
 
 ```python
 from staffing_tool.report_style import (
-    register_fonts, ensure_output_dir, OUTPUT_DIR,
-    section_bar, title_banner, kpi_row, num_style_cells,
-    base_figure, chart_to_image,
-    NumberedCanvas, make_page_callbacks, F,
+    register_fonts,
+    ensure_output_dir,
+    OUTPUT_DIR,
+    section_bar,
+    title_banner,
+    kpi_row,
+    num_style_cells,
+    base_figure,
+    chart_to_image,
+    NumberedCanvas,
+    make_page_callbacks,
+    F,
 )
 ```
 
