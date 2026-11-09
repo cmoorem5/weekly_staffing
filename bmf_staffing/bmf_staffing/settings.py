@@ -20,7 +20,15 @@ try:
     load_dotenv(WEEKLY_STAFFING_ROOT / ".env")
 except ImportError:  # dotenv optional: plain environment variables still work
     pass
-STAFFING_DB_PATH = os.path.join(WEEKLY_STAFFING_ROOT, "staffing.db")
+# Both SQLite files resolve through staffing_tool.paths: in the repo folder by
+# default, or in BMF_STAFFING_DATA_DIR when the desktop install has moved them
+# out of the OneDrive-synced folder (scripts/relocate_databases.py).
+if str(WEEKLY_STAFFING_ROOT) not in sys.path:
+    sys.path.insert(0, str(WEEKLY_STAFFING_ROOT))
+from staffing_tool.paths import crew_hub_db_path, staffing_db_path  # noqa: E402
+
+STAFFING_DB_PATH = str(staffing_db_path())
+os.makedirs(os.path.dirname(STAFFING_DB_PATH), exist_ok=True)
 
 # Set DJANGO_SECRET_KEY in production; never commit a real secret.
 SECRET_KEY = os.environ.get(
@@ -113,7 +121,7 @@ WSGI_APPLICATION = "bmf_staffing.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": crew_hub_db_path(),
     },
     # Same file SQLAlchemy uses; only for Admin on ``ManagerRosterLastName``.
     "staffing": {

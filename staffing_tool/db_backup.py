@@ -21,8 +21,18 @@ DEFAULT_KEEP = 30
 
 
 def archive_dir_for(db_path: str | Path) -> Path:
-    """Default archive directory: ``archive/`` next to the database file."""
-    return Path(db_path).resolve().parent / "archive"
+    """Default archive directory: ``archive/`` next to the database file.
+
+    The live staffing.db is the exception once it has been moved out of the
+    repo folder (``BMF_STAFFING_DATA_DIR``): its backups stay in the repo's
+    ``archive/``, which is the folder that syncs off the machine.
+    """
+    from .paths import ARCHIVE_DIR, data_dir, staffing_db_path
+
+    resolved = Path(db_path).resolve()
+    if data_dir() is not None and resolved == staffing_db_path().resolve():
+        return ARCHIVE_DIR
+    return resolved.parent / "archive"
 
 
 def _prune_old_backups(dest_dir: Path, *, prefix: str, keep: int) -> None:

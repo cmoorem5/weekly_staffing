@@ -53,6 +53,12 @@ if (-not (Test-Port8000)) {
     $logDir = Join-Path $RepoRoot "output"
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
+    # Copy the live databases into archive\ (which syncs to OneDrive) before
+    # the server opens them, and again when the window closes below. Does
+    # nothing unless the databases live outside this folder; never blocks the
+    # launch. See scripts\snapshot_databases.py.
+    & $python (Join-Path $RepoRoot "scripts\snapshot_databases.py") *> $null
+
     # waitress runs as one clean process, so we can stop it reliably by PID.
     # cwd must be bmf_staffing\ so "bmf_staffing.wsgi" is importable.
     $djangoProcess = Start-Process -FilePath $python `
@@ -82,4 +88,7 @@ Start-Process -FilePath $edgeExe `
 
 if ($startedDjango -and $djangoProcess) {
     Stop-Process -Id $djangoProcess.Id -Force -ErrorAction SilentlyContinue
+    $djangoProcess.WaitForExit(5000) | Out-Null
+    # Today's work, off this machine: see the snapshot note above.
+    & $python (Join-Path $RepoRoot "scripts\snapshot_databases.py") *> $null
 }

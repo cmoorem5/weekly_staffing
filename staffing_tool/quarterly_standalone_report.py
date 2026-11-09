@@ -10,7 +10,7 @@ import argparse
 import sys
 
 from staffing_tool.annual_report import export_annual_staffing_pdf
-from staffing_tool.paths import OUTPUT_DIR
+from staffing_tool.paths import OUTPUT_DIR, default_cli_db_path
 from staffing_tool.quarterly_pdf_report import (
     export_quarterly_staffing_pdf,
     list_fiscal_quarters,
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--db",
-        default="staffing.db",
+        default=default_cli_db_path(),
         help="Path to staffing.db (default: staffing.db in cwd).",
     )
     parser.add_argument(

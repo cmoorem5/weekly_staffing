@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from staffing_tool.paths import OUTPUT_DIR
+from staffing_tool.paths import OUTPUT_DIR, default_cli_db_path
 from staffing_tool.weekly_pdf_report import (
     export_weekly_staffing_both,
     list_week_starts,
@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--db",
-        default="staffing.db",
+        default=default_cli_db_path(),
         help="Path to staffing.db (default: staffing.db in cwd).",
     )
     parser.add_argument(

@@ -33,11 +33,12 @@ from .models import (
     WeeklyStaffing,
     WeeklyStaffingDetail,
 )
+from .paths import default_cli_db_path
 from .rag import NO_TARGET, evaluate_rag
 from .report import export_staffing_workbook, export_week_excel
 from .validation import notes_required, notes_required_message
 
-DB_PATH_DEFAULT = "staffing.db"
+DB_PATH_DEFAULT = default_cli_db_path()
 
 
 def _ensure_sunday(week_start: str) -> None:

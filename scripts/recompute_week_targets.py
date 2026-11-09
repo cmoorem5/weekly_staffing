@@ -39,7 +39,7 @@ from staffing_tool.db import ensure_db_ready, session_scope
 from staffing_tool.db_backup import create_db_backup
 from staffing_tool.metrics import REQUIRED_TOTAL, compute_week_metrics
 from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
-from staffing_tool.paths import PROJECT_ROOT
+from staffing_tool.paths import staffing_db_path
 from staffing_tool.week_targets import recompute_week_targets
 
 
@@ -64,7 +64,7 @@ def _pct(v: float) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--db", default=str(PROJECT_ROOT / "staffing.db"))
+    p.add_argument("--db", default=str(staffing_db_path()))
     p.add_argument("--from-date", default=None, help="Only weeks on/after YYYY-MM-DD")
     p.add_argument("--to-date", default=None, help="Only weeks on/before YYYY-MM-DD")
     p.add_argument("--dry-run", action="store_true", help="Report only; write nothing")

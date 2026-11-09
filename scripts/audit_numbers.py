@@ -31,7 +31,7 @@ if str(_ROOT) not in sys.path:
 
 from staffing_tool.db import ensure_db_ready, session_scope
 from staffing_tool.models import WeeklyOpsViewAssignment, WeeklyStaffing
-from staffing_tool.paths import PROJECT_ROOT
+from staffing_tool.paths import staffing_db_path
 
 # Text that is a code or placeholder rather than a person's name.
 _CODE_WORDS = {
@@ -58,7 +58,7 @@ def looks_like_a_name(value: str) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--db", default=str(PROJECT_ROOT / "staffing.db"))
+    p.add_argument("--db", default=str(staffing_db_path()))
     p.add_argument("--start", default=None, help="Only weeks on/after YYYY-MM-DD")
     args = p.parse_args(argv)
     if not Path(args.db).exists():

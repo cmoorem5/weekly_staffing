@@ -151,7 +151,9 @@ def _archive_dir_under_repo_root() -> Path:
     db_path = getattr(settings, "STAFFING_DB_PATH", None)
     if not db_path:
         raise Http404("Database path is not configured (STAFFING_DB_PATH).")
-    return Path(db_path).resolve().parent / "archive"
+    from staffing_tool.db_backup import archive_dir_for
+
+    return archive_dir_for(db_path)
 
 
 def _ensure_db():

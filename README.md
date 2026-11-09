@@ -44,6 +44,7 @@ deployment, set these before starting Django:
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated hostnames. |
 | `DJANGO_SSL_REDIRECT` | `1` | Set to `0` if TLS is terminated elsewhere and you don't want Django to force redirects. |
 | `DJANGO_LOOPBACK_HTTP` | off | Desktop install only (waitress on `127.0.0.1`). With `DJANGO_DEBUG` off, skips the settings that need TLS (HTTPS redirect, secure-only cookies, HSTS) and pins the allowed hosts to loopback. `Update_Crew_Hub.bat` turns it on through `scripts/secure_env.py`, which also replaces the sample secret key with a random one. Never set it on a networked deployment. |
+| `BMF_STAFFING_DATA_DIR` | unset | Folder holding the two live SQLite databases. Unset, they stay in the program folder. `Update_Crew_Hub.bat` moves them to `%LOCALAPPDATA%\BMFStaffing\data` once (`scripts/relocate_databases.py`), because the program folder can sync through OneDrive. Backups stay in `archive\`, and the launcher refreshes `archive\staffing_latest.db` and `archive\crew_hub_latest.sqlite3` each time Crew Hub opens and closes. One PC only: a second PC sharing the folder would start with empty databases. |
 
 Validate a production configuration with `python manage.py check --deploy`.
 
