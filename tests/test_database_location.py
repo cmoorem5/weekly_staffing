@@ -87,7 +87,9 @@ class PathResolutionTests(_NoDotenv):
                 )
                 # Any other database (a test's, a --db copy) keeps its own.
                 other = Path(tmp) / "elsewhere" / "staffing.db"
-                self.assertEqual(archive_dir_for(other), other.parent / "archive")
+                self.assertEqual(
+                    archive_dir_for(other), other.resolve().parent / "archive"
+                )
         with patch.dict(os.environ, {paths.DATA_DIR_ENV: ""}):
             self.assertEqual(archive_dir_for(ROOT / "staffing.db"), ROOT / "archive")
 
