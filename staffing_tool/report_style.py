@@ -12,6 +12,7 @@ import matplotlib
 from staffing_tool.paths import FONT_DIR as _FONT_DIR
 from staffing_tool.paths import OUTPUT_DIR as _OUTPUT_DIR
 from staffing_tool.paths import resolve_logo_path
+from staffing_tool.shift_table import SHIFT_TABLE_HEADERS, SHIFT_TABLE_NOTE
 from staffing_tool.shortfall import REASON_TABLE_HEADERS
 
 matplotlib.use("Agg")
@@ -554,6 +555,49 @@ def reasons_flowables(rows: list[list[str]]) -> list:
         )
     )
     return [section_bar("WHY COVERAGE FELL SHORT"), t]
+
+
+def shift_table_flowables(rows: list[list[str]], availability: str) -> list:
+    """Section bar, the four-cell shift table and the availability line.
+
+    [] when the week has no schedule detail (nothing to net out of service
+    against), so the section is left off rather than printed as zeros.
+    """
+    if not rows:
+        return []
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, Spacer
+
+    t = Table(
+        [list(SHIFT_TABLE_HEADERS)] + [list(r) for r in rows],
+        colWidths=full_width_col_widths([1.9, 1, 0.8, 1, 1, 0.8, 0.8, 1]),
+    )
+    t.setStyle(
+        TableStyle(
+            data_table_style()
+            + [
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [WHITE, LGRAY]),
+                ("BACKGROUND", (0, -1), (-1, -1), MGRAY),
+                ("FONTNAME", (0, -1), (-1, -1), F("BarlowSemiBold")),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ]
+            + num_style_cells(range(1, len(SHIFT_TABLE_HEADERS)))
+        )
+    )
+    note = ParagraphStyle(
+        "ShiftTableNote",
+        fontName=F("BarlowRegular"),
+        fontSize=8,
+        leading=10,
+        textColor=BLACK,
+    )
+    return [
+        section_bar("SHIFTS: REQUIRED, OUT OF SERVICE, STAFFED"),
+        t,
+        Spacer(1, 4),
+        Paragraph(availability, note),
+        Paragraph(SHIFT_TABLE_NOTE, note),
+    ]
 
 
 def base_coverage_table(

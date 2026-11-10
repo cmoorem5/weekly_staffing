@@ -15,6 +15,7 @@ import io
 from functools import lru_cache
 
 from staffing_tool.paths import resolve_logo_path
+from staffing_tool.shift_table import SHIFT_TABLE_HEADERS, SHIFT_TABLE_NOTE
 from staffing_tool.shortfall import REASON_TABLE_HEADERS
 
 NAVY = "#052C47"
@@ -284,6 +285,21 @@ def summary_list(lines: list[str]) -> str:
 
 def note(text: str) -> str:
     return f'<p style="font-size:11px;color:#555;margin:10px 0 0;">{text}</p>'
+
+
+def shift_table_block(rows: list[list[str]], availability: str) -> str:
+    """Shift table section with the availability line; empty without detail."""
+    if not rows:
+        return ""
+    return section_bar("SHIFTS: REQUIRED, OUT OF SERVICE, STAFFED") + body_cell(
+        data_table(
+            SHIFT_TABLE_HEADERS,
+            rows,
+            right_cols=set(range(1, len(SHIFT_TABLE_HEADERS))),
+        )
+        + note(availability)
+        + note(SHIFT_TABLE_NOTE)
+    )
 
 
 def reasons_block(rows: list[list[str]]) -> str:
