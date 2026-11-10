@@ -63,6 +63,28 @@
         </div>
       </div>
 
+      <h3 class="h6">Review before publishing</h3>
+      {% if coverage.review_flags %}
+      <ul class="small mb-3">
+        {% for f in coverage.review_flags %}<li>{{ f }}</li>{% endfor %}
+      </ul>
+      {% else %}
+      <p class="small text-muted mb-3">Nothing to flag: no spare crews, hand-edited counts or out-of-service marks.</p>
+      {% endif %}
+
+      <h3 class="h6">Shifts: required, out of service, staffed</h3>
+      <table class="table table-sm w-auto mb-1" id="shift-table" data-required-total="{{ coverage.shift_total.required }}">
+        <thead><tr><th>Shift</th><th class="text-end">Required</th><th class="text-end">OOS</th><th class="text-end">Net plan</th><th class="text-end">Staffed</th><th class="text-end">Extra</th><th class="text-end">Gap</th><th class="text-end">Fill %</th></tr></thead>
+        <tbody>
+          {% for c in coverage.shift_cells %}<tr data-shift-cell="{{ c.key }}" data-net="{{ c.net_plan }}"><td>{{ c.label }}</td><td class="text-end bmf-numeric">{{ c.required }}</td><td class="text-end bmf-numeric">{{ c.removed }}</td><td class="text-end bmf-numeric">{{ c.net_plan }}</td><td class="text-end bmf-numeric sc-staffed">{{ c.staffed }}</td><td class="text-end bmf-numeric sc-extra">{{ c.extra }}</td><td class="text-end bmf-numeric sc-gap">{{ c.gap }}</td><td class="text-end bmf-numeric sc-fill">{{ c.fill }}</td></tr>{% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="fw-bold" id="shift-total" data-net="{{ coverage.shift_total.net_plan }}"><td>Total</td><td class="text-end bmf-numeric">{{ coverage.shift_total.required }}</td><td class="text-end bmf-numeric">{{ coverage.shift_total.removed }}</td><td class="text-end bmf-numeric">{{ coverage.shift_total.net_plan }}</td><td class="text-end bmf-numeric sc-staffed">{{ coverage.shift_total.staffed }}</td><td class="text-end bmf-numeric sc-extra">{{ coverage.shift_total.extra }}</td><td class="text-end bmf-numeric sc-gap">{{ coverage.shift_total.gap }}</td><td class="text-end bmf-numeric sc-fill">{{ coverage.shift_total.fill }}</td></tr>
+        </tfoot>
+      </table>
+      <p class="small mb-1"><strong>{{ coverage.availability_line }}</strong></p>
+      <p class="text-muted small mb-3">Extra staffing offsets gaps within rotor and within ground, so the total row can differ from the sum of the rows above it. The review list and the availability line refresh when you save.</p>
+
       <p class="text-muted small mb-3">The percentages and counts in this card update as you change the base coverage counts below. The reasons refresh when you save.</p>
       <h3 class="h6">Short because (vehicle-days missing this seat)</h3>
       <table class="table table-sm w-auto mb-1">
@@ -417,6 +439,28 @@
       setText(".rw-staffed", staffed, tr);
       setText(".rw-pct", pct(staffed, parseInt(tr.getAttribute("data-plan"), 10) || 0), tr);
     });
+    var cellStaffed = {
+      rw_day: sum("rw_staffed_day"), gr_day: sum("gr_staffed_day"),
+      rw_night: sum("rw_staffed_night"), gr_night: sum("gr_staffed_night")
+    };
+    Array.prototype.slice.call(card.querySelectorAll("tr[data-shift-cell]")).forEach(function (tr) {
+      var net = parseInt(tr.getAttribute("data-net"), 10) || 0;
+      var staffed = cellStaffed[tr.getAttribute("data-shift-cell")] || 0;
+      setText(".sc-staffed", staffed, tr);
+      setText(".sc-extra", Math.max(0, staffed - net), tr);
+      setText(".sc-gap", Math.max(0, net - staffed), tr);
+      setText(".sc-fill", pct(Math.min(staffed, net), net), tr);
+    });
+    var totalRow = document.getElementById("shift-total");
+    if (totalRow) {
+      var rawTotal = cellStaffed.rw_day + cellStaffed.gr_day + cellStaffed.rw_night + cellStaffed.gr_night;
+      var counted = vehicleFilled().total;
+      var netTotal = parseInt(totalRow.getAttribute("data-net"), 10) || 0;
+      setText(".sc-staffed", rawTotal, totalRow);
+      setText(".sc-extra", Math.max(0, rawTotal - counted), totalRow);
+      setText(".sc-gap", Math.max(0, netTotal - counted), totalRow);
+      setText(".sc-fill", pct(counted, netTotal), totalRow);
+    }
     var shiftTotals = { day: sum("gr_staffed_day"), night: sum("gr_staffed_night"), total: grCounted };
     Array.prototype.slice.call(card.querySelectorAll("tr[data-gr-shift]")).forEach(function (tr) {
       setText(".gr-shift-staffed", shiftTotals[tr.getAttribute("data-gr-shift")], tr);

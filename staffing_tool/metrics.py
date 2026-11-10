@@ -123,6 +123,13 @@ class WeekMetrics:
     # a vehicle was out of service with no crew ("no vehicle"). ``required_day``,
     # ``required_night`` and ``required_total`` are all net of this.
     plan_removed_unit_days: int = 0
+    # Staffed vehicle-days as stored, by cell, before any capping or pooling. The
+    # shift table (``shift_table``) reads these; the rates above use the pooled,
+    # capped counts.
+    rw_day_staffed: int = 0
+    rw_night_staffed: int = 0
+    gr_day_staffed: int = 0
+    gr_night_staffed: int = 0
 
 
 def role_ot_totals(row: WeeklyStaffing) -> dict[str, int]:
@@ -348,6 +355,11 @@ def compute_week_metrics(
     )
     ot_dependency = float(total_ot) / float(filled_total) if filled_total else 0.0
 
+    day_rate = float(filled_day) / float(required_day) if required_day else 0.0
+    night_rate = float(filled_night) / float(required_night) if required_night else 0.0
+    if uses_current_definitions(str(ws.week_start)):
+        day_rate, night_rate = min(day_rate, 1.0), min(night_rate, 1.0)
+
     return WeekMetrics(
         week_start=str(ws.week_start),
         required_day=required_day,
@@ -371,14 +383,18 @@ def compute_week_metrics(
         system_rw_pct=system_rw_pct,
         system_gr_pct=system_gr_pct,
         base_metrics=base_metrics or None,
-        day_staffing_rate=(
-            float(filled_day) / float(required_day) if required_day else 0.0
-        ),
-        night_staffing_rate=(
-            float(filled_night) / float(required_night) if required_night else 0.0
-        ),
+        # From the current definitions on, capped at 100%: nights are filled
+        # first, so a spare night truck would otherwise read as 104% beside a
+        # short day. The surplus shows as "Extra" in the shift table; the
+        # staffing rate above still counts it. Last FY is frozen as reported.
+        day_staffing_rate=day_rate,
+        night_staffing_rate=night_rate,
         gr_planned_unit_days=gr_planned,
         plan_removed_unit_days=plan_removed,
+        rw_day_staffed=rw_day_total,
+        rw_night_staffed=rw_night_total,
+        gr_day_staffed=gr_day_total,
+        gr_night_staffed=gr_night_total,
     )
 
 

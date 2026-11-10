@@ -181,6 +181,32 @@ class WeekCoverageCardTests(WeekOutagesViewTests):
         self.assertIn("Short a pilot", body)
         self.assertIn("D9L", body)
 
+    def test_card_shows_the_shift_table_and_review_list(self):
+        body = self.client.get(reverse("week_edit", args=[WEEK_START])).content.decode()
+        self.assertIn('id="shift-table"', body)
+        for label in ("Day rotor", "Day ground", "Night rotor", "Night ground"):
+            self.assertIn(f"<td>{label}</td>", body)
+        self.assertIn("Review before publishing", body)
+        self.assertIn("Available for calls:", body)
+
+    def test_review_list_flags_a_hand_edited_count(self):
+        url = reverse("week_edit", args=[WEEK_START])
+        self.assertNotIn("was raised by hand", self.client.get(url).content.decode())
+        with session_scope(self.db_path) as session:
+            from staffing_tool.models import WeeklyBaseCoverage
+
+            cov = (
+                session.query(WeeklyBaseCoverage).filter_by(base_name="Lawrence").one()
+            )
+            cov.rw_staffed_day = 7
+            cov.rw_staffed_night = 7
+            cov.rw_staffed_unit_days = 14
+        body = self.client.get(url).content.decode()
+        self.assertIn(
+            "Lawrence rotor wing: count was raised by hand (saved 14, schedule shows 13).",
+            body,
+        )
+
     def test_card_drops_days_fixed_by_hand_without_extra_wording(self):
         url = reverse("week_edit", args=[WEEK_START])
         before = self.client.get(url).content.decode()

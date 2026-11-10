@@ -37,6 +37,7 @@ from staffing_tool.models import (
 from staffing_tool.rag import NO_TARGET, evaluate_rag
 from staffing_tool.report import export_staffing_workbook
 from staffing_tool.schedule_import import UNIT_MAP
+from staffing_tool.shift_table import build_shift_table
 from staffing_tool.shortfall import (
     GROUND_DAY_PER_DAY,
     GROUND_DAY_SCOPE,
@@ -47,6 +48,7 @@ from staffing_tool.shortfall import (
     analyze_week,
     net_of_hand_corrections,
     reason_counts,
+    reconcile_week,
 )
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 from staffing_tool.validation import notes_required, notes_required_message
@@ -404,6 +406,22 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
     # below match the percentages above.
     with session_scope(DB_PATH) as session:
         result = net_of_hand_corrections(session, result, [week_start]) or result
+        hand_edits = _hand_edit_notes(reconcile_week(session, week_start))
+    table = build_shift_table(metrics, result, hand_edits)
+    shift_cells = [
+        {
+            "key": c.key,
+            "label": c.label,
+            "required": c.required,
+            "removed": c.removed,
+            "net_plan": c.net_plan,
+            "staffed": c.staffed,
+            "extra": c.extra,
+            "gap": c.gap,
+            "fill": "\u2014" if c.fill is None else f"{c.fill * 100:.1f}%",
+        }
+        for c in table.cells
+    ]
     counts = reason_counts(result.shortfalls)
     short_rows = [
         {
@@ -431,7 +449,38 @@ def _coverage_context(week_start: str) -> dict[str, object] | None:
         "ground_by_base": by_base,
         "short_rows": short_rows,
         "no_vehicle_count": len(result.no_vehicle),
+        "shift_cells": shift_cells,
+        "shift_total": {
+            "required": REQUIRED_TOTAL,
+            "removed": table.removed,
+            "net_plan": table.net_plan,
+            "staffed": table.staffed,
+            "extra": table.extra_unused,
+            "gap": table.gap,
+            "fill": f"{table.staffing_rate * 100:.1f}%",
+        },
+        "availability_line": table.availability_line,
+        "review_flags": table.flags,
     }
+
+
+def _hand_edit_notes(rows) -> list[str]:
+    """Flags for stored counts that differ from the saved schedule.
+
+    Above the schedule means a day was fixed by hand (a late fill, an aircraft
+    down); below it means the count was entered lower than the schedule shows.
+    Either way the reviewer should know before publishing.
+    """
+    notes = []
+    for r in rows:
+        if r.diff == 0:
+            continue
+        what = f"{r.scope} rotor wing" if r.service_type == "RW" else "Ground"
+        verb = "was raised by hand" if r.diff > 0 else "is below the schedule"
+        notes.append(
+            f"{what}: count {verb} (saved {r.stored}, schedule shows {r.from_schedule})."
+        )
+    return notes
 
 
 def _plan_context(week_start: str) -> dict[str, int]:

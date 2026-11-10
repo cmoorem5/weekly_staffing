@@ -60,6 +60,7 @@ from staffing_tool.schedule_import import (
     parse_ops_view_daily,
     parse_schedule_workbook,
 )
+from staffing_tool.shift_table import build_shift_table, shift_table_rows
 from staffing_tool.shortfall import (
     analyze_week,
     net_of_hand_corrections,
@@ -106,6 +107,10 @@ class WeeklyReportContext:
     kpi_status: dict[str, tuple[str, str]] = field(default_factory=dict)
     # "Why coverage fell short" rows (shortfall.reason_table_rows); [] = no detail
     reasons: list[list[str]] = field(default_factory=list)
+    # Shift table rows (shift_table.shift_table_rows) and the availability line;
+    # [] / "" when the week has no schedule detail.
+    shift_rows: list[list[str]] = field(default_factory=list)
+    availability_line: str = ""
 
     @property
     def has_daily_detail(self) -> bool:
@@ -433,6 +438,13 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
         gr_total = str(int(metrics.gr_staffed_unit_days))
         exc_total = str(metrics.leave_total)
 
+        shortfall_result = analyze_week(session, week_start, tracked_only=True)
+        shift_table = (
+            build_shift_table(metrics, shortfall_result)
+            if shortfall_result is not None
+            else None
+        )
+
         return WeeklyReportContext(
             trend_targets=load_trend_targets(session),
             kpi_status=kpi_tile_statuses(
@@ -491,10 +503,12 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             reasons=reason_table_rows(
                 net_of_hand_corrections(
                     session,
-                    analyze_week(session, week_start, tracked_only=True),
+                    shortfall_result,
                     [week_start],
                 )
             ),
+            shift_rows=shift_table_rows(shift_table) if shift_table else [],
+            availability_line=shift_table.availability_line if shift_table else "",
         )
 
 
@@ -776,6 +790,14 @@ def build_pdf(ctx: WeeklyReportContext, output_path: str) -> str:
         story.append(KeepTogether([style.section_bar(title), *items]))
         story.append(Spacer(1, gap))
 
+    if ctx.shift_rows:
+        story.append(
+            KeepTogether(
+                style.shift_table_flowables(ctx.shift_rows, ctx.availability_line)
+            )
+        )
+        story.append(Spacer(1, 10))
+
     if ctx.reasons:
         story.append(KeepTogether(style.reasons_flowables(ctx.reasons)))
         story.append(Spacer(1, 10))
@@ -1021,6 +1043,7 @@ def build_html(ctx: WeeklyReportContext, output_path: str) -> str:
 {_html_section_bar("COVERAGE BY BASE", navy)}
 <tr><td style="padding:12px 16px;">{rh.chart_img(_fig_to_png_base64(_build_base_coverage_fig(ctx)), "Coverage by base")}
 <div style="height:12px;"></div>{base_table}</td></tr>
+{rh.shift_table_block(ctx.shift_rows, ctx.availability_line)}
 {rh.reasons_block(ctx.reasons)}
 
 <tr><td style="padding:16px 24px;font-size:11px;color:#666;border-top:1px solid {mgray};">

@@ -195,6 +195,14 @@ class ShortfallResult:
     staffed_all: Counter = field(default_factory=Counter)
     # "D" / "N" -> planned vehicle-days taken off the plan for "no vehicle".
     planned_removed: Counter = field(default_factory=Counter)
+    # (service_type, "D"/"N") -> the same removals, split by vehicle type, so the
+    # shift table can take them off the right cell (day rotor, night ground, ...).
+    planned_removed_cell: Counter = field(default_factory=Counter)
+    # (day, "GR", day_night, extra) for each day ground had more fully staffed
+    # trucks than its plan: the spare-crew / weather-swap days a reviewer should
+    # look at beside any rotor gap. Ground only: a rotor group spans day and
+    # night units, so its extra cannot be assigned to a shift.
+    extra_days: list[tuple[date, str, str, int]] = field(default_factory=list)
     days_analyzed: int = 0
     weeks_without_detail: list[str] = field(default_factory=list)
 
@@ -256,6 +264,16 @@ def find_shortfalls(
             slots = min(g.slots, len(g.units) - len(unavailable))
             for day_night in unavailable[: g.slots - slots]:
                 result.planned_removed[day_night] += 1
+                result.planned_removed_cell[(g.service_type, day_night)] += 1
+            if g.service_type == "GR" and staffed_count > slots:
+                result.extra_days.append(
+                    (
+                        day,
+                        g.service_type,
+                        UNIT_MAP[g.units[0]][2] if g.units else "D",
+                        staffed_count - slots,
+                    )
+                )
             filled = min(staffed_count, slots)
             result.planned[(g.scope, g.service_type)] += slots
             result.staffed[(g.scope, g.service_type)] += filled
