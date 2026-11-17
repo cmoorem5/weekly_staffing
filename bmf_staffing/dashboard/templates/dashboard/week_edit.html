@@ -354,8 +354,10 @@
     </tfoot>
   </table>
   <p class="mb-1" id="cov-summary" data-plan="{{ plan_gr|default:28 }}" data-rw-plan="{{ plan_rw|default:56 }}" data-current="{% if current_definitions %}1{% else %}0{% endif %}">
-    <strong>Ground:</strong> <span id="gr-total">0</span> shifts staffed of <span id="gr-plan">28</span> planned
-    (<span id="gr-pct">0.0%</span>). Every ground shift counts, from any base, so an extra truck one day makes up for a short day.
+    <strong>Ground:</strong> <span id="gr-total">0</span> shifts staffed, <span id="gr-counted">0</span> counted toward the
+    <span id="gr-plan">28</span> planned (<span id="gr-pct">0.0%</span>).
+    <span id="gr-extra-note" class="d-none"><span id="gr-extra">0</span> extra from any base covered short days.</span>
+    Every ground shift counts, so an extra truck one day makes up for a short day, but the rate never goes past 100%.
     <br><strong>Rotor wing:</strong> <span id="rw-total">0</span> shifts staffed.
     {% if current_definitions %}<br><strong>Staffing rate:</strong> <span id="sr-counts">0 of 84</span> vehicles fully staffed (<span id="sr-pct">0.0%</span>):
     <span id="sr-day">0</span> day and <span id="sr-night">0</span> night. This updates as you change the counts above and is what gets saved.
@@ -446,6 +448,9 @@
     });
     var gr = sum("gr_staffed_day") + sum("gr_staffed_night");
     document.getElementById("gr-total").textContent = gr;
+    document.getElementById("gr-counted").textContent = Math.min(gr, plan);
+    document.getElementById("gr-extra").textContent = Math.max(0, gr - plan);
+    document.getElementById("gr-extra-note").classList.toggle("d-none", gr <= plan);
     document.getElementById("gr-pct").textContent = (plan ? (Math.min(gr, plan) / plan * 100) : 0).toFixed(1) + "%";
     document.getElementById("rw-total").textContent = sum("rw_staffed_day") + sum("rw_staffed_night");
     setText("#all-day", sum("rw_staffed_day") + sum("gr_staffed_day"));

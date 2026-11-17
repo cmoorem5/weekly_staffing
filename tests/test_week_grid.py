@@ -312,6 +312,12 @@ class WeekGridViewTests(TempDbTestCase):
             'id="id_week-filled_day"', legacy
         )  # last FY keeps its typed counts
 
+    def test_ground_line_explains_extra_trucks_beside_the_capped_rate(self):
+        page = self.client.get(reverse("week_edit", args=[WEEK])).content.decode()
+        self.assertIn('id="gr-counted"', page)
+        self.assertIn("counted toward the", page)
+        self.assertIn('id="gr-extra-note"', page)
+
     def test_week_edit_links_to_the_grid(self):
         resp = self.client.get(reverse("week_edit", args=[WEEK]))
         self.assertIn(self.url, resp.content.decode())
