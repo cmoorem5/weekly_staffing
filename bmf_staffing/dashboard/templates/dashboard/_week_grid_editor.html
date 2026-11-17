@@ -1,0 +1,29 @@
+{# One vehicle-day: its seats, an out-of-service box, a note. Fields are named so the save can find them. #}
+<div class="vd-editor card card-body p-2 mb-2" id="{{ vd.id }}" data-state="{{ vd.state }}" data-unit="{{ vd.unit }}">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <strong>{{ vd.day_label }}</strong>
+    <span class="fw-semibold">{{ vd.unit }}</span>
+    <span class="text-muted small">{{ vd.base }} {% if vd.service == "RW" %}helicopter{% else %}ground truck{% endif %}, {{ vd.day_night }}{% if vd.extra %} (extra vehicle){% endif %}</span>
+    <span class="vd-status small ms-auto"></span>
+  </div>
+  <div class="row g-2 align-items-end">
+    {% for s in vd.seats %}
+    <div class="col-12 col-md">
+      <label class="form-label small mb-1">{{ s.label }}{% if s.manual %} <span class="badge text-bg-warning">typed by hand</span>{% endif %}</label>
+      <div class="input-group input-group-sm">
+        <input type="text" class="form-control seat-input" name="{{ s.field }}" value="{{ s.value }}" data-orig="{{ s.value }}" maxlength="256" placeholder="Nobody on this seat">
+        <button type="button" class="btn btn-outline-success mark-staffed" title="Use when the schedule is wrong and the seat was filled">Mark staffed</button>
+      </div>
+    </div>
+    {% endfor %}
+    <div class="col-12 col-md-auto">
+      <div class="form-check">
+        <input class="form-check-input oos-check" type="checkbox" id="{{ vd.id }}-oos" name="{{ vd.oos_field }}" {% if vd.out_of_service %}checked{% endif %}>
+        <label class="form-check-label small" for="{{ vd.id }}-oos">Out of service</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-3">
+      <input type="text" class="form-control form-control-sm oos-note" name="{{ vd.note_field }}" value="{{ vd.note }}" maxlength="{{ note_max }}" placeholder="Why? (optional)">
+    </div>
+  </div>
+</div>

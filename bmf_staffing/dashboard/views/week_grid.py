@@ -9,6 +9,7 @@ from staffing_tool.metrics import compute_week_metrics
 from staffing_tool.models import BaseConfig, WeeklyBaseCoverage, WeeklyStaffing
 from staffing_tool.shortfall import analyze_week, reason_table_rows
 from staffing_tool.week_grid import (
+    MANUAL_ENTRY,
     NOTE_MAX,
     SEAT_LABELS,
     SEATS_BY_SERVICE,
@@ -86,40 +87,73 @@ def week_grid(request, week_start):
         grid = load_week_grid(session, week_start)
         summary = _summary(session, week_start)
 
-    days = []
-    for day in grid.days:
-        rows = []
-        for r in grid.rows_for(day):
-            rows.append(
+    # One editor per vehicle-day. Short ones (not out of service) go in the
+    # "fix these" list; the rest sit behind the week-at-a-glance squares.
+    editors: dict[tuple[str, str], dict[str, object]] = {}
+    for r in grid.rows:
+        iso = r.day.isoformat()
+        state = "oos" if r.out_of_service else ("ok" if r.staffed else "short")
+        editors[(iso, r.unit)] = {
+            "id": f"vd-{iso}-{r.unit}",
+            "unit": r.unit,
+            "base": r.base,
+            "service": r.service,
+            "day_night": "night" if r.day_night == "N" else "day",
+            "day_label": r.day.strftime("%a %b %d"),
+            "extra": r.extra,
+            "state": state,
+            "missing": ", ".join(r.missing),
+            "oos_field": outage_field(r.day, r.unit),
+            "out_of_service": r.out_of_service,
+            "note_field": note_field(r.day, r.unit),
+            "note": r.note,
+            "seats": [
                 {
-                    "unit": r.unit,
-                    "base": r.base,
-                    "service": r.service,
-                    "day_night": "Night" if r.day_night == "N" else "Day",
-                    "extra": r.extra,
-                    "staffed": r.staffed,
-                    "missing": ", ".join(r.missing),
-                    "out_of_service": r.out_of_service,
-                    "oos_field": outage_field(day, r.unit),
-                    "note_field": note_field(day, r.unit),
-                    "note": r.note,
-                    "seats": [
-                        {
-                            "label": SEAT_LABELS[seat],
-                            "field": seat_field(day, r.unit, seat),
-                            "value": r.seats[seat],
-                        }
-                        for seat in SEATS_BY_SERVICE[r.service]
-                    ],
+                    "label": SEAT_LABELS[seat],
+                    "field": seat_field(r.day, r.unit, seat),
+                    "value": r.seats[seat],
+                    "manual": seat in r.manual,
                 }
-            )
-        days.append({"label": day.strftime("%A %b %d"), "rows": rows})
+                for seat in SEATS_BY_SERVICE[r.service]
+            ],
+        }
+    attention = [e for e in editors.values() if e["state"] == "short"]
+    others = [e for e in editors.values() if e["state"] != "short"]
+
+    matrix_rows = []
+    seen_units: list[str] = []
+    for r in grid.rows:
+        if r.unit not in seen_units:
+            seen_units.append(r.unit)
+    for unit in seen_units:
+        first = next(r for r in grid.rows if r.unit == unit)
+        matrix_rows.append(
+            {
+                "unit": unit,
+                "base": first.base,
+                "service": first.service,
+                "day_night": "N" if first.day_night == "N" else "D",
+                "extra": first.extra,
+                "cells": [editors[(d.isoformat(), unit)] for d in grid.days],
+            }
+        )
+    manual_count = sum(len(r.manual) for r in grid.rows)
+    oos_count = sum(1 for r in grid.rows if r.out_of_service)
     return render(
         request,
         "dashboard/week_grid.html",
         {
             "week_start": week_start,
-            "days": days,
+            "attention": attention,
+            "others": others,
+            "matrix_rows": matrix_rows,
+            "matrix_days": [
+                {"iso": d.isoformat(), "short": d.strftime("%a"), "num": d.day}
+                for d in grid.days
+            ],
+            "manual_count": manual_count,
+            "oos_count": oos_count,
+            "manual_entry": MANUAL_ENTRY,
             "summary": summary,
             "note_max": NOTE_MAX,
             "imported": request.GET.get("imported") == "1",

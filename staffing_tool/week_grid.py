@@ -50,6 +50,9 @@ SEAT_LABELS: dict[str, str] = {
 }
 # Joins several names sharing one seat (two RN rows, a partnered EMT pair).
 NAME_JOINER = " / "
+# What the "Mark staffed" button writes when the sheet is wrong and there is no
+# name to type. It counts as staffed, and shows as hand-entered on the grid.
+MANUAL_ENTRY = "Manual entry"
 
 
 @dataclass
@@ -65,6 +68,7 @@ class GridRow:
     out_of_service: bool = False
     note: str = ""
     extra: bool = False  # opportunistic unit that is never planned
+    manual: set[str] = field(default_factory=set)  # seats typed by hand here
 
     @property
     def missing(self) -> list[str]:
@@ -130,6 +134,11 @@ def _cell_names(rows: list[WeeklyOpsViewAssignment]) -> str:
     )
 
 
+def _cell_manual(rows: list[WeeklyOpsViewAssignment]) -> bool:
+    """True when a seat was entered by hand on the grid (no workbook row)."""
+    return any(r.is_staffed and r.excel_row == 0 for r in rows)
+
+
 def load_week_grid(session: Session, week_start: str) -> WeekGrid:
     """Every planned vehicle on every day, with who is on each seat."""
     by_cell: dict[tuple[str, str, str], list[WeeklyOpsViewAssignment]] = {}
@@ -168,6 +177,11 @@ def load_week_grid(session: Session, week_start: str) -> WeekGrid:
                     out_of_service=(iso, unit) in outages,
                     note=outages.get((iso, unit), ""),
                     extra=unit in EXTRA_UNIT_CODES,
+                    manual={
+                        seat
+                        for seat in SEATS_BY_SERVICE[service]
+                        if _cell_manual(by_cell.get((iso, unit, seat), []))
+                    },
                 )
             )
     return grid

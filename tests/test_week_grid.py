@@ -267,6 +267,30 @@ class WeekGridViewTests(TempDbTestCase):
             )
         self.assertEqual([m.person_display for m in medics], ["Medic, Bob"])
 
+    def test_short_vehicles_are_listed_first_for_fixing(self):
+        # Only D7B RN is staffed in this fixture, so D7B is short on day one.
+        page = self.client.get(self.url).content.decode()
+        self.assertIn("1. Fix these", page)
+        self.assertIn('id="vd-2026-11-09-D7B"', page)
+        self.assertIn("Mark staffed", page)
+
+    def test_a_seat_marked_staffed_is_saved_and_flagged_as_typed_by_hand(self):
+        from staffing_tool.week_grid import MANUAL_ENTRY
+
+        self.client.post(self.url, data={seat_field(MON, "D7B", "Medic"): MANUAL_ENTRY})
+        with session_scope(self.db_path) as session:
+            row = next(
+                r
+                for r in load_week_grid(session, WEEK).rows
+                if r.unit == "D7B" and r.day == MON
+            )
+        self.assertEqual(row.seats["Medic"], MANUAL_ENTRY)
+        self.assertEqual(row.manual, {"Medic"})  # entered here, not in the workbook
+        self.assertEqual(row.seats["RN"], "Nurse, Ann")
+        self.assertNotIn("RN", row.manual)  # the imported name keeps its provenance
+        page = self.client.get(self.url).content.decode()
+        self.assertIn("typed by hand", page)
+
     def test_week_edit_links_to_the_grid(self):
         resp = self.client.get(reverse("week_edit", args=[WEEK]))
         self.assertIn(self.url, resp.content.decode())
