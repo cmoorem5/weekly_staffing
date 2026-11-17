@@ -21,6 +21,7 @@ from staffing_tool.shortfall import (
     SYSTEM_GROUND_PER_DAY,
     find_shortfalls,
     load_shortfalls,
+    net_of_spare_trucks,
     planned_groups,
     reason_counts,
 )
@@ -174,65 +175,51 @@ class GroundTargetTests(unittest.TestCase):
 
 
 class NoVehicleTests(unittest.TestCase):
-    def test_marked_with_full_crew_counts_as_staffed(self):
+    def test_marked_truck_with_full_crew_counts_as_staffed(self):
+        # A crew on a down truck can take a spare, so it still counts.
         roles = _all_staffed(DAY)
-        result = find_shortfalls(roles, [DAY], {(DAY, "D7B"): "aircraft down"})
+        result = find_shortfalls(roles, [DAY], {(DAY, "GR"): "truck down"})
         self.assertEqual(result.shortfalls, [])
         (nv,) = result.no_vehicle
         self.assertTrue(nv.crew_present)
         self.assertEqual(nv.treatment, "Staffed")
-        self.assertEqual(nv.note, "aircraft down")
-        # Planned is unchanged: it was staffed all along.
-        self.assertEqual(result.planned[("Bedford", "RW")], 2)
-        self.assertEqual(result.staffed[("Bedford", "RW")], 2)
+        self.assertEqual(nv.note, "truck down")
+        self.assertEqual(result.planned[(GROUND_DAY_SCOPE, "GR")], 3)
+        self.assertEqual(result.staffed[(GROUND_DAY_SCOPE, "GR")], 3)
 
-    def test_marked_without_crew_comes_off_the_plan(self):
+    def test_marked_aircraft_comes_off_the_plan_even_with_a_crew_listed(self):
+        # No spare aircraft: Mansfield's aircraft is down, crew still on the sheet.
         roles = _all_staffed(DAY)
-        del roles[(DAY, "D9L")]
-        result = find_shortfalls(roles, [DAY], {(DAY, "D9L"): ""})
+        result = find_shortfalls(roles, [DAY], {(DAY, "D11M"): "no aircraft"})
         self.assertEqual(result.shortfalls, [])
         (nv,) = result.no_vehicle
-        self.assertFalse(nv.crew_present)
         self.assertEqual(nv.treatment, "Removed from planned")
-        self.assertEqual(result.planned[("Lawrence", "RW")], 1)
-        self.assertEqual(result.staffed[("Lawrence", "RW")], 1)
+        self.assertEqual(result.planned[("Mansfield", "RW")], 0)
+        self.assertEqual(result.staffed[("Mansfield", "RW")], 0)
+        self.assertEqual(result.day_planned[(DAY, "RW")], 7)
+        self.assertEqual(result.day_staffed[(DAY, "RW")], 7)
 
-    def test_unmarked_gap_is_still_reported(self):
-        roles = _all_staffed(DAY)
-        del roles[(DAY, "D9L")]
-        roles[(DAY, "N7B")] = {"Medic", "PIC"}
-        (s,) = _shorts(roles, outages={(DAY, "D9L"): ""})
-        self.assertEqual(s.unit_code, "N7B")
+    def test_a_spare_ground_truck_offsets_a_short_day_in_the_same_week(self):
+        monday, tuesday = DAY, DAY + timedelta(days=1)
+        roles = {
+            **_all_staffed(monday, without=("LG", "MG", "NP")),  # 2 day trucks: short
+            **_all_staffed(tuesday),
+        }
+        roles[(tuesday, "G9B")] = set(FULL_GR)  # extras are never counted
+        result = find_shortfalls(roles, [monday, tuesday])
+        self.assertEqual(len(result.shortfalls), 1)  # per day it is still short
+        self.assertEqual(result.day_staffed_all[(tuesday, "GR")], 6)
+        # Tuesday's two spare trucks cover Monday's short day for the week.
+        self.assertEqual(net_of_spare_trucks(result).shortfalls, [])
 
-    def test_one_of_four_day_trucks_down_does_not_lower_the_target(self):
-        # Three other day trucks can still be staffed, so the target stays 3.
-        roles = _all_staffed(DAY, without=("MG",))
-        result = find_shortfalls(roles, [DAY], {(DAY, "MG"): "truck down"})
-        self.assertEqual(result.shortfalls, [])
-        self.assertEqual(result.planned[(GROUND_DAY_SCOPE, "GR")], 3)
-
-    def test_ground_target_drops_when_too_few_trucks_remain(self):
-        roles = _all_staffed(DAY, without=("MG", "LG"))
-        outages = {(DAY, "MG"): "", (DAY, "LG"): ""}
-        result = find_shortfalls(roles, [DAY], outages)
-        self.assertEqual(result.shortfalls, [])
-        self.assertEqual(result.planned[(GROUND_DAY_SCOPE, "GR")], 2)
-        self.assertEqual(len(result.no_vehicle), 2)
-
-    def test_down_truck_does_not_hide_another_truck_gap(self):
-        # NG is down; NP is the only night truck left and it has no crew.
-        roles = _all_staffed(DAY, without=("NG", "NP"))
-        (s,) = _shorts(roles, outages={(DAY, "NG"): "truck down"})
-        self.assertEqual((s.unit_code, s.day_night), ("NP", "N"))
-
-    def test_marked_only_on_its_own_day(self):
-        other = DAY + timedelta(days=1)
-        roles = {**_all_staffed(DAY), **_all_staffed(other)}
-        del roles[(DAY, "D9L")]
-        del roles[(other, "D9L")]
-        result = find_shortfalls(roles, [DAY, other], {(DAY, "D9L"): ""})
-        (s,) = result.shortfalls
-        self.assertEqual(s.day, other)
+    def test_a_spare_truck_does_not_offset_across_weeks(self):
+        short_day, spare_day = DAY, DAY + timedelta(days=7)
+        roles = {
+            **_all_staffed(short_day, without=("LG", "MG", "NP")),
+            **_all_staffed(spare_day),
+        }
+        result = find_shortfalls(roles, [short_day, spare_day])
+        self.assertEqual(len(net_of_spare_trucks(result).shortfalls), 1)
 
 
 class ReasonCountTests(unittest.TestCase):

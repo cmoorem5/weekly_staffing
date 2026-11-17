@@ -98,6 +98,27 @@ def _week(**kw):
     return WeeklyStaffing(**base)
 
 
+class GroundedAircraftTests(unittest.TestCase):
+    def test_a_base_with_no_aircraft_all_week_is_off_the_plan_not_100_percent(self):
+        # Mansfield's aircraft was down all week but a crew was still listed on
+        # four of the days, so the imported count says 4.
+        rw = {**FULL_RW, "Mansfield": (4, 0)}
+        m = compute_week_metrics(
+            _week(), _cov(rw=rw, removed={"Mansfield": 7}), CONFIGS
+        )
+        mansfield = m.base_metrics["Mansfield"]
+        self.assertEqual(mansfield["rw_planned"], 0)
+        self.assertEqual(mansfield["rw_staffed"], 0)  # a crew listed is not a flight
+        self.assertEqual(m.rw_total_unit_days, 49)
+        self.assertEqual(m.rw_staffed_unit_days, 49)
+        self.assertEqual(m.system_rw_pct, 1.0)  # never above 100%
+        self.assertEqual(m.required_total, 84 - 7)
+
+    def test_the_cap_only_applies_to_a_base_with_removals(self):
+        m = compute_week_metrics(_week(), _cov(), CONFIGS)
+        self.assertEqual(m.base_metrics["Mansfield"]["rw_staffed"], 7)
+
+
 class VehicleFilledTests(unittest.TestCase):
     def test_each_type_is_capped_at_its_plan(self):
         # 70 rotor wing and 40 ground staffed against plans of 56 and 28.
