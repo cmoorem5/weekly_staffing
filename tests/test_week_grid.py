@@ -291,6 +291,27 @@ class WeekGridViewTests(TempDbTestCase):
         page = self.client.get(self.url).content.decode()
         self.assertIn("typed by hand", page)
 
+    def test_complete_shifts_box_is_gone_for_current_weeks_but_kept_for_last_fy(self):
+        current = self.client.get(reverse("week_edit", args=[WEEK])).content.decode()
+        self.assertNotIn('id="id_week-filled_day"', current)  # derived, so not shown
+        self.assertIn("vehicles fully staffed", current)
+        with session_scope(self.db_path) as session:
+            session.add(
+                WeeklyStaffing(
+                    week_start="2026-05-24",
+                    filled_day=52,
+                    filled_night=30,
+                    created_at="2026-05-24T00:00:00Z",
+                    updated_at="2026-05-24T00:00:00Z",
+                )
+            )
+        legacy = self.client.get(
+            reverse("week_edit", args=["2026-05-24"])
+        ).content.decode()
+        self.assertIn(
+            'id="id_week-filled_day"', legacy
+        )  # last FY keeps its typed counts
+
     def test_week_edit_links_to_the_grid(self):
         resp = self.client.get(reverse("week_edit", args=[WEEK]))
         self.assertIn(self.url, resp.content.decode())

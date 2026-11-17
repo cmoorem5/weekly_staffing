@@ -191,6 +191,7 @@
         </tbody>
       </table>
     </div>
+    {% if not current_definitions %}
     <div class="col-md-6">
       <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mb-2">Complete shifts</h2>
       <table class="table table-bordered table-sm">
@@ -205,6 +206,7 @@
       </table>
       <p class="text-muted small mb-0" id="tally-note">{% if current_definitions %}Calculated from the base coverage counts below: vehicles fully staffed, each type capped at its plan.{% else %}Last fiscal year: these counts are kept as they were reported and are not recalculated.{% endif %}</p>
     </div>
+    {% endif %}
   </div>
 
   <h2 class="h6 text-uppercase fw-bold border-bottom pb-1 mt-4 mb-2">Overtime (shift counts)</h2>
@@ -355,8 +357,9 @@
     <strong>Ground:</strong> <span id="gr-total">0</span> shifts staffed of <span id="gr-plan">28</span> planned
     (<span id="gr-pct">0.0%</span>). Every ground shift counts, from any base, so an extra truck one day makes up for a short day.
     <br><strong>Rotor wing:</strong> <span id="rw-total">0</span> shifts staffed.
-    <br><strong>All vehicle shifts:</strong> day <span id="all-day">0</span>, night <span id="all-night">0</span>.
-    {% if current_definitions %}<br><strong>Staffing rate:</strong> <span id="sr-counts">0 of 84</span> vehicles fully staffed (<span id="sr-pct">0.0%</span>).{% endif %}
+    {% if current_definitions %}<br><strong>Staffing rate:</strong> <span id="sr-counts">0 of 84</span> vehicles fully staffed (<span id="sr-pct">0.0%</span>):
+    <span id="sr-day">0</span> day and <span id="sr-night">0</span> night. This updates as you change the counts above and is what gets saved.
+    {% else %}<br><strong>All vehicle shifts:</strong> day <span id="all-day">0</span>, night <span id="all-night">0</span>.{% endif %}
   </p>
   <p class="mt-3">
     <button type="submit" class="btn btn-primary">Save week + base coverage</button>
@@ -445,8 +448,8 @@
     document.getElementById("gr-total").textContent = gr;
     document.getElementById("gr-pct").textContent = (plan ? (Math.min(gr, plan) / plan * 100) : 0).toFixed(1) + "%";
     document.getElementById("rw-total").textContent = sum("rw_staffed_day") + sum("rw_staffed_night");
-    document.getElementById("all-day").textContent = sum("rw_staffed_day") + sum("gr_staffed_day");
-    document.getElementById("all-night").textContent = sum("rw_staffed_night") + sum("gr_staffed_night");
+    setText("#all-day", sum("rw_staffed_day") + sum("gr_staffed_day"));
+    setText("#all-night", sum("rw_staffed_night") + sum("gr_staffed_night"));
   }
 
   function retally() {
@@ -458,6 +461,8 @@
     var required = rwPlanAll + plan;
     setText("#sr-counts", v.total + " of " + required);
     setText("#sr-pct", pct(v.total, required));
+    setText("#sr-day", v.day);
+    setText("#sr-night", v.night);
     setText("#card-sr-counts", v.total + " of " + required);
     setText("#card-sr-pct", pct(v.total, required));
   }
