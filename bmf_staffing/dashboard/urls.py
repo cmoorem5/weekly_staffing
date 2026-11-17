@@ -48,6 +48,7 @@ from .views import (
     week_add,
     week_delete,
     week_edit,
+    week_grid,
     week_list,
     week_outages,
     weekly_report_download_html,
@@ -112,6 +113,7 @@ urlpatterns = [
         week_edit,
         name="week_edit",
     ),
+    path("week/<str:week_start>/grid/", week_grid, name="week_grid"),
     path(
         "week/<str:week_start>/outages/",
         week_outages,

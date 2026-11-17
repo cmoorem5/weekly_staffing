@@ -50,6 +50,7 @@ from staffing_tool.shortfall import (
 )
 from staffing_tool.timeutil import utc_now_iso as _utc_now_iso
 from staffing_tool.validation import notes_required, notes_required_message
+from staffing_tool.week_grid import has_grid as grid_has_data
 from staffing_tool.week_targets import recompute_week_targets
 
 from ..forms import BaseCoverageFormSet, BaseTotalsFormSet, WeekForm
@@ -289,10 +290,13 @@ def week_edit(request, week_start):
         leave_grid_rows = _build_leave_grid_rows(leave_breakdown)
     coverage_forms = list(zip(BASES, formset))
     imported = request.GET.get("imported") == "1"
+    with session_scope(DB_PATH) as session:
+        grid_available = grid_has_data(session, week_start)
     return render(
         request,
         "dashboard/week_edit.html",
         {
+            "has_grid": grid_available,
             "form": form,
             "formset": formset,
             "week_start": week_start,

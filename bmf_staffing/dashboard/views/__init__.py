@@ -31,6 +31,7 @@ from .staffing_dashboard import (
     staffing_dashboard_export_xlsx,
 )
 from .training_summary import training_summary_export_csv, training_summary_report
+from .week_grid import week_grid
 from .weekly_staffing_report import (
     weekly_report_download_html,
     weekly_report_download_pdf,
@@ -90,6 +91,7 @@ __all__ = [
     "week_add",
     "week_delete",
     "week_edit",
+    "week_grid",
     "week_outages",
     "week_list",
 ]

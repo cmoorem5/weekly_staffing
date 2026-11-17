@@ -122,6 +122,16 @@ Things that look like they should be simple but aren't, because real schedule wo
 - **Weeks with no name-level OPS View rows are listed and left out**, never counted as fully short.
 - Rotor-wing counts were verified against a real workbook (matched `weekly_base_coverage` per base). Tests: `tests/test_shortfall.py`, `tests/test_week_outages_view.py`.
 
+### Week grid (edit a week as vehicles x days x seats)
+
+`staffing_tool/week_grid.py` (pure, no Django) backs `dashboard/views/week_grid.py` and `week_grid.html` (`week/<start>/grid/`). The import redirects there (`?imported=1`) when the week has name-level OPS View rows, `week_edit` links to it, and any past week with rows can be opened.
+
+- **The grid is the stored `WeeklyOpsViewAssignment` rows** (one per vehicle, seat, day) plus `WeeklyVehicleOutage` marks. Seats: RN, Medic, and Pilot (RW) or EMT (GR). Several names on one seat join with `" / "`.
+- **Save rewrites only the cells whose text changed** (`excel_row = 0` marks a hand entry; untouched cells keep the parser's provenance), then `rebuild_from_grid` recomputes `WeeklyBaseCoverage` (same complete-crew rule and `_cap_base_coverage_split` caps as the import), `WeeklyOpsViewDay`, and calls `recompute_week_targets`. Percentages, daily detail and the reasons therefore all come from the grid. A fresh DB backup is taken before each save.
+- **Not updated by a grid edit:** per-person detail (`WeeklyPersonShift`: role fill, shift mix, daily export). A re-import replaces the grid; outage marks survive it.
+- The week edit page still has the typed coverage counts for hand-entered weeks. Saving that page overwrites grid-derived counts, so use one or the other for a given week.
+- Tests: `tests/test_week_grid.py`. The `dashboard.views` package re-exports `week_grid` (the function) over the module name, so tests load the module with `importlib`.
+
 ### Headline numbers: what each one means
 
 Audited against how the program is actually run; keep these definitions when touching `metrics.py`.

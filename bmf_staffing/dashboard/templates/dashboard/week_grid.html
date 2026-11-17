@@ -1,0 +1,115 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Week grid {{ week_start }}{% endblock %}
+{% block content %}
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Week {{ week_start }}</div>
+  <h1 class="bmf-page-title">Week grid</h1>
+  <p class="bmf-page-subtitle">
+    Every vehicle, every day, every seat. Change a name, empty a seat, or tick
+    <strong>Out of service</strong>, then save. Coverage, the daily detail and the
+    reasons are rebuilt from this grid, so they always agree.
+  </p>
+</div>
+
+{% if imported %}
+<div class="alert alert-success">
+  Schedule imported. Check the grid below, fix anything the import got wrong, and save.
+  When it looks right,
+  <a class="alert-link" href="{% url 'weekly_report_download_pdf' week_start %}">download the PDF</a> or
+  <a class="alert-link" href="{% url 'weekly_report_download_html' week_start %}">HTML</a>.
+</div>
+{% endif %}
+
+{% if summary %}
+<div class="card mb-3">
+  <div class="card-body d-flex flex-wrap gap-4 align-items-start">
+    <div><div class="text-muted small">Staffing rate</div><div class="h5 mb-0">{{ summary.staffing }}</div><div class="small text-muted">{{ summary.filled }} vehicles</div></div>
+    <div><div class="text-muted small">System RW</div><div class="h5 mb-0">{{ summary.rw }}</div></div>
+    <div><div class="text-muted small">System GR</div><div class="h5 mb-0">{{ summary.gr }}</div></div>
+    {% if summary.reasons %}
+    <table class="table table-sm table-borderless mb-0 w-auto ms-auto">
+      <thead><tr><th class="small text-muted">Why coverage fell short</th><th class="small text-muted text-end">Rotor wing</th><th class="small text-muted text-end">Ground</th></tr></thead>
+      <tbody>
+        {% for r in summary.reasons %}<tr><td class="small">{{ r.0 }}</td><td class="small text-end">{{ r.1 }}</td><td class="small text-end">{{ r.2 }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<form method="post" id="week-grid-form" data-no-loading>
+  {% csrf_token %}
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-2 position-sticky top-0 bg-body py-2" style="z-index:5">
+    <button type="submit" class="btn btn-primary">Save grid</button>
+    <a href="{% url 'week_edit' week_start %}" class="btn btn-outline-secondary">Leave, overtime and notes</a>
+    <a href="{% url 'import_review' %}?week={{ week_start }}" class="btn btn-outline-secondary">Import review</a>
+    <span class="small text-muted ms-2">
+      <span class="badge text-bg-danger">&nbsp;</span> empty seat &nbsp;
+      <span class="badge text-bg-secondary">&nbsp;</span> out of service
+    </span>
+  </div>
+  <p class="small text-muted mb-2">
+    An out-of-service <strong>aircraft</strong> comes off the plan, even if a crew is
+    listed on it. A truck with a full crew still counts. Several names on one seat are
+    separated by &ldquo; / &rdquo;. Person-level reports (role fill, shift mix, daily
+    export) still follow the schedule workbook; a re-import replaces this grid.
+  </p>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle week-grid">
+      <thead class="table-dark">
+        <tr>
+          <th>Vehicle</th><th>Base</th><th>Shift</th>
+          <th>RN</th><th>Medic</th><th>Pilot / EMT</th>
+          <th class="text-center">Out of service</th><th>Note</th><th>Status</th>
+        </tr>
+      </thead>
+      {% for day in days %}
+      <tbody>
+        <tr class="table-secondary"><th colspan="9">{{ day.label }}</th></tr>
+        {% for r in day.rows %}
+        <tr class="grid-row{% if r.out_of_service %} is-oos{% endif %}">
+          <td class="fw-semibold">{{ r.unit }}{% if r.extra %} <span class="badge text-bg-light">extra</span>{% endif %}</td>
+          <td>{{ r.base }} <span class="text-muted small">{{ r.service }}</span></td>
+          <td class="small">{{ r.day_night }}</td>
+          {% for s in r.seats %}
+          <td><input type="text" class="form-control form-control-sm seat-input" name="{{ s.field }}" value="{{ s.value }}" maxlength="256" aria-label="{{ day.label }} {{ r.unit }} {{ s.label }}" {% if s.label == "Pilot" or s.label == "EMT" %}placeholder="{{ s.label }}"{% else %}placeholder="{{ s.label }}"{% endif %}></td>
+          {% endfor %}
+          <td class="text-center"><input type="checkbox" class="form-check-input oos-check" name="{{ r.oos_field }}" {% if r.out_of_service %}checked{% endif %} aria-label="{{ day.label }} {{ r.unit }} out of service"></td>
+          <td><input type="text" class="form-control form-control-sm" name="{{ r.note_field }}" value="{{ r.note }}" maxlength="{{ note_max }}" placeholder="optional"></td>
+          <td class="small status-cell">{% if r.out_of_service %}<span class="text-muted">Out of service</span>{% elif r.staffed %}<span class="text-success">Staffed</span>{% else %}<span class="text-danger">Short: {{ r.missing }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+    </table>
+  </div>
+  <button type="submit" class="btn btn-primary">Save grid</button>
+</form>
+
+<style>
+  .week-grid .seat-input.is-empty { border-color: var(--bs-danger); background-color: rgba(220, 53, 69, .08); }
+  .week-grid tr.is-oos > td { background-color: rgba(108, 117, 125, .15); }
+  .week-grid tr.is-oos .seat-input.is-empty { border-color: var(--bs-border-color); background-color: transparent; }
+  .week-grid input.form-control-sm { min-width: 8rem; }
+</style>
+<script>
+(function () {
+  var form = document.getElementById("week-grid-form");
+  if (!form) return;
+  function refresh(row) {
+    var oos = row.querySelector(".oos-check").checked;
+    row.classList.toggle("is-oos", oos);
+    row.querySelectorAll(".seat-input").forEach(function (i) {
+      i.classList.toggle("is-empty", i.value.trim() === "");
+    });
+  }
+  form.querySelectorAll("tr.grid-row").forEach(function (row) {
+    refresh(row);
+    row.addEventListener("input", function () { refresh(row); });
+    row.addEventListener("change", function () { refresh(row); });
+  });
+})();
+</script>
+{% endblock %}

@@ -19,6 +19,7 @@ from staffing_tool.schedule_import import (
 )
 from staffing_tool.schedule_types import ShiftRecord
 from staffing_tool.unit_mappings import save_unit_mappings
+from staffing_tool.week_grid import has_grid as grid_has_data
 
 from .helpers import (
     _SCHEDULE_UPLOAD_PREFIX,
@@ -340,7 +341,11 @@ def import_schedule(request):
                     "Import completed, but the automatic safety backup did not run. "
                     "Use Admin tools → Backup database before your next import.",
                 )
-            url = reverse("week_edit", kwargs={"week_start": week_start})
+            with session_scope(DB_PATH) as session:
+                has_detail = grid_has_data(session, week_start)
+            # Name-level detail: land on the week grid to check and correct it.
+            name = "week_grid" if has_detail else "week_edit"
+            url = reverse(name, kwargs={"week_start": week_start})
             return redirect(f"{url}?imported=1")
 
         # Step 1: initial upload -> preview.

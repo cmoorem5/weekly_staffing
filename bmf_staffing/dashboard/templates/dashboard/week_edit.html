@@ -4,6 +4,12 @@
 <h1>{% if is_add %}Add week{% else %}Edit week {{ week_start }}{% endif %}</h1>
 <p class="text-muted">Week start must be a <strong>Sunday</strong> (YYYY-MM-DD).</p>
 
+{% if not is_add and has_grid %}
+<div class="alert alert-info d-flex flex-wrap gap-2 align-items-center">
+  <span>Easier: see every vehicle, day and seat in one grid, mark vehicles out of service, and have coverage and reasons rebuilt from it.</span>
+  <a class="btn btn-sm btn-primary ms-auto" href="{% url 'week_grid' week_start %}">Open week grid</a>
+</div>
+{% endif %}
 {% if not is_add %}
   {% if imported %}
   <div class="card border-success mb-4">
