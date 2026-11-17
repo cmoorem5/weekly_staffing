@@ -266,12 +266,19 @@ def compute_week_metrics(
             rw_d = rw_tot
         if gr_d + gr_n == 0 and gr_tot > 0:
             gr_d = gr_tot
-        rw_sum = rw_d + rw_n
-        gr_sum = gr_d + gr_n
-        # Aircraft out of service with no crew come off the plan ("no vehicle").
+        # Aircraft out of service come off the plan ("no vehicle").
         rw_removed = int(getattr(bc, "rw_planned_removed", 0) or 0)
         rw_removed_total += rw_removed
         rw_denom = max(0, int(cfg.rw_total_unit_days) - rw_removed)
+        if rw_removed and rw_d + rw_n > rw_denom:
+            # A crew still listed on a grounded aircraft did not fly it: never
+            # report a base above its net plan (nights give way first).
+            excess = rw_d + rw_n - rw_denom
+            cut_night = min(rw_n, excess)
+            rw_n -= cut_night
+            rw_d -= excess - cut_night
+        rw_sum = rw_d + rw_n
+        gr_sum = gr_d + gr_n
         gr_denom = int(cfg.gr_total_unit_days)
         rw_pct = float(rw_sum) / float(rw_denom) if rw_denom else 0.0
         gr_pct = float(gr_sum) / float(gr_denom) if gr_denom else 0.0

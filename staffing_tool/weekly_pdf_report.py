@@ -207,16 +207,26 @@ def _backfill_daily_detail(session, week_start: str, db_path: str) -> bool:
 
 
 def _daily_row_tuple(
-    day_date: date, filled: int, rw: int, gr: int, exc: int
+    day_date: date,
+    filled: int,
+    rw: int,
+    gr: int,
+    exc: int,
+    target: int = DAILY_CREW_TARGET,
 ) -> tuple[str, str, str, str, str]:
     label = f"{day_date.strftime('%A')} {day_date.month}/{day_date.day}"
     return (
         label,
-        f"{filled} / {DAILY_CREW_TARGET}",
+        f"{filled} / {target}",
         str(rw),
         str(gr),
         str(exc),
     )
+
+
+def _week_dates(week_start: str) -> list[date]:
+    start = datetime.strptime(week_start, "%Y-%m-%d").date()
+    return [start + timedelta(days=i) for i in range(7)]
 
 
 def _load_daily_data(
@@ -238,6 +248,28 @@ def _load_daily_data(
                 .order_by(WeeklyDailyDetail.day_date)
                 .all()
             )
+    live = analyze_week(session, week_start, tracked_only=True)
+    if live is not None and live.days_analyzed:
+        # Current weeks: RW and GR come from the saved schedule against the plan
+        # (net of vehicles marked "no vehicle"), so a day can never show more
+        # aircraft than the plan allows. Exceptions stay as imported.
+        exc_by_day = {r.day_date: int(r.exceptions) for r in rows}
+        out = []
+        for d in _week_dates(week_start):
+            rw = live.day_staffed[(d, "RW")]
+            gr_all = live.day_staffed_all[(d, "GR")]
+            gr_plan = live.day_planned[(d, "GR")]
+            out.append(
+                _daily_row_tuple(
+                    d,
+                    rw + min(gr_all, gr_plan),
+                    rw,
+                    gr_all,
+                    exc_by_day.get(d.isoformat(), 0),
+                    target=live.day_planned[(d, "RW")] + gr_plan,
+                )
+            )
+        return out
     if rows:
         return [
             _daily_row_tuple(
@@ -376,11 +408,15 @@ def load_week_report_data(db_path: str, week_start: str) -> WeeklyReportContext:
             rw_cap = int(cfg.rw_total_unit_days) if cfg else 0
             rw_n = int(m.get("rw_staffed", 0))
             gr_n = int(m.get("gr_staffed", 0))
+            # Every aircraft-day marked "no vehicle": nothing to staff, not 100%.
+            no_aircraft = bool(rw_cap) and "rw_planned" in m and not m["rw_planned"]
             base_coverage.append(
                 (
                     base,
                     str(rw_n) if rw_n else EM,
-                    _pct(m["rw_pct"])
+                    "No aircraft"
+                    if no_aircraft
+                    else _pct(m["rw_pct"])
                     if rw_cap and rw_n
                     else (EM if not rw_cap else "0.0%"),
                     str(gr_n) if gr_n else EM,

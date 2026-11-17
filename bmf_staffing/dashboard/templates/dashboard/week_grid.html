@@ -1,0 +1,267 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Week grid {{ week_start }}{% endblock %}
+{% block content %}
+<div class="bmf-page-head">
+  <div class="bmf-eyebrow">Week {{ week_start }}</div>
+  <h1 class="bmf-page-title">Check the week</h1>
+  <p class="bmf-page-subtitle">
+    Three steps: <strong>1</strong> fix anything red, <strong>2</strong> look over the week,
+    <strong>3</strong> save. The report numbers rebuild from what you save.
+  </p>
+</div>
+
+{% if imported %}
+<div class="alert alert-success">
+  Schedule imported. Check it below, then save. When it looks right,
+  <a class="alert-link" href="{% url 'weekly_report_download_pdf' week_start %}">download the PDF</a> or
+  <a class="alert-link" href="{% url 'weekly_report_download_html' week_start %}">HTML</a>.
+</div>
+{% endif %}
+
+{% if summary %}
+<div class="card mb-3">
+  <div class="card-body d-flex flex-wrap gap-4 align-items-start">
+    <div><div class="text-muted small">Staffing rate</div><div class="h5 mb-0">{{ summary.staffing }}</div><div class="small text-muted">{{ summary.filled }} vehicles</div></div>
+    <div><div class="text-muted small">System RW</div><div class="h5 mb-0">{{ summary.rw }}</div></div>
+    <div><div class="text-muted small">System GR</div><div class="h5 mb-0">{{ summary.gr }}</div></div>
+    <div class="small text-muted align-self-center">As last saved. Save to see the effect of your changes.</div>
+    {% if summary.reasons %}
+    <table class="table table-sm table-borderless mb-0 w-auto ms-auto">
+      <thead><tr><th class="small text-muted">Why coverage fell short</th><th class="small text-muted text-end">Rotor wing</th><th class="small text-muted text-end">Ground</th></tr></thead>
+      <tbody>
+        {% for r in summary.reasons %}<tr><td class="small">{{ r.0 }}</td><td class="small text-end">{{ r.1 }}</td><td class="small text-end">{{ r.2 }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<form method="post" id="week-grid-form" data-no-loading data-manual="{{ manual_entry }}">
+  {% csrf_token %}
+
+  <div class="position-sticky top-0 bg-body py-2 mb-2 d-flex flex-wrap gap-3 align-items-center border-bottom" style="z-index:5">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <span class="small"><strong id="count-short">0</strong> still short</span>
+    <span class="small"><strong id="count-oos">0</strong> out of service</span>
+    <span class="small"><strong id="count-hand">0</strong> seat(s) changed by hand</span>
+    <a href="{% url 'week_edit' week_start %}" class="btn btn-sm btn-outline-secondary ms-auto">Leave, overtime and notes</a>
+    <a href="{% url 'import_review' %}?week={{ week_start }}" class="btn btn-sm btn-outline-secondary">Import review</a>
+  </div>
+
+  <h2 class="h5 mt-3">1. Fix these <span class="badge text-bg-danger" id="badge-attention">{{ attention|length }}</span></h2>
+  <p class="small text-muted mb-2">
+    These vehicles did not have a full crew on the schedule. For each one, pick what happened:
+  </p>
+  <ul class="small text-muted mb-2">
+    <li><strong>The schedule is wrong and the seat was filled:</strong> type the name, or click <em>Mark staffed</em>.</li>
+    <li><strong>The vehicle could not fly or drive:</strong> tick <em>Out of service</em>. A grounded aircraft comes off the plan; a truck with a full crew still counts.</li>
+    <li><strong>It really was short:</strong> leave it alone. It stays in the report as a gap.</li>
+  </ul>
+  <div id="attention-list">
+    {% for vd in attention %}{% include "dashboard/_week_grid_editor.html" %}{% endfor %}
+  </div>
+  <div class="alert alert-success py-2 {% if attention %}d-none{% endif %}" id="attention-empty">
+    Nothing short. Every planned vehicle has a full crew or is marked out of service.
+  </div>
+
+  <h2 class="h5 mt-4">2. Look over the week</h2>
+  <p class="small text-muted mb-2">
+    One square per vehicle per day. <span class="vd-key ok">&#10003;</span> full crew &nbsp;
+    <span class="vd-key short">&#10007;</span> short &nbsp;
+    <span class="vd-key oos">&#8856;</span> out of service. Click any square to see or change that vehicle's crew.
+    A whole week with no aircraft: use <em>all week</em> on that vehicle's row.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-2 glance" id="glance">
+      <thead>
+        <tr>
+          <th>Vehicle</th>
+          {% for d in matrix_days %}<th class="text-center">{{ d.short }}<div class="small text-muted fw-normal">{{ d.num }}</div></th>{% endfor %}
+          <th class="text-end small text-muted">Out of service</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix_rows %}
+        <tr data-unit="{{ row.unit }}">
+          <td class="text-nowrap"><strong>{{ row.unit }}</strong> <span class="text-muted small">{{ row.base }} {{ row.service }}{% if row.day_night == "N" %} night{% endif %}{% if row.extra %} extra{% endif %}</span></td>
+          {% for vd in row.cells %}
+          <td class="text-center">
+            <button type="button" class="glance-cell {{ vd.state }}" data-target="{{ vd.id }}" aria-label="{{ vd.day_label }} {{ vd.unit }}"></button>
+          </td>
+          {% endfor %}
+          <td class="text-end text-nowrap small">
+            <button type="button" class="btn btn-link btn-sm p-0 oos-week" data-unit="{{ row.unit }}">all week</button>
+            &middot;
+            <button type="button" class="btn btn-link btn-sm p-0 oos-clear" data-unit="{{ row.unit }}">clear</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div id="editor-panel" class="mb-3">
+    <div class="text-muted small" id="editor-hint">Click a square above to open that vehicle's crew here.</div>
+  </div>
+
+  <div class="mb-3">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="toggle-all">Show every vehicle and seat</button>
+    <span class="small text-muted ms-2">Only needed if you want to read every name.</span>
+  </div>
+  <div id="editor-store" class="d-none">
+    {% for vd in others %}{% include "dashboard/_week_grid_editor.html" %}{% endfor %}
+  </div>
+
+  <div class="d-flex flex-wrap gap-3 align-items-center border-top pt-3 mb-5">
+    <button type="submit" class="btn btn-primary">3. Save</button>
+    <span class="small text-muted">
+      Saving takes a safety backup first. Names typed here count in coverage and the reasons, but not in
+      the person-level reports (role fill, shift mix, daily export). A re-import replaces this page's changes,
+      except out-of-service marks.
+    </span>
+  </div>
+</form>
+
+<style>
+  .glance-cell { width: 2.2rem; height: 1.9rem; border-radius: .35rem; border: 1px solid transparent; font-weight: 700; line-height: 1; cursor: pointer; }
+  .glance-cell.ok { background: #d1e7dd; color: #0f5132; }
+  .glance-cell.ok::before { content: "\2713"; }
+  .glance-cell.short { background: #f8d7da; color: #842029; border-color: #dc3545; }
+  .glance-cell.short::before { content: "\2717"; }
+  .glance-cell.oos { background: #dee2e6; color: #495057; }
+  .glance-cell.oos::before { content: "\2298"; }
+  .glance-cell.selected { outline: 3px solid #0d6efd; outline-offset: 1px; }
+  .vd-key { display: inline-block; min-width: 1.4rem; text-align: center; border-radius: .25rem; font-weight: 700; }
+  .vd-key.ok { background: #d1e7dd; color: #0f5132; }
+  .vd-key.short { background: #f8d7da; color: #842029; }
+  .vd-key.oos { background: #dee2e6; color: #495057; }
+  .vd-editor[data-state="short"] { border-left: 4px solid #dc3545; }
+  .vd-editor[data-state="ok"] { border-left: 4px solid #198754; }
+  .vd-editor[data-state="oos"] { border-left: 4px solid #6c757d; background: rgba(108,117,125,.08); }
+  .vd-editor .seat-input.is-empty { border-color: #dc3545; background: rgba(220,53,69,.08); }
+  .vd-editor[data-state="oos"] .seat-input.is-empty { border-color: var(--bs-border-color); background: transparent; }
+  .vd-editor .mark-staffed { display: none; }
+  .vd-editor .seat-input.is-empty + .mark-staffed { display: inline-block; }
+  #editor-store.show-all { display: block !important; }
+</style>
+<script>
+(function () {
+  var form = document.getElementById("week-grid-form");
+  if (!form) return;
+  var MANUAL = form.dataset.manual;
+  var panel = document.getElementById("editor-panel");
+  var hint = document.getElementById("editor-hint");
+  var store = document.getElementById("editor-store");
+  var attention = document.getElementById("attention-list");
+  var submitting = false;
+
+  function editors() { return Array.prototype.slice.call(form.querySelectorAll(".vd-editor")); }
+  function seatInputs(ed) { return Array.prototype.slice.call(ed.querySelectorAll(".seat-input")); }
+  function stateOf(ed) {
+    if (ed.querySelector(".oos-check").checked) return "oos";
+    return seatInputs(ed).some(function (i) { return i.value.trim() === ""; }) ? "short" : "ok";
+  }
+  function missingLabels(ed) {
+    return seatInputs(ed).filter(function (i) { return i.value.trim() === ""; }).map(function (i) {
+      return i.closest(".col-md, .col-12").querySelector(".form-label").firstChild.textContent.trim();
+    });
+  }
+  function refresh(ed) {
+    var st = stateOf(ed);
+    ed.dataset.state = st;
+    seatInputs(ed).forEach(function (i) { i.classList.toggle("is-empty", i.value.trim() === ""); });
+    var status = ed.querySelector(".vd-status");
+    status.className = "vd-status small ms-auto " + (st === "ok" ? "text-success" : st === "short" ? "text-danger" : "text-muted");
+    status.textContent = st === "ok" ? "Full crew" : st === "oos" ? "Out of service" : "Short: " + missingLabels(ed).join(", ");
+    var cell = form.querySelector('.glance-cell[data-target="' + ed.id + '"]');
+    if (cell) { cell.classList.remove("ok", "short", "oos"); cell.classList.add(st); }
+  }
+  function totals() {
+    var all = editors(), short = 0, oos = 0, hand = 0;
+    all.forEach(function (ed) {
+      var st = ed.dataset.state;
+      if (st === "short") short++;
+      if (st === "oos") oos++;
+      seatInputs(ed).forEach(function (i) { if (i.value.trim() !== i.dataset.orig.trim()) hand++; });
+    });
+    document.getElementById("count-short").textContent = short;
+    document.getElementById("count-oos").textContent = oos;
+    document.getElementById("count-hand").textContent = hand;
+    var open = attention.querySelectorAll('.vd-editor[data-state="short"]').length;
+    document.getElementById("badge-attention").textContent = open;
+    document.getElementById("attention-empty").classList.toggle("d-none", open !== 0);
+  }
+  function dirty() {
+    return editors().some(function (ed) {
+      var cb = ed.querySelector(".oos-check"), note = ed.querySelector(".oos-note");
+      return cb.checked !== cb.defaultChecked || note.value !== note.defaultValue ||
+        seatInputs(ed).some(function (i) { return i.value.trim() !== i.dataset.orig.trim(); });
+    });
+  }
+  function update(ed) { refresh(ed); totals(); }
+
+  function returnPanelEditor() {
+    var cur = panel.querySelector(".vd-editor");
+    if (cur) store.appendChild(cur);
+    form.querySelectorAll(".glance-cell.selected").forEach(function (c) { c.classList.remove("selected"); });
+  }
+  function openEditor(id) {
+    var ed = document.getElementById(id);
+    if (!ed) return;
+    var cell = form.querySelector('.glance-cell[data-target="' + id + '"]');
+    if (attention.contains(ed) || !store.classList.contains("d-none")) {
+      ed.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      returnPanelEditor();
+      hint.classList.add("d-none");
+      panel.appendChild(ed);
+    }
+    if (cell) cell.classList.add("selected");
+    ed.querySelector(".seat-input").focus({ preventScroll: true });
+  }
+
+  form.addEventListener("input", function (e) {
+    var ed = e.target.closest(".vd-editor");
+    if (ed) update(ed);
+  });
+  form.addEventListener("change", function (e) {
+    var ed = e.target.closest(".vd-editor");
+    if (ed) update(ed);
+  });
+  form.addEventListener("click", function (e) {
+    var t = e.target;
+    if (t.classList.contains("mark-staffed")) {
+      var input = t.parentNode.querySelector(".seat-input");
+      input.value = MANUAL;
+      update(t.closest(".vd-editor"));
+    } else if (t.classList.contains("glance-cell")) {
+      returnPanelEditor();
+      openEditor(t.dataset.target);
+    } else if (t.classList.contains("oos-week") || t.classList.contains("oos-clear")) {
+      var on = t.classList.contains("oos-week");
+      editors().filter(function (ed) { return ed.dataset.unit === t.dataset.unit; }).forEach(function (ed) {
+        ed.querySelector(".oos-check").checked = on;
+        update(ed);
+      });
+    }
+  });
+  // Enter in a box must not save the whole page by accident.
+  form.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.type === "text") e.preventDefault();
+  });
+  document.getElementById("toggle-all").addEventListener("click", function () {
+    var showing = store.classList.contains("d-none");
+    if (showing) returnPanelEditor();
+    store.classList.toggle("d-none", !showing);
+    hint.classList.toggle("d-none", showing ? true : !!panel.querySelector(".vd-editor"));
+    this.textContent = showing ? "Hide the full list" : "Show every vehicle and seat";
+  });
+  form.addEventListener("submit", function () { submitting = true; });
+  window.addEventListener("beforeunload", function (e) {
+    if (!submitting && dirty()) { e.preventDefault(); e.returnValue = ""; }
+  });
+  editors().forEach(refresh);
+  totals();
+})();
+</script>
+{% endblock %}

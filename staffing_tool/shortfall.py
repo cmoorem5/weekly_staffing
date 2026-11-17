@@ -177,7 +177,12 @@ class NoVehicleDay:
 
     @property
     def treatment(self) -> str:
-        return "Staffed" if self.crew_present else "Removed from planned"
+        # A down truck with a full crew is still counted as staffed (the crew can
+        # take a spare). There is no spare aircraft, so a down aircraft always
+        # comes off the plan, whoever the schedule still lists on it.
+        if self.crew_present and self.service_type == "GR":
+            return "Staffed"
+        return "Removed from planned"
 
 
 @dataclass
@@ -195,6 +200,12 @@ class ShortfallResult:
     staffed_all: Counter = field(default_factory=Counter)
     # "D" / "N" -> planned vehicle-days taken off the plan for "no vehicle".
     planned_removed: Counter = field(default_factory=Counter)
+    # Per-day figures for the weekly report's daily table, keyed (day, service):
+    # planned slots, staffed counted against the plan (never above it), and every
+    # fully staffed vehicle (a spare truck shows up here).
+    day_planned: Counter = field(default_factory=Counter)
+    day_staffed: Counter = field(default_factory=Counter)
+    day_staffed_all: Counter = field(default_factory=Counter)
     days_analyzed: int = 0
     weeks_without_detail: list[str] = field(default_factory=list)
 
@@ -240,6 +251,11 @@ def find_shortfalls(
                             crew_present=complete,
                         )
                     )
+                if marked and g.service_type == "RW":
+                    # No spare aircraft: a down aircraft is off the plan even if
+                    # the schedule still lists a crew on it.
+                    unavailable.append(UNIT_MAP[unit][2])
+                    continue
                 if complete:
                     staffed_count += 1
                     continue
@@ -260,6 +276,9 @@ def find_shortfalls(
             result.planned[(g.scope, g.service_type)] += slots
             result.staffed[(g.scope, g.service_type)] += filled
             result.staffed_all[(g.scope, g.service_type)] += staffed_count
+            result.day_planned[(day, g.service_type)] += slots
+            result.day_staffed[(day, g.service_type)] += filled
+            result.day_staffed_all[(day, g.service_type)] += staffed_count
             need = slots - filled
             # Blame the vehicles closest to being staffed: they are the ones a
             # single missing seat kept from being staffed.
@@ -276,6 +295,57 @@ def find_shortfalls(
                     )
                 )
     return result
+
+
+def _sunday(day: date) -> date:
+    """The Sunday that starts ``day``'s schedule week."""
+    return day - timedelta(days=(day.weekday() + 1) % 7)
+
+
+def net_of_spare_trucks(result: ShortfallResult | None) -> ShortfallResult | None:
+    """``result`` with short ground days offset by spare trucks in the same week.
+
+    Ground is a weekly system target (3 day + 1 night truck a day from any
+    base) and the weekly percentage credits every truck staffed, so a fifth
+    truck on Tuesday offsets a third on Monday. The list of short days has to
+    agree with that figure, or a week at 28 of 28 still reads "2 short vehicle
+    days". The schedule cannot say which short day a spare covered, so the ones
+    closest to being staffed (fewest missing seats) are dropped first.
+    ``find_shortfalls`` itself stays per day; the analyze functions apply this.
+    """
+    if result is None or not result.shortfalls:
+        return result
+    week_figures: dict[date, list[int]] = defaultdict(lambda: [0, 0, 0])
+    for (day, svc), planned in result.day_planned.items():
+        if svc == "GR":
+            figures = week_figures[_sunday(day)]
+            figures[0] += planned
+            figures[1] += result.day_staffed[(day, svc)]
+            figures[2] += result.day_staffed_all[(day, svc)]
+    drop: set[int] = set()
+    for week, (planned, staffed, staffed_all) in week_figures.items():
+        offset = min(staffed_all, planned) - staffed
+        if offset <= 0:
+            continue
+        week_end = week + timedelta(days=6)
+        rows = sorted(
+            (
+                s
+                for s in result.shortfalls
+                if s.service_type == "GR" and week <= s.day <= week_end
+            ),
+            key=lambda s: (
+                len(s.missing_crew) + int(s.operator_missing),
+                s.day,
+                s.unit_code,
+            ),
+        )
+        drop.update(id(s) for s in rows[:offset])
+    if not drop:
+        return result
+    return replace(
+        result, shortfalls=[s for s in result.shortfalls if id(s) not in drop]
+    )
 
 
 def _week_days(week_start: str) -> list[date]:
@@ -363,7 +433,7 @@ def analyze_range(
     ]
     result = find_shortfalls(roles, days, outages)
     result.weeks_without_detail = sorted(set(known_weeks) - weeks_with_rows)
-    return result
+    return net_of_spare_trucks(result) or result
 
 
 def summarize_by(result: ShortfallResult, key) -> dict[object, dict[str, int]]:
@@ -434,7 +504,9 @@ def _analyze_weeks(session, week_starts: Iterable[str]) -> dict[str, ShortfallRe
         ).filter(WeeklyVehicleOutage.week_start.in_(sorted(with_rows))):
             outages[week][(date.fromisoformat(day_s), unit)] = note or ""
     return {
-        week: find_shortfalls(roles[week], _week_days(week), outages[week])
+        week: net_of_spare_trucks(
+            find_shortfalls(roles[week], _week_days(week), outages[week])
+        )
         for week in sorted(with_rows)
     }
 
